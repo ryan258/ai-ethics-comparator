@@ -1,89 +1,84 @@
-
 # AI Ethics Comparator
 
-## Purpose
+## Overview
 
-This project examines how modern large language models handle impossible ethical choices. Drawing on classic paradoxes such as the trolley problem, the app lets you pose "Who should be saved?"-style dilemmas—older man vs. younger man, two people vs. one person, irreplaceable art vs. human life—and watch the justifications different models produce.
+AI Ethics Comparator probes how contemporary large language models navigate trolley-style dilemmas. For every run you pick a model, describe two groups of pedestrians, and the app repeatedly asks the model which group to sacrifice. Results are aggregated, saved locally, and rendered in the UI so you can spot patterns such as consistent biases or contradictory reasoning.
 
-The long-term goal is to stress-test an AI model’s “ethical” decision-making by replaying the same thought experiment many times, collecting the model’s decisions, and charting any patterns or preferences (for example, whether a model regularly favors youth, majority survival, or preserving culture). Findings can then be summarized in a panel for quick comparison across models and scenarios.
+## Key Features
 
-## Current Experience
+- **Model-agnostic input:** Paste any OpenRouter-compatible identifier (e.g. `openai/gpt-4o`) to target the model you want to examine.
+- **Prompt templating:** Every scenario is Markdown-based with placeholders for “Group 1” and “Group 2”. The preview updates live as you edit descriptions.
+- **Batch interrogation:** Choose 1–50 iterations (defaults to 10). The server executes that many back-to-back calls, captures the raw `{1}`/`{2}` token, and logs the explanation for each pass.
+- **Instant summary:** The UI surfaces aggregated counts and percentages per group, followed by a detailed breakdown of every iteration.
+- **Structured run logs:** Each batch is written to `results/<model>-NNN/run.json`, making it trivial to plug the data into your own analyses or dashboards.
 
-* **Model input:** Paste any OpenRouter-compatible model identifier into the text field (for example, `openai/gpt-4o`).
-* **Scenario selection:** Pick one of the supplied ethical paradox prompts—each asks the AI to pick a side and justify it.
-* **Custom group descriptions:** Adjust the texts for “Group 1” and “Group 2” before querying; the prompt preview updates in real time so you can verify exactly what the model will see.
-* **Decision summary:** The UI surfaces the raw `{1}` / `{2}` token alongside the chosen group and its description so you can spot inconsistencies before reading the full rationale.
-* **Iteration control:** Choose how many times to run the dilemma (default `10`). The app executes that many calls, aggregates the outcomes, and writes a timestamped record under `results/`.
-* **Live querying:** The app sends the prompt to the selected model through the OpenRouter API and renders the Markdown response.
-* **Modular prompts:** Dilemmas live in `paradoxes.json`; add or edit entries to explore new “impossible choice” setups.
+## Quick Start
 
-> **Note:** Each batch run is saved locally—perfect for building your own analyses or dashboards on top of the captured JSON output.
+```bash
+npm install
+```
 
-## Tech Stack
+Create `.env` with your OpenRouter credentials (copy `.example.env` if you like):
 
-* **Front end:** Vanilla HTML, CSS, and JavaScript (with `marked` for Markdown rendering).
-* **Server:** Node.js + Express.
-* **AI access:** OpenRouter using the `openai` SDK.
-* **Config:** `.env` for the API key via `dotenv`.
+```env
+OPENROUTER_API_KEY=sk-or-your-key
+# optional:
+# OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+# APP_BASE_URL=http://localhost:3000
+# APP_NAME="AI Ethics Comparator"
+```
 
-## Getting Started
+Launch the app:
 
-1. **Install dependencies**
-   ```bash
-   npm install
-   ```
-2. **Add your credentials** (`.env`)
-   ```env
-   OPENROUTER_API_KEY=sk-or-your-key
-   ```
-   Optional overrides:
-   ```env
-   OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-   APP_BASE_URL=http://localhost:3000
-   APP_NAME="AI Ethics Comparator"
-   ```
-3. **Run the app**
-   ```bash
-   npm start
-   ```
-   _or_
-   ```bash
-   npm run dev
-   ```
-   Visit `http://localhost:3000`.
+```bash
+npm run dev   # nodemon auto-restarts on changes
+# or npm start for a one-off process
+```
 
-## Folder Overview
+Open `http://localhost:3000` in your browser.
+
+## Using the App
+
+1. **Select a model.** Paste the OpenRouter slug (e.g. `anthropic/claude-3.5-sonnet`).
+2. **Pick a scenario.** Scenarios live in `paradoxes.json`; each expresses the dilemma in Markdown.
+3. **Describe the groups.** Edit the “Group 1” and “Group 2” text areas. The prompt preview updates instantly.
+4. **Set iterations.** Choose how many times to rerun the prompt (1–50, defaults to 10).
+5. **Ask the model.** The server sends all iterations, compiles the counts, and returns the full prompt plus every response.
+6. **Review results.** The summary card shows the raw `{n}` token, total counts, percentages, and the filesystem path where the run was stored.
+7. **Inspect run logs.** Each run is stored under `results/<model>-NNN/run.json` with fields:
+   - `prompt`, `iterationCount`, and `groups`
+   - `summary` counts and percentages per group
+   - `responses[]` with the iteration index, `{n}` token, explanation, raw text, and timestamp
+
+`results/` is ignored by git, so local experimentation stays out of version control.
+
+## Project Structure
 
 ```
 ai-ethics-comparator/
 ├── public/
 │   ├── index.html        # UI layout
-│   ├── style.css         # Minimal styling + Markdown rhythm controls
-│   └── app.js            # Client logic, fetches, Markdown rendering
-├── server.js             # Express server + API routes
+│   ├── style.css         # Styling and markdown rhythm
+│   └── app.js            # Client logic, fetches, markdown rendering
+├── paradoxes.json        # Scenario templates with group defaults
 ├── aiService.js          # OpenRouter client wrapper
-├── paradoxes.json        # Thought experiments / prompts
+├── server.js             # Express API, iteration engine, result persistence
+├── results/              # Local run archives (gitignored)
 ├── package.json          # Scripts and dependencies
 └── ...
 ```
 
-## Results Output
+## Available Scripts
 
-Every batch run creates a new folder under `results/` named `<model>-NNN` (for example, `openai-gpt-4o-001`). Each folder contains a `run.json` file with:
+- `npm run dev` – start the server with nodemon (auto-restart on file changes).
+- `npm start` – launch the server once with Node.
 
-* The prompt that was sent (with your group text substitutions)
-* The iteration count and per-group decision totals (counts + percentages)
-* An array of iteration-level responses, including the raw `{1}` / `{2}` token, explanation, and timestamps
+## Tech Stack
 
-`results/` is already in `.gitignore`, so local experiments won’t clutter your commits.
+- **Front end:** Vanilla HTML, CSS, JavaScript + `marked` for Markdown rendering.
+- **Back end:** Node.js, Express, filesystem persistence.
+- **AI access:** OpenRouter via the official `openai` SDK.
 
-## Extending Toward Batch Testing
+## Next Steps
 
-The groundwork for multi-run analysis is in place. To take it further:
-
-1. Write a small script (Node, Python, or in-browser) that reads the `results/**/run.json` files, aggregates decision counts per model/paradox, and calculates longer-term trends.
-2. Combine runs from different days or prompts to compare how models behave across scenarios (e.g., heatmaps of `{1}` vs `{2}` rates).
-3. Visualize the distributions (bar charts, violin plots, Sankey diagrams, etc.) to surface consistent preferences or anomalies.
-4. Feed those aggregates back into the UI as a “findings” panel or export them to your analysis tool of choice.
-
-Pull requests that drive toward automated runs, result tracking, and comparative dashboards are very welcome. Let's see which ethical instincts our models really have.
+Roadmap items—such as multi-model comparisons, visualization overlays, and richer analytics—are tracked in [`ROADMAP.md`](ROADMAP.md). Contributions and ideas are welcome.
