@@ -37,15 +37,39 @@
         </div>
       </section>
 
+      <section class="group-inputs">
+        <div class="control">
+          <label for="group1-input">Group 1 Description</label>
+          <textarea
+            id="group1-input"
+            rows="3"
+            placeholder="Describe who appears in group 1."
+          ></textarea>
+        </div>
+        <div class="control">
+          <label for="group2-input">Group 2 Description</label>
+          <textarea
+            id="group2-input"
+            rows="3"
+            placeholder="Describe who appears in group 2."
+          ></textarea>
+        </div>
+      </section>
+
       <section class="prompt-display">
         <h2>Prompt</h2>
-        <p id="prompt-text">Select a paradox to view the full prompt.</p>
+        <div id="prompt-text" class="placeholder">
+          Select a paradox to view the full prompt.
+        </div>
       </section>
 
       <button id="query-button" class="primary">Ask the Model</button>
 
       <section class="response-display">
         <h2>Model Response</h2>
+        <div id="response-summary" class="decision-summary placeholder">
+          Run a query to see which group the model chooses to impact.
+        </div>
         <div id="response-text" class="placeholder">
           Choose a model and paradox, then ask the model to see its reasoning.
         </div>

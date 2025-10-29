@@ -21,7 +21,7 @@ app.get('/api/paradoxes', async (req, res) => {
 });
 
 app.post('/api/query', async (req, res) => {
-  const { modelName, paradoxId } = req.body;
+  const { modelName, paradoxId, groups } = req.body;
 
   if (!modelName || !paradoxId) {
     return res.status(400).json({ error: 'Missing modelName or paradoxId in request body.' });
@@ -36,9 +36,9 @@ app.post('/api/query', async (req, res) => {
       return res.status(404).json({ error: 'Paradox not found.' });
     }
 
-    const prompt = paradox.prompt;
+    const prompt = buildPrompt(paradox, groups);
     const aiResponse = await aiService.getModelResponse(modelName, prompt);
-    res.json({ response: aiResponse });
+    res.json({ response: aiResponse, prompt });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message || 'An error occurred while processing your request.' });
@@ -48,3 +48,25 @@ app.post('/api/query', async (req, res) => {
 app.listen(port, () => {
   console.log(`Server listening at http://localhost:${port}`);
 });
+
+function buildPrompt(paradox, providedGroups = {}) {
+  const { promptTemplate, group1Default, group2Default } = paradox;
+  if (!promptTemplate) {
+    return paradox.prompt || '';
+  }
+
+  const group1Text = normalizeGroupText(providedGroups.group1, group1Default);
+  const group2Text = normalizeGroupText(providedGroups.group2, group2Default);
+
+  return promptTemplate
+    .replaceAll('{{GROUP1}}', group1Text)
+    .replaceAll('{{GROUP2}}', group2Text);
+}
+
+function normalizeGroupText(value, fallback) {
+  const trimmed = (value || '').trim();
+  if (trimmed.length === 0) {
+    return fallback || '';
+  }
+  return trimmed;
+}
