@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI Ethics Comparator</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <noscript>
+      <div class="noscript">This app requires JavaScript to run.</div>
+    </noscript>
+    <main class="container">
+      <header>
+        <h1>AI Ethics Comparator</h1>
+        <p class="intro">
+          Explore how different AI models reason about classic ethical paradoxes.
+        </p>
+      </header>
+
+      <section class="controls">
+        <div class="control">
+          <label for="model-input">AI Model</label>
+          <input
+            id="model-input"
+            name="modelName"
+            type="text"
+            list="model-suggestions"
+            placeholder="e.g. openai/gpt-4o"
+            autocomplete="off"
+          />
+          <datalist id="model-suggestions"></datalist>
+        </div>
+        <div class="control">
+          <label for="paradox-select">Ethical Paradox</label>
+          <select id="paradox-select"></select>
+        </div>
+      </section>
+
+      <section class="prompt-display">
+        <h2>Prompt</h2>
+        <p id="prompt-text">Select a paradox to view the full prompt.</p>
+      </section>
+
+      <button id="query-button" class="primary">Ask the Model</button>
+
+      <section class="response-display">
+        <h2>Model Response</h2>
+        <div id="response-text" class="placeholder">
+          Choose a model and paradox, then ask the model to see its reasoning.
+        </div>
+      </section>
+
+      <footer>
+        <small>
+          Powered by OpenRouter. Provide your API key via <code>.env</code> to enable live
+          responses.
+        </small>
+      </footer>
+    </main>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>

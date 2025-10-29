@@ -41,7 +41,7 @@ app.post('/api/query', async (req, res) => {
     res.json({ response: aiResponse });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'An error occurred while processing your request.' });
+    res.status(500).json({ error: error.message || 'An error occurred while processing your request.' });
   }
 });
 
