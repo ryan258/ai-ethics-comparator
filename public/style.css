@@ -41,6 +41,12 @@ header h1 {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
 }
 
+.run-settings {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+
 .control {
   display: flex;
   flex-direction: column;
@@ -54,6 +60,7 @@ label {
 
 select,
 input[type="text"],
+input[type="number"],
 textarea {
   padding: 0.6rem 0.75rem;
   border: 1px solid #d1d5db;
@@ -64,6 +71,11 @@ textarea {
   resize: vertical;
   min-height: 3rem;
   line-height: 1.5;
+}
+
+.control-hint {
+  font-size: 0.85rem;
+  color: #6b7280;
 }
 
 .prompt-display,
@@ -89,6 +101,22 @@ textarea {
   border: 1px solid rgba(37, 99, 235, 0.16);
   color: #1d4ed8;
   margin-bottom: 1rem;
+}
+
+.decision-summary.placeholder {
+  font-weight: 500;
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px dashed rgba(148, 163, 184, 0.4);
+  color: #6b7280;
+}
+
+.decision-summary p {
+  margin: 0;
+}
+
+.decision-summary ul {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
 }
 
 .placeholder {
@@ -258,8 +286,13 @@ footer {
     color: #94a3b8;
   }
 
+  .control-hint {
+    color: #94a3b8;
+  }
+
   select,
   input[type="text"],
+  input[type="number"],
   textarea {
     background-color: #1e293b;
     border-color: #334155;
@@ -280,6 +313,12 @@ footer {
     background: rgba(59, 130, 246, 0.15);
     border-color: rgba(59, 130, 246, 0.25);
     color: #bfdbfe;
+  }
+
+  .decision-summary.placeholder {
+    background: rgba(148, 163, 184, 0.1);
+    border-color: rgba(148, 163, 184, 0.3);
+    color: #9ca3af;
   }
 
   #response-text code {

@@ -16,6 +16,7 @@ const responseText = document.getElementById('response-text');
 const queryButton = document.getElementById('query-button');
 const group1Input = document.getElementById('group1-input');
 const group2Input = document.getElementById('group2-input');
+const iterationsInput = document.getElementById('iterations-input');
 const responseSummary = document.getElementById('response-summary');
 const rendererTarget = document.createElement('div');
 const domParser = new DOMParser();
@@ -85,6 +86,10 @@ async function queryModel() {
   const modelName = modelInput.value.trim();
   const paradoxId = paradoxSelect.value;
   const selectedParadox = getSelectedParadox();
+  const iterationCount = getIterationCount();
+  if (iterationsInput) {
+    iterationsInput.value = iterationCount;
+  }
 
   if (!modelName || !paradoxId || !selectedParadox) {
     responseText.textContent = 'Select both a model and a paradox before querying.';
@@ -93,6 +98,8 @@ async function queryModel() {
     return;
   }
 
+  responseSummary.textContent = `Running ${iterationCount} iteration${iterationCount !== 1 ? 's' : ''}...`;
+  responseSummary.classList.add('placeholder');
   responseText.classList.remove('error');
   responseText.classList.remove('placeholder');
   responseText.textContent = 'Contacting the model...';
@@ -106,6 +113,7 @@ async function queryModel() {
       body: JSON.stringify({
         modelName,
         paradoxId,
+        iterations: iterationCount,
         groups: {
           group1: group1Input.value,
           group2: group2Input.value
@@ -119,19 +127,11 @@ async function queryModel() {
       throw new Error(errorMessage);
     }
 
-    const data = await response.json();
-    const decision = parseDecision(data.response);
-    updateDecisionSummary(decision);
+    const runData = await response.json();
+    updateDecisionViews(runData);
 
-    const explanation = decision?.explanation?.trim().length
-      ? decision.explanation.trim()
-      : data.response;
-
-    renderMarkdown(explanation, responseText, 'The model did not return a response.');
-    responseText.classList.remove('error', 'placeholder');
-
-    if (data.prompt) {
-      renderMarkdown(data.prompt, promptText, 'Select a paradox to view the full prompt.');
+    if (runData.prompt) {
+      renderMarkdown(runData.prompt, promptText, 'Select a paradox to view the full prompt.');
       promptText.classList.remove('placeholder');
     }
   } catch (error) {
@@ -209,55 +209,124 @@ function normalizeGroupText(value, fallback) {
   return trimmed.length > 0 ? trimmed : fallback || '';
 }
 
-function getActiveGroupDescriptions() {
-  const paradox = getSelectedParadox();
-  return {
-    group1: normalizeGroupText(group1Input.value, paradox?.group1Default),
-    group2: normalizeGroupText(group2Input.value, paradox?.group2Default)
-  };
-}
-
-function parseDecision(responseText) {
-  if (!responseText) {
-    return null;
-  }
-
-  const match = responseText.match(/^\s*\{([12])\}\s*/);
-  if (!match) {
-    return null;
-  }
-
-  return {
-    group: match[1],
-    explanation: responseText.slice(match[0].length).trim()
-  };
-}
-
-function updateDecisionSummary(decision) {
-  if (!decision) {
-    resetDecisionSummary();
-    return;
-  }
-
-  const { group1, group2 } = getActiveGroupDescriptions();
-  const selectedGroupDescription = decision.group === '1' ? group1 : group2;
-  const title = decision.group === '1' ? 'Group 1' : 'Group 2';
-
-  const description = selectedGroupDescription || 'No description provided.';
-
-  responseSummary.textContent = `Model returned {${decision.group}} — chose to impact ${title}: ${description}`;
-  responseSummary.classList.remove('placeholder');
-}
-
 function resetDecisionSummary() {
   responseSummary.textContent = 'Run a query to see which group the model chooses to impact.';
   responseSummary.classList.add('placeholder');
 }
 
-modelInput.addEventListener('input', () => {
+function resetResponseText() {
   responseText.textContent = 'Choose a model and paradox, then ask the model to see its reasoning.';
-  responseText.classList.remove('error');
   responseText.classList.add('placeholder');
+  responseText.classList.remove('error');
+}
+
+function getIterationCount() {
+  const parsed = parseInt(iterationsInput?.value ?? '1', 10);
+  if (Number.isNaN(parsed) || parsed < 1) {
+    return 1;
+  }
+  return Math.min(parsed, 50);
+}
+
+function updateDecisionViews(runResult) {
+  if (!runResult || !runResult.summary) {
+    resetDecisionSummary();
+    resetResponseText();
+    return;
+  }
+
+  const summaryMarkdown = buildSummaryMarkdown(runResult);
+  renderMarkdown(summaryMarkdown, responseSummary, 'Summary unavailable.');
+  responseSummary.classList.remove('placeholder');
+
+  const detailsMarkdown = buildDetailsMarkdown(runResult);
+  renderMarkdown(detailsMarkdown, responseText, 'No iteration responses recorded.');
+  responseText.classList.remove('error', 'placeholder');
+}
+
+function buildSummaryMarkdown(runResult) {
+  const lines = [];
+  const summary = runResult.summary || {};
+  const total = summary.total ?? runResult.iterationCount ?? runResult.responses?.length ?? 0;
+
+  lines.push(`**Run ID:** ${runResult.runId || 'unknown'}`);
+  lines.push(`**Model:** ${runResult.modelName || 'n/a'}`);
+  lines.push(`**Iterations:** ${total}`);
+  lines.push('');
+
+  const group1 = summary.group1 || {};
+  const group2 = summary.group2 || {};
+  const undecided = summary.undecided || {};
+
+  const group1Percent = formatPercentage(group1.percentage);
+  const group2Percent = formatPercentage(group2.percentage);
+  const undecidedPercent = formatPercentage(undecided.percentage);
+
+  lines.push(
+    `- \`{1}\` Group 1 — ${group1.description || 'No description'}: **${group1.count ?? 0}**${group1Percent ? ` (${group1Percent})` : ''}`
+  );
+  lines.push(
+    `- \`{2}\` Group 2 — ${group2.description || 'No description'}: **${group2.count ?? 0}**${group2Percent ? ` (${group2Percent})` : ''}`
+  );
+  if ((undecided.count ?? 0) > 0) {
+    lines.push(
+      `- Undecided / invalid: **${undecided.count}**${undecidedPercent ? ` (${undecidedPercent})` : ''}`
+    );
+  }
+
+  lines.push('');
+  lines.push(`Saved to \`results/${runResult.runId || 'run'}/run.json\``);
+
+  return lines.join('\n');
+}
+
+function buildDetailsMarkdown(runResult) {
+  const lines = [];
+  lines.push('### Iteration Details');
+  lines.push('');
+
+  const group1Description = runResult.summary?.group1?.description || runResult.groups?.group1 || 'Group 1';
+  const group2Description = runResult.summary?.group2?.description || runResult.groups?.group2 || 'Group 2';
+
+  if (!Array.isArray(runResult.responses) || runResult.responses.length === 0) {
+    lines.push('- No responses were recorded.');
+    return lines.join('\n');
+  }
+
+  runResult.responses.forEach(response => {
+    const token = response.decisionToken || '—';
+    const groupLabel =
+      response.group === '1'
+        ? `Group 1 — ${group1Description}`
+        : response.group === '2'
+        ? `Group 2 — ${group2Description}`
+        : 'Undecided / invalid';
+    const explanation =
+      response.explanation && response.explanation.trim().length > 0
+        ? response.explanation.trim()
+        : '_No explanation returned._';
+
+    lines.push(`- **#${response.iteration}** \`${token}\` • ${groupLabel}`);
+    const formattedExplanation = explanation.replace(/\n/g, '\n    ');
+    lines.push(`  - ${formattedExplanation}`);
+  });
+
+  return lines.join('\n');
+}
+
+function formatPercentage(value) {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return '';
+  }
+  const clean = Number(value.toFixed(1));
+  if (Number.isNaN(clean)) {
+    return '';
+  }
+  return `${clean % 1 === 0 ? clean.toFixed(0) : clean}%`;
+}
+
+modelInput.addEventListener('input', () => {
+  resetResponseText();
   resetDecisionSummary();
 });
 
@@ -265,21 +334,32 @@ paradoxSelect.addEventListener('change', () => {
   const selectedParadox = getSelectedParadox();
   applyGroupDefaults(selectedParadox);
   updatePromptDisplay();
-  responseText.textContent = 'Choose a model and paradox, then ask the model to see its reasoning.';
-  responseText.classList.remove('error');
-  responseText.classList.add('placeholder');
+  resetResponseText();
   resetDecisionSummary();
 });
 
 group1Input.addEventListener('input', () => {
   updatePromptDisplay();
+  resetResponseText();
   resetDecisionSummary();
 });
 
 group2Input.addEventListener('input', () => {
   updatePromptDisplay();
+  resetResponseText();
   resetDecisionSummary();
 });
+
+if (iterationsInput) {
+  iterationsInput.addEventListener('input', () => {
+    resetDecisionSummary();
+    resetResponseText();
+  });
+
+  iterationsInput.addEventListener('change', () => {
+    iterationsInput.value = getIterationCount();
+  });
+}
 
 queryButton.addEventListener('click', queryModel);
 

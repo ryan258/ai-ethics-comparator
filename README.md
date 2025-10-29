@@ -13,10 +13,11 @@ The long-term goal is to stress-test an AI model’s “ethical” decision-maki
 * **Scenario selection:** Pick one of the supplied ethical paradox prompts—each asks the AI to pick a side and justify it.
 * **Custom group descriptions:** Adjust the texts for “Group 1” and “Group 2” before querying; the prompt preview updates in real time so you can verify exactly what the model will see.
 * **Decision summary:** The UI surfaces the raw `{1}` / `{2}` token alongside the chosen group and its description so you can spot inconsistencies before reading the full rationale.
+* **Iteration control:** Choose how many times to run the dilemma (default `10`). The app executes that many calls, aggregates the outcomes, and writes a timestamped record under `results/`.
 * **Live querying:** The app sends the prompt to the selected model through the OpenRouter API and renders the Markdown response.
 * **Modular prompts:** Dilemmas live in `paradoxes.json`; add or edit entries to explore new “impossible choice” setups.
 
-> **Note:** Batched experiments, tallying, and charting are on the roadmap. In the meantime, you can run manual passes from the UI or script your own loops against the `/api/query` endpoint to begin collecting data.
+> **Note:** Each batch run is saved locally—perfect for building your own analyses or dashboards on top of the captured JSON output.
 
 ## Tech Stack
 
@@ -45,6 +46,10 @@ The long-term goal is to stress-test an AI model’s “ethical” decision-maki
    ```bash
    npm start
    ```
+   _or_
+   ```bash
+   npm run dev
+   ```
    Visit `http://localhost:3000`.
 
 ## Folder Overview
@@ -62,17 +67,23 @@ ai-ethics-comparator/
 └── ...
 ```
 
+## Results Output
+
+Every batch run creates a new folder under `results/` named `<model>-NNN` (for example, `openai-gpt-4o-001`). Each folder contains a `run.json` file with:
+
+* The prompt that was sent (with your group text substitutions)
+* The iteration count and per-group decision totals (counts + percentages)
+* An array of iteration-level responses, including the raw `{1}` / `{2}` token, explanation, and timestamps
+
+`results/` is already in `.gitignore`, so local experiments won’t clutter your commits.
+
 ## Extending Toward Batch Testing
 
-To move from single-run exploration to the envisioned multi-pass analysis:
+The groundwork for multi-run analysis is in place. To take it further:
 
-1. Introduce a number input in the UI (default `10`) that lets you choose how many times to re-run a scenario against the model.
-2. Build a script (Node or browser) that hits `/api/query` repeatedly with the selected `modelName`, `paradoxId`, count, and any custom group descriptions you’ve set.
-3. Before saving output, ensure a `results/` directory exists (create if missing); stash each run inside a fresh child folder named like `[model-incrementer]` (for example, `openai-gpt-4o-001`), incrementing until an unused directory name is found.
-4. Store the returned decisions and metadata (timestamps, raw output, prompt used) inside that run folder—CSV, JSON, charts, and summary Markdown all live together.
-5. Aggregate counts for each decision or moral stance.
-6. Visualize the distribution (bar chart, violin plot, etc.) and surface highlights in a “findings” panel within the UI.
-
-> `results/` is already in `.gitignore`, so local experiments won’t clutter commits.
+1. Write a small script (Node, Python, or in-browser) that reads the `results/**/run.json` files, aggregates decision counts per model/paradox, and calculates longer-term trends.
+2. Combine runs from different days or prompts to compare how models behave across scenarios (e.g., heatmaps of `{1}` vs `{2}` rates).
+3. Visualize the distributions (bar charts, violin plots, Sankey diagrams, etc.) to surface consistent preferences or anomalies.
+4. Feed those aggregates back into the UI as a “findings” panel or export them to your analysis tool of choice.
 
 Pull requests that drive toward automated runs, result tracking, and comparative dashboards are very welcome. Let's see which ethical instincts our models really have.
