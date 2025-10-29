@@ -14,6 +14,8 @@ const paradoxSelect = document.getElementById('paradox-select');
 const promptText = document.getElementById('prompt-text');
 const responseText = document.getElementById('response-text');
 const queryButton = document.getElementById('query-button');
+const rendererTarget = document.createElement('div');
+const domParser = new DOMParser();
 
 let paradoxes = [];
 
@@ -95,7 +97,7 @@ async function queryModel() {
     }
 
     const data = await response.json();
-    responseText.textContent = data.response || 'The model did not return a response.';
+    renderMarkdown(data.response || 'The model did not return a response.');
     responseText.classList.remove('error', 'placeholder');
   } catch (error) {
     responseText.textContent = error.message;
@@ -105,6 +107,38 @@ async function queryModel() {
     queryButton.disabled = false;
     queryButton.textContent = 'Ask the Model';
   }
+}
+
+function renderMarkdown(markdownText) {
+  if (!markdownText) {
+    responseText.textContent = 'The model did not return a response.';
+    return;
+  }
+
+  const rawHtml = window.marked
+    ? window.marked.parse(markdownText)
+    : markdownText.replace(/\n/g, '<br />');
+
+  rendererTarget.innerHTML = sanitizeHtml(rawHtml);
+
+  responseText.innerHTML = rendererTarget.innerHTML;
+}
+
+function sanitizeHtml(html) {
+  const doc = domParser.parseFromString(html, 'text/html');
+  doc.querySelectorAll('script, style, iframe, object, embed').forEach(el => el.remove());
+
+  doc.body.querySelectorAll('*').forEach(el => {
+    [...el.attributes].forEach(attr => {
+      const name = attr.name.toLowerCase();
+      const value = attr.value;
+      if (name.startsWith('on') || value.toLowerCase().includes('javascript:')) {
+        el.removeAttribute(attr.name);
+      }
+    });
+  });
+
+  return doc.body.innerHTML;
 }
 
 modelInput.addEventListener('input', () => {
