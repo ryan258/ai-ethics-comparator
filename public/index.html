@@ -27,6 +27,12 @@
       <section class="controls">
         <div class="control">
           <label for="model-input">AI Model</label>
+          <div style="display: flex; gap: 10px; align-items: center; margin-bottom: 8px;">
+            <label style="display: flex; align-items: center; gap: 5px; font-weight: normal; font-size: 0.9em;">
+              <input type="checkbox" id="batch-mode-toggle" />
+              Batch mode (select multiple models)
+            </label>
+          </div>
           <input
             id="model-input"
             name="modelName"
@@ -36,6 +42,10 @@
             autocomplete="off"
           />
           <datalist id="model-suggestions"></datalist>
+          <div id="batch-model-selection" style="display: none; margin-top: 10px; padding: 10px; border: 1px solid #ccc; border-radius: 4px;">
+            <div style="margin-bottom: 8px; font-weight: 500;">Select models for batch run:</div>
+            <div id="batch-model-checkboxes"></div>
+          </div>
         </div>
         <div class="control">
           <label for="paradox-select">Ethical Paradox</label>
@@ -108,6 +118,13 @@
           <h2>Model Response</h2>
           <button id="clear-run-button" style="display: none;">Clear Run</button>
         </div>
+        <div id="batch-progress" style="display: none; margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 4px;">
+          <div style="font-weight: 500; margin-bottom: 8px;">Batch Progress</div>
+          <div id="batch-progress-bar" style="width: 100%; height: 20px; background: #e0e0e0; border-radius: 10px; overflow: hidden;">
+            <div id="batch-progress-fill" style="height: 100%; background: linear-gradient(90deg, #4CAF50, #45a049); width: 0%; transition: width 0.3s;"></div>
+          </div>
+          <div id="batch-progress-text" style="margin-top: 8px; font-size: 0.9em; color: #666;"></div>
+        </div>
         <div id="response-summary" class="decision-summary placeholder">
           Run a query to see which group the model chooses to impact.
         </div>
@@ -119,7 +136,17 @@
 
       <div id="results-view" class="tab-content" style="display: none;">
         <section class="results-list-section">
-          <h2>Past Runs</h2>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h2 style="margin: 0;">Past Runs</h2>
+            <div>
+              <button id="batch-export-button" style="margin-right: 10px;">Export All (ZIP)</button>
+              <button id="compare-mode-toggle" style="margin-right: 10px;">Enable Compare Mode</button>
+              <button id="start-comparison-button" style="display: none;">Compare Selected</button>
+            </div>
+          </div>
+          <div id="comparison-instructions" style="display: none; padding: 10px; background: #e3f2fd; border-radius: 4px; margin-bottom: 15px; font-size: 0.9em;">
+            Select 2-3 runs to compare, then click "Compare Selected"
+          </div>
           <div id="results-list-loading" class="placeholder">Loading runs...</div>
           <div id="results-list" style="display: none;"></div>
           <div id="results-empty" class="placeholder" style="display: none;">
@@ -127,16 +154,46 @@
           </div>
         </section>
 
+        <section class="comparison-viewer-section" id="comparison-viewer" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+            <h2>Run Comparison</h2>
+          </div>
+          <button id="back-to-list-from-comparison-button">← Back to List</button>
+          <div id="comparison-stats" style="margin: 20px 0;"></div>
+          <div id="comparison-content" style="display: grid; gap: 20px;"></div>
+        </section>
+
         <section class="results-viewer-section" id="results-viewer" style="display: none;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <h2>Run Details</h2>
-            <button id="export-csv-button">Export to CSV</button>
+            <div>
+              <button id="export-csv-button" style="margin-right: 10px;">Export to CSV</button>
+              <button id="export-json-button">Export to JSON</button>
+            </div>
           </div>
           <button id="back-to-list-button">← Back to List</button>
           <div id="results-viewer-summary"></div>
           <div id="results-chart-container" style="display: none; max-width: 600px; margin: 20px 0;">
             <canvas id="results-chart"></canvas>
           </div>
+          <div style="margin: 20px 0;">
+            <button id="generate-insight-button" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px 24px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">
+              Generate AI Insight Summary
+            </button>
+            <div id="insight-loading" style="display: none; margin-top: 15px; padding: 15px; background: #f5f5f5; border-radius: 4px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <div style="width: 20px; height: 20px; border: 3px solid #667eea; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+                <span>Analyzing run data...</span>
+              </div>
+            </div>
+            <div id="insight-result" style="display: none; margin-top: 15px; padding: 20px; background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); border-radius: 8px; border-left: 4px solid #667eea;"></div>
+          </div>
+          <style>
+            @keyframes spin {
+              0% { transform: rotate(0deg); }
+              100% { transform: rotate(360deg); }
+            }
+          </style>
           <div id="results-viewer-details"></div>
         </section>
       </div>
