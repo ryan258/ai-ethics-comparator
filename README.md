@@ -121,6 +121,7 @@ Each run is automatically saved to `results/<model>-NNN/run.json` with complete 
 - `params` (all generation parameters: temperature, top_p, max_tokens, seed, frequency_penalty, presence_penalty)
 - `summary` (aggregated counts and percentages)
 - `responses[]` (every iteration with decision token, group choice, explanation, raw text, and timestamp)
+- `insights[]` (AI-generated analyses with timestamp, analyst model, and content - saved when you generate insights)
 
 The `results/` directory is gitignored, keeping your experiments local.
 

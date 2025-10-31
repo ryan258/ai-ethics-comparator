@@ -235,6 +235,35 @@ ${compiledText}`;
       max_tokens: 2000   // Allow longer responses for detailed analysis
     });
 
+    // Save insight to run.json
+    if (runData.runId) {
+      try {
+        const runPath = path.join(RESULTS_ROOT, runData.runId, 'run.json');
+
+        // Read existing run data
+        const existingData = await fs.readFile(runPath, 'utf8');
+        const runRecord = JSON.parse(existingData);
+
+        // Initialize insights array if it doesn't exist
+        if (!runRecord.insights) {
+          runRecord.insights = [];
+        }
+
+        // Add new insight
+        runRecord.insights.push({
+          timestamp: new Date().toISOString(),
+          analystModel: modelToUse,
+          content: insightResponse
+        });
+
+        // Write back to file
+        await fs.writeFile(runPath, JSON.stringify(runRecord, null, 2), 'utf8');
+      } catch (saveError) {
+        console.error('Error saving insight to run.json:', saveError);
+        // Don't fail the request if saving fails - just log it
+      }
+    }
+
     res.json({ insight: insightResponse, model: modelToUse });
   } catch (error) {
     console.error('Error generating insight:', error);

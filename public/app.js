@@ -884,9 +884,65 @@ async function viewRun(runId) {
 
     // Render chart for trolley-type paradoxes
     renderResultsChart(runData);
+
+    // Display saved insights if they exist
+    if (runData.insights && runData.insights.length > 0) {
+      displaySavedInsights(runData.insights);
+    } else {
+      // Clear insight panel if no saved insights
+      if (insightResult) {
+        insightResult.style.display = 'none';
+        insightResult.innerHTML = '';
+      }
+      if (insightLoading) {
+        insightLoading.style.display = 'none';
+      }
+    }
   } catch (error) {
     console.error('Error loading run:', error);
     alert('Failed to load run details. Please try again.');
+  }
+}
+
+function displaySavedInsights(insights) {
+  if (!insightResult) return;
+
+  insightLoading.style.display = 'none';
+  insightResult.style.display = 'block';
+
+  let html = '<div style="margin-bottom: 15px; padding: 10px; background: #e8f5e9; border-left: 4px solid #4CAF50; border-radius: 4px;">';
+  html += '<strong>📊 Saved Insights</strong> ';
+  html += `<span style="color: #666; font-size: 0.9em;">(${insights.length} analysis${insights.length !== 1 ? 'es' : ''})</span>`;
+  html += '</div>';
+
+  insights.forEach((insight, index) => {
+    const date = new Date(insight.timestamp).toLocaleString();
+
+    html += '<div style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 4px;">';
+    html += `<div style="font-size: 0.85em; color: #666; margin-bottom: 10px;">`;
+    html += `<strong>Analysis ${index + 1}</strong> | `;
+    html += `${date} | `;
+    html += `Model: ${escapeHtml(insight.analystModel)}`;
+    html += '</div>';
+
+    // Parse markdown and render the insight content
+    html += '<div style="line-height: 1.6;">';
+    if (window.marked) {
+      html += window.marked.parse(insight.content);
+    } else {
+      // Fallback if marked is not available
+      const sanitized = sanitizeHtml(insight.content.replace(/\n/g, '<br />'));
+      html += sanitized;
+    }
+    html += '</div>';
+    html += '</div>';
+  });
+
+  insightResult.innerHTML = html;
+
+  // Update button text to indicate insights exist
+  if (generateInsightButton) {
+    generateInsightButton.textContent = 'Generate New Insight';
   }
 }
 
@@ -1344,26 +1400,48 @@ async function generateInsight() {
 
     const result = await response.json();
 
-    // Hide loading, show result
-    insightLoading.style.display = 'none';
-    insightResult.style.display = 'block';
+    // Reload the run data to show the saved insight
+    if (currentViewedRun && currentViewedRun.runId) {
+      try {
+        const reloadResponse = await fetch(`/api/runs/${currentViewedRun.runId}`);
+        if (reloadResponse.ok) {
+          const updatedRunData = await reloadResponse.json();
+          currentViewedRun = updatedRunData;
 
-    // Render the insight using markdown
-    let insightHtml = '<h3 style="margin-top: 0; color: #667eea;">AI Insight Summary</h3>';
-    insightHtml += `<div style="font-size: 0.85em; color: #666; margin-bottom: 15px;">Analyzed by: ${result.model}</div>`;
-    insightHtml += '<div style="line-height: 1.6;">';
-
-    if (window.marked) {
-      insightHtml += window.marked.parse(result.insight);
-    } else {
-      insightHtml += result.insight.replace(/\n/g, '<br/>');
+          // Display all saved insights (including the new one)
+          if (updatedRunData.insights && updatedRunData.insights.length > 0) {
+            displaySavedInsights(updatedRunData.insights);
+          }
+        }
+      } catch (reloadError) {
+        console.error('Error reloading run data:', reloadError);
+        // Don't fail - still show the generated insight
+      }
     }
 
-    insightHtml += '</div>';
-    insightResult.innerHTML = insightHtml;
+    // If reload failed or no runId, show the newly generated insight
+    if (!insightResult.innerHTML || insightResult.innerHTML.indexOf('Saved Insights') === -1) {
+      insightLoading.style.display = 'none';
+      insightResult.style.display = 'block';
+
+      let insightHtml = '<div style="margin-bottom: 10px; padding: 10px; background: #e3f2fd; border-radius: 4px;">';
+      insightHtml += `<strong>✨ New Insight Generated</strong><br>`;
+      insightHtml += `<span style="font-size: 0.9em; color: #666;">Analyst Model: ${escapeHtml(result.model)}</span>`;
+      insightHtml += '</div>';
+      insightHtml += '<div style="line-height: 1.6;">';
+
+      if (window.marked) {
+        insightHtml += window.marked.parse(result.insight);
+      } else {
+        insightHtml += result.insight.replace(/\n/g, '<br/>');
+      }
+
+      insightHtml += '</div>';
+      insightResult.innerHTML = insightHtml;
+    }
 
     generateInsightButton.disabled = false;
-    generateInsightButton.textContent = 'Regenerate Insight';
+    generateInsightButton.textContent = 'Generate Another Insight';
   } catch (error) {
     console.error('Error generating insight:', error);
     insightLoading.style.display = 'none';
