@@ -207,6 +207,126 @@ Responses typically acknowledge the tension between privacy and security, often 
 
 ## Advanced Features
 
+### Batch Model Runner
+
+**What is it?**
+The Batch Model Runner allows you to test multiple AI models on the same scenario simultaneously, making large-scale comparative studies more efficient.
+
+**How to use:**
+
+1. In the Query tab, enable the "Batch mode" checkbox
+2. The model input field is replaced with a list of checkboxes
+3. Select 2 or more models you want to test
+4. Configure your scenario as normal (iterations, groups, system prompt)
+5. Click "Ask the Model"
+6. Watch the progress bar track completion across all models
+7. Review the batch summary showing success/failure for each model
+8. All runs are saved separately and can be viewed in the Results tab
+
+**Example Use Case:**
+
+Test 5 different models on the same trolley problem to compare their decision patterns:
+- Select: GPT-4o, Claude 3.5 Sonnet, Gemini 1.5 Flash, Llama 3 70B, Mistral Large
+- Scenario: "Criminal vs. Surgeon"
+- Iterations: 20 per model
+- Result: 5 separate runs, each saved with full data
+
+**Benefits:**
+- Saves time vs. running models individually
+- Ensures identical parameters across models
+- Real-time progress tracking
+- Comprehensive results summary
+
+### Side-by-Side Comparison & Statistical Testing
+
+**What is it?**
+Compare 2-3 runs in a split-screen view with automated statistical analysis to determine if differences are meaningful.
+
+**How to use:**
+
+1. Navigate to the Results tab
+2. Click "Enable Compare Mode"
+3. Checkboxes appear next to each run
+4. Select 2-3 runs to compare (you can't select more than 3)
+5. Click "Compare Selected"
+6. View side-by-side comparison with:
+   - Summary statistics for each run
+   - Visual charts displayed side-by-side
+   - Chi-square test results (for trolley-type runs)
+   - P-value with significance interpretation
+
+**Chi-Square Test:**
+
+For trolley-type runs comparing 2 models, the tool automatically:
+- Calculates the χ² statistic
+- Computes the p-value (degrees of freedom = 1)
+- Displays significance at α = 0.05 level
+- Interprets whether differences are statistically meaningful
+
+**Example Result:**
+
+```
+Statistical Analysis
+Chi-square test results for decision distribution:
+• χ² statistic: 8.2451
+• Degrees of freedom: 1
+• p-value: 0.0041
+• Result: The difference in decision distributions is statistically significant (α = 0.05)
+
+The p-value is less than 0.05, indicating the two runs have significantly different decision distributions.
+```
+
+**Use Cases:**
+- Compare model behaviors (GPT-4 vs. Claude)
+- Test priming effects (utilitarian vs. deontological system prompts)
+- Validate that interventions actually changed behavior
+- Publication-quality statistical validation
+
+### AI Insight Summary
+
+**What is it?**
+An AI-powered meta-analysis tool that automatically analyzes your run results, identifying ethical frameworks, reasoning patterns, and inconsistencies.
+
+**How to use:**
+
+1. Navigate to Results tab and view any run
+2. Scroll to the "Generate AI Insight Summary" button
+3. Click to start analysis (takes 10-30 seconds)
+4. View comprehensive insight report including:
+   - **Dominant Ethical Framework:** Utilitarian, deontological, virtue ethics, care ethics, or pragmatic
+   - **Common Justifications:** Most frequent reasoning patterns
+   - **Consistency Analysis:** How consistent was the model across iterations?
+   - **Key Insights:** 2-3 main takeaways about the model's approach
+
+**Example Insight:**
+
+```
+AI Insight Summary
+Analyzed by: anthropic/claude-3.5-sonnet
+
+Dominant Ethical Framework
+The model consistently demonstrated utilitarian reasoning, prioritizing the greatest good for the greatest number. In 18 of 20 iterations, the model explicitly mentioned "minimizing overall harm" or "maximizing welfare."
+
+Common Justifications
+1. Utilitarian calculation: "Saving two lives is better than saving one"
+2. Legal consideration: Referenced the legal/illegal status of actions
+3. Potential impact: Considered long-term consequences
+
+Consistency Analysis
+The model was highly consistent (90% agreement on Group 2). The 2 dissenting iterations occurred when the model introduced additional context about "moral responsibility for active intervention."
+
+Key Insights
+• Strong utilitarian bias with minimal variation
+• Legal status influenced 40% of explanations
+• Some evidence of action/omission distinction in outlier cases
+```
+
+**Benefits:**
+- Saves hours of manual analysis
+- Reduces cognitive load (especially helpful for analyzing many runs)
+- Provides structured framework for understanding results
+- Can regenerate if you want a fresh perspective
+
 ### Ethical Priming with System Prompts
 
 **What is it?**
@@ -275,14 +395,30 @@ Compare the results to see if priming significantly affects decision patterns.
 - Show results to colleagues/students
 - Build a corpus of AI responses for research
 
-### Data Export (CSV)
+### Data Export (CSV, JSON, Batch)
 
-**How to Export:**
+**Export Options:**
 
+**1. Export to CSV (Individual Run)**
 1. Navigate to Results tab
 2. Click on any run to open details
 3. Click "Export to CSV"
 4. CSV file downloads automatically
+
+**2. Export to JSON (Individual Run)**
+1. Navigate to Results tab
+2. Click on any run to open details
+3. Click "Export to JSON"
+4. Complete run data in JSON format downloads
+5. Perfect for programmatic analysis in Python/R
+
+**3. Batch Export All Runs**
+1. From the Results tab main view
+2. Click "Export All (ZIP)" button
+3. Confirm export when prompted
+4. Downloads a single JSON file containing all runs
+5. Includes metadata: export date, total run count
+6. Timestamped filename for organization
 
 **CSV Structure (Trolley-Type):**
 
@@ -477,19 +613,36 @@ The bar chart (trolley-type runs) shows:
 1. Results tab → Click any run → "Export to CSV"
 2. File saves as: `{runId}.csv` (e.g., `anthropic-claude-3-5-sonnet-001.csv`)
 
-**Batch Export:**
+**JSON Export Structure:**
 
-Currently, you can export runs one at a time. For bulk export:
-
-```bash
-# From the project directory, zip all results
-zip -r all-results.zip results/
-
-# Or copy specific runs
-cp results/*/run.json ~/my-research/data/
+```json
+{
+  "exportDate": "2025-10-31T17:30:00.000Z",
+  "totalRuns": 25,
+  "runs": [
+    {
+      "runId": "anthropic-claude-3-5-sonnet-001",
+      "timestamp": "2025-10-31T15:20:00.000Z",
+      "modelName": "anthropic/claude-3.5-sonnet",
+      "paradoxId": "trolley_problem",
+      "paradoxType": "trolley",
+      "summary": { /* ... */ },
+      "responses": [ /* ... */ ]
+    },
+    // ... all other runs
+  ]
+}
 ```
 
+**Benefits of JSON Export:**
+- Preserves complete data structure
+- Easy to parse in Python/R/JavaScript
+- Includes all metadata and nested objects
+- Ideal for archiving and sharing datasets
+
 ### Analyzing in Python
+
+**From CSV:**
 
 ```python
 import pandas as pd
@@ -519,6 +672,59 @@ vectorizer = TfidfVectorizer(max_features=20)
 tfidf = vectorizer.fit_transform(df['Explanation'])
 print(vectorizer.get_feature_names_out())
 # Shows most common terms in explanations
+```
+
+**From JSON (Single Run):**
+
+```python
+import json
+import pandas as pd
+
+# Load JSON
+with open('anthropic-claude-3-5-sonnet-001.json', 'r') as f:
+    run = json.load(f)
+
+# Extract basic info
+print(f"Model: {run['modelName']}")
+print(f"Iterations: {run['iterationCount']}")
+print(f"Summary: {run['summary']}")
+
+# Convert responses to DataFrame
+df = pd.DataFrame(run['responses'])
+print(df['group'].value_counts())
+```
+
+**From Batch Export:**
+
+```python
+import json
+import pandas as pd
+
+# Load batch export
+with open('ai-ethics-comparator-export-2025-10-31.json', 'r') as f:
+    data = json.load(f)
+
+print(f"Total runs: {data['totalRuns']}")
+print(f"Export date: {data['exportDate']}")
+
+# Compare all runs
+results = []
+for run in data['runs']:
+    if run['paradoxType'] == 'trolley':
+        results.append({
+            'model': run['modelName'],
+            'paradox': run['paradoxId'],
+            'group1_pct': run['summary']['group1']['percentage'],
+            'group2_pct': run['summary']['group2']['percentage']
+        })
+
+comparison_df = pd.DataFrame(results)
+print(comparison_df)
+
+# Visualize comparison
+comparison_df.pivot(index='paradox', columns='model', values='group1_pct').plot(kind='bar')
+plt.title('Group 1 Selection Rate by Model and Paradox')
+plt.show()
 ```
 
 ### Analyzing in R
@@ -835,7 +1041,7 @@ Utilitarian prompt → more likely to decrypt (greater good)
 Deontological prompt → less likely to decrypt (privacy right)
 Care ethics → context-dependent, emphasizes trust
 
-### Example 4: Cross-Model Comparison
+### Example 4: Cross-Model Comparison (Using Batch Runner)
 
 **Research Question:**
 Which models exhibit the most consistent ethical reasoning?
@@ -846,25 +1052,57 @@ Proprietary models (GPT-4, Claude) will be more consistent than open-source mode
 **Method:**
 
 1. **Scenario:** "Criminal vs. Surgeon"
-2. **Models:**
+2. **Enable Batch Mode and select models:**
    - `openai/gpt-4o`
    - `anthropic/claude-3.5-sonnet`
    - `google/gemini-1.5-flash-latest`
    - `meta-llama/llama-3-70b-instruct`
    - `mistralai/mistral-large-latest`
-3. **Iterations:** 40 per model
-4. **Metrics:**
+3. **Iterations:** 40 (all models run with same parameters)
+4. **Click "Ask the Model"** - all 5 runs execute sequentially
+5. **Metrics:**
    - Consistency score (% choosing most common answer)
    - Reasoning similarity (are explanations similar?)
    - Undecided rate
 
 **Analysis:**
-- Rank models by consistency
-- Categorize reasoning types
-- Check if open-source models have higher undecided rates
+- Use "Enable Compare Mode" to select 2-3 runs at a time
+- View side-by-side charts
+- Check Chi-square test results for significance
+- Generate AI Insight Summary for each run to compare frameworks
+- Export all runs and analyze in Python/R
 
 **Expected Result:**
 Claude and GPT-4 will be most consistent (>90%), while Llama may be more variable (70-80%).
+
+### Example 5: Statistical Validation of Priming Effects
+
+**Research Question:**
+Does utilitarian priming significantly change decision patterns?
+
+**Hypothesis:**
+A utilitarian system prompt will significantly increase the rate of choosing fewer deaths.
+
+**Method:**
+
+1. **Scenario:** "Pregnant Woman vs. Scientist" (ambiguous trolley problem)
+2. **Model:** `anthropic/claude-3.5-sonnet`
+3. **Conditions:**
+   - **Control:** No system prompt (30 iterations)
+   - **Treatment:** Utilitarian system prompt (30 iterations)
+4. **Run both conditions**
+5. **Use Compare Mode:**
+   - Select both runs
+   - View Chi-square test results
+   - Check if p-value < 0.05
+
+**Analysis:**
+- If p < 0.05: Priming had statistically significant effect
+- If p > 0.05: Difference could be due to chance
+- Generate AI Insight Summary for each to see framework differences
+
+**Expected Result:**
+Utilitarian prompt significantly increases Group 2 choices (more lives saved), with p < 0.01.
 
 ---
 

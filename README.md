@@ -15,9 +15,13 @@ For each run, you select a model, configure the scenario, and optionally add eth
 - **Ethical Priming:** Add system prompts to test how different moral frameworks (utilitarian, deontological, etc.) influence responses
 
 ### Advanced Features
+- **Batch Model Runner:** Select multiple models and run the same scenario across all of them simultaneously with real-time progress tracking
+- **Side-by-Side Comparison:** Compare 2-3 runs in split-screen view with automated Chi-square statistical testing for trolley-type runs
+- **AI Insight Summary:** Generate AI-powered analysis of run results, automatically detecting ethical frameworks, consistency patterns, and key insights
 - **Results Dashboard:** Browse, filter, and view all past experimental runs in a dedicated Results tab
-- **Data Export:** Export any run to CSV format for external analysis (Excel, R, Python, etc.)
+- **Data Export:** Export runs to CSV or JSON format, with batch export capability for all runs at once
 - **Visual Analytics:** Automatic bar charts show decision distribution for trolley-type scenarios
+- **Statistical Validation:** Chi-square tests with p-values to determine if decision distributions are statistically significant
 - **Undecided Detection:** Iterations where the AI fails to choose are flagged with ⚠️ warnings
 - **Enhanced Error Reporting:** Specific error messages for API issues (rate limits, invalid models, billing problems, etc.)
 
@@ -57,6 +61,7 @@ Open `http://localhost:3000` in your browser.
 ### Query Tab (Running Experiments)
 
 1. **Select a model.** Enter or select an OpenRouter model identifier (e.g., `anthropic/claude-3.5-sonnet`, `openai/gpt-4o`)
+   - **Batch Mode:** Enable "Batch mode" checkbox to select multiple models and run them all sequentially with progress tracking
 2. **Pick a scenario.** Choose from 12 built-in ethical paradoxes:
    - **7 Trolley-Type Scenarios:** Binary choices between two groups (younger vs. older, criminal vs. surgeon, etc.)
    - **5 Open-Ended Scenarios:** Complex ethical questions (white lies, privacy vs. security, resource allocation, etc.)
@@ -84,9 +89,20 @@ Open `http://localhost:3000` in your browser.
    - Paradox tested
    - Number of iterations
    - Timestamp
-3. **View run details.** Click any run to see full results with summary, chart, and iteration details
-4. **Export to CSV.** Click "Export to CSV" to download results for external analysis
-5. **Return to list.** Use "← Back to List" to browse other runs
+3. **Compare runs.** Click "Enable Compare Mode" to select 2-3 runs for side-by-side comparison
+   - Automatically runs Chi-square test for trolley-type runs
+   - Displays p-values and statistical significance
+   - Shows charts side-by-side for easy comparison
+4. **View run details.** Click any run to see full results with summary, chart, and iteration details
+5. **Generate AI Insights.** Click "Generate AI Insight Summary" to get automated analysis of the run
+   - Identifies dominant ethical framework
+   - Analyzes common justifications and reasoning patterns
+   - Detects contradictions and consistency issues
+6. **Export data:**
+   - **Export to CSV:** Individual run in CSV format
+   - **Export to JSON:** Individual run in JSON format
+   - **Export All:** Batch export all runs as a single JSON file
+7. **Return to list.** Use "← Back to List" to browse other runs
 
 ### Data Persistence
 
@@ -145,6 +161,9 @@ Returns the list of available ethical scenarios from `paradoxes.json`.
 ### `POST /api/query`
 Executes a batch of iterations for a given model and scenario.
 
+### `POST /api/insight`
+Generates AI-powered analysis of a run's results.
+
 **Request body:**
 ```json
 {
@@ -160,6 +179,25 @@ Executes a batch of iterations for a given model and scenario.
 ```
 
 **Response:** Complete run data with summary and all iteration responses.
+
+### `POST /api/insight`
+Generates AI-powered insight summary for a run.
+
+**Request body:**
+```json
+{
+  "runData": { /* complete run.json data */ },
+  "analystModel": "anthropic/claude-3.5-sonnet" // optional
+}
+```
+
+**Response:**
+```json
+{
+  "insight": "Comprehensive analysis text...",
+  "model": "anthropic/claude-3.5-sonnet"
+}
+```
 
 ### `GET /api/runs`
 Returns metadata for all past runs (sorted by timestamp, newest first).
@@ -177,15 +215,17 @@ This tool is designed for researchers studying:
 4. **Priming Effects:** How do system prompts influence moral reasoning?
 5. **Cross-Model Comparison:** How do different AI systems approach the same dilemma?
 6. **Framework Analysis:** Do models exhibit utilitarian, deontological, or virtue ethics patterns?
+7. **Statistical Validation:** Use Chi-square tests to determine if differences between runs are statistically significant
+8. **Large-Scale Studies:** Run batch experiments across multiple models simultaneously for comprehensive comparative analysis
 
 ## Contributing
 
 Contributions are welcome! See [`ROADMAP.md`](ROADMAP.md) for planned features. Areas of interest:
 - Additional ethical scenarios
-- Multi-model batch comparison
-- Side-by-side run comparison UI
-- Ethical framework taxonomy classifier
-- Statistical significance testing
+- Search/filter functionality for Results tab
+- Advanced statistical analysis (confidence intervals, consistency metrics)
+- Prompt management UI
+- Dark mode and UI enhancements
 
 ## License
 
