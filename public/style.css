@@ -263,6 +263,10 @@ textarea {
   color: #4b5563;
 }
 
+#insight-result {
+    color: rgb(38, 44, 50);
+}
+
 .error {
   color: #dc2626;
 }
