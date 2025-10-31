@@ -55,7 +55,8 @@ header h1 {
 
 label {
   font-weight: 600;
-  color: #1f2937;
+  color: goldenrod;
+  margin-top: 1rem;
 }
 
 select,
@@ -179,6 +180,8 @@ textarea {
   padding: 0.75rem 1.5rem;
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  margin: 1rem auto;
+  display: block;
 }
 
 .primary:hover {
