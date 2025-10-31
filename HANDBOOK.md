@@ -290,8 +290,10 @@ An AI-powered meta-analysis tool that automatically analyzes your run results, i
 **How to use:**
 
 1. Navigate to Results tab and view any run
-2. Scroll to the "Generate AI Insight Summary" button
-3. Click to start analysis (takes 10-30 seconds)
+2. (Optional) Choose your analyst model in the "Analyst Model" input field
+   - Default: `google/gemini-2.0-flash-001` (fast and cost-effective)
+   - Alternatives: `anthropic/claude-3.5-sonnet`, `openai/gpt-4o`, etc.
+3. Click "Generate AI Insight Summary" to start analysis (takes 10-30 seconds)
 4. View comprehensive insight report including:
    - **Dominant Ethical Framework:** Utilitarian, deontological, virtue ethics, care ethics, or pragmatic
    - **Common Justifications:** Most frequent reasoning patterns
@@ -325,7 +327,8 @@ Key Insights
 - Saves hours of manual analysis
 - Reduces cognitive load (especially helpful for analyzing many runs)
 - Provides structured framework for understanding results
-- Can regenerate if you want a fresh perspective
+- Can regenerate with different analyst models for varied perspectives
+- Choose faster/cheaper models (Gemini Flash) or more sophisticated ones (Claude, GPT-4) based on your needs
 
 ### Ethical Priming with System Prompts
 

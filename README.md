@@ -95,6 +95,7 @@ Open `http://localhost:3000` in your browser.
    - Shows charts side-by-side for easy comparison
 4. **View run details.** Click any run to see full results with summary, chart, and iteration details
 5. **Generate AI Insights.** Click "Generate AI Insight Summary" to get automated analysis of the run
+   - Choose your analyst model (defaults to `google/gemini-2.0-flash-001`)
    - Identifies dominant ethical framework
    - Analyzes common justifications and reasoning patterns
    - Detects contradictions and consistency issues
@@ -187,7 +188,7 @@ Generates AI-powered insight summary for a run.
 ```json
 {
   "runData": { /* complete run.json data */ },
-  "analystModel": "anthropic/claude-3.5-sonnet" // optional
+  "analystModel": "google/gemini-2.0-flash-001" // optional, defaults to gemini-2.0-flash
 }
 ```
 

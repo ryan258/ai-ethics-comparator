@@ -41,6 +41,7 @@ const batchExportButton = document.getElementById('batch-export-button');
 const resultsChartContainer = document.getElementById('results-chart-container');
 const resultsChartCanvas = document.getElementById('results-chart');
 const generateInsightButton = document.getElementById('generate-insight-button');
+const analystModelInput = document.getElementById('analyst-model-input');
 const insightLoading = document.getElementById('insight-loading');
 const insightResult = document.getElementById('insight-result');
 const batchModeToggle = document.getElementById('batch-mode-toggle');
@@ -1271,6 +1272,9 @@ async function generateInsight() {
   }
 
   try {
+    // Get analyst model from input, or use default
+    const analystModel = analystModelInput?.value?.trim() || 'google/gemini-2.0-flash-001';
+
     // Show loading state
     generateInsightButton.disabled = true;
     generateInsightButton.textContent = 'Generating...';
@@ -1282,7 +1286,7 @@ async function generateInsight() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         runData: currentViewedRun,
-        analystModel: 'anthropic/claude-3.5-sonnet'
+        analystModel: analystModel
       })
     });
 

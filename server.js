@@ -144,8 +144,8 @@ Provide your analysis in a clear, structured format with headers. Be specific an
 Data:
 ${compiledText}`;
 
-    // Use the analyst model (default to a high-quality model)
-    const modelToUse = analystModel || 'anthropic/claude-3.5-sonnet';
+    // Use the analyst model (default to Gemini 2.0 Flash)
+    const modelToUse = analystModel || 'google/gemini-2.0-flash-001';
 
     const insightResponse = await aiService.getModelResponse(modelToUse, metaPrompt, '');
 
