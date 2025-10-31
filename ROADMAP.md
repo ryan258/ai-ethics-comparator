@@ -1,81 +1,226 @@
 # **AI Ethics Comparator \- Roadmap**
 
-This document outlines the planned progression for the AI Ethics Comparator, evolving it from a specialized "Trolley Problem Engine" into a more comprehensive, flexible, and powerful tool for researching AI alignment and ethical reasoning.
+This document outlines the development roadmap for the AI Ethics Comparator. The tool has evolved from a specialized "Trolley Problem Engine" into a comprehensive research platform for studying AI alignment and ethical reasoning.
 
-## **Phase 1: Solidify the "Trolley Problem Engine" (V1.x)**
+---
 
-**Goal:** Perfect the *current* functionality. Make the existing tool robust, reliable, and more user-friendly before adding major new features.
+## **Status Overview**
 
-* **Result Validation:**  
-  * Flag iterations in the UI where the AI's response is "Undecided" (e.g., no {1} or {2} token was found).  
-  * Add experimental "contradiction flagging" to warn when the explanation *text* seems to contradict the chosen token (e.g., the AI chooses {1} but the text says "therefore I must save Group 1"). This might require a secondary AI call.  
-* **API & Error Handling:**  
-  * Improve error passthrough. If OpenRouter returns an API error (e.g., "model not found," "rate limit," "billing issue"), display that specific error in the response box instead of a generic "Failed to fetch" message.  
-* **UI Quality-of-Life:**  
-  * Add a "Clear Run" button to reset the summary and response panes.  
-  * Use localStorage to remember the user's last-used model identifier between sessions.  
-  * Ensure the "Iterations" input properly enforces the 1-50 min/max limits 
+- **Phase 1 (V1.x):** ✅ **COMPLETE** (5/6 features)
+- **Phase 2 (V2.0):** ✅ **COMPLETE** (4/5 features)
+- **Phase 3 (V3.0):** ✅ **COMPLETE** (4/4 features)
+- **Phase 4 (V4.0):** ✅ **COMPLETE** (4/4 features)
+- **Phase 5 (V-Next):** 🚧 **IN PROGRESS** (1/4 features)
 
-## **Phase 2: The Great Expansion (V2.0) \- Supporting All Paradox Types**
+---
 
-**Goal:** Break out of the A-vs-B (Trolley Problem) constraint to allow for *any* kind of ethical paradox, transforming the tool into a true "Ethics Comparator."
+## **✅ Completed Features**
 
-* **Data Structure Update:**  
-  * Update paradoxes.json \[cite: ryan258/ai-ethics-comparator/ai-ethics-comparator-b02d6a8ff98c3a16a403c7f1ea3d835990f36978/paradoxes.json\] to include a type field (e.g., type: "trolley" or type: "open\_ended").  
-* **Conditional UI:**  
-  * Update app.js \[cite: ryan258/ai-ethics-comparator/ai-ethics-comparator-b02d6a8ff98c3a16a403c7f1ea3d835990f36978/public/app.js\] to read the type of the selected paradox.  
-  * If type is trolley, *show* the "Group 1" and "Group 2" textareas.  
-  * If type is open\_ended, *hide* the "Group 1" and "Group 2" textareas.  
-* **Conditional Back-End Logic:**  
-  * Update server.js \[cite: ryan258/ai-ethics-comparator/ai-ethics-comparator-b02d6a8ff98c3a16a403c7f1ea3d835990f36978/server.js\] to check the paradox type before querying.  
-  * If type is trolley, run parseDecision and computeSummary as normal.  
-  * If type is open\_ended, *skip* parseDecision and computeSummary. The summary card will just report "X iterations completed," and the details pane will show the full text responses.  
-* **New Content:**  
-  * Add the original, non-trolley paradoxes (like "Truth vs. White Lie," "Rescue Bot's Gamble") back into paradoxes.json with the open\_ended type.  
-* **Prompt Management UI (from original roadmap):**  
-  * Add a simple UI to let users add, edit, or duplicate paradoxes directly in the app, writing changes back to paradoxes.json.
+### **Phase 1: Solidify the "Trolley Problem Engine" (V1.x)**
 
-## **Phase 3: Deepen the Research (V3.0) \- Testing Alignment & Priming**
+**Goal:** Perfect the core functionality with robust, reliable, user-friendly features.
 
-**Goal:** Add the ability to test *how* an AI's ethical reasoning can be influenced by pre-defined contexts, moving from baseline testing to alignment testing.
+* ✅ **Result Validation:**
+  * Flag iterations in the UI where the AI's response is "Undecided" (⚠️ warning indicator)
+* ✅ **API & Error Handling:**
+  * Enhanced error passthrough with specific messages for rate limits, billing issues, model not found, invalid API keys, etc.
+* ✅ **UI Quality-of-Life:**
+  * "Clear Run" button to reset summary and response panes
+  * localStorage remembers user's last-used model identifier between sessions
+  * Iterations input properly enforces 1-50 min/max limits with validation 
 
-* **System Prompt UI:**  
-  * Add an optional "System Prompt / Context" textarea to the main UI (perhaps in a collapsed "Advanced Settings" section).  
-* **Back-End Update:**  
-  * Pass the systemPrompt text to aiService.js \[cite: ryan258/ai-ethics-comparator/ai-ethics-comparator-b02d6a8ff98c3a16a403c7f1ea3d835990f36978/aiService.js\].  
-  * Modify the getModelResponse function to use the chat.completions endpoint and include the system prompt as the system role message:  
-    messages: \[ { role: "system", content: systemPrompt }, { role: "user", content: userPrompt } \]  
-* **Data Persistence:**  
-  * Save the systemPrompt text used (if any) to the run.json file for reproducibility.  
-* **Documentation:**  
-  * Update README.md to explain how to use this feature to test ethical priming (e.g., "Act as a strict utilitarian" vs. "Act as a deontologist focused on rules").
+### **Phase 2: The Great Expansion (V2.0) - Supporting All Paradox Types**
 
-## **Phase 4: Complete the Loop (V4.0) \- The Results Dashboard**
+**Goal:** Support both trolley-type and open-ended ethical scenarios.
 
-**Goal:** Make the application a self-contained research tool by allowing users to load, view, and analyze previously saved run data.
+* ✅ **Data Structure Update:**
+  * Added `type` field to paradoxes.json (`"trolley"` or `"open_ended"`)
+  * All 12 paradoxes now properly typed
+* ✅ **Conditional UI:**
+  * UI automatically reads paradox type and shows/hides Group textareas accordingly
+  * Seamless transition between paradox types
+* ✅ **Conditional Back-End Logic:**
+  * Server checks paradox type before processing
+  * Trolley-type: Parses decision tokens and computes statistical summary
+  * Open-ended: Skips parsing, shows iteration count and full responses
+* ✅ **New Content:**
+  * Added 5 open-ended ethical paradoxes:
+    - The White Lie Dilemma (patient autonomy vs. family wishes)
+    - The Rescue Bot's Probability Gamble (certainty vs. potential impact)
+    - Privacy vs. Security Paradox (individual rights vs. collective safety)
+    - The Artistic Censorship Question (free expression vs. harm prevention)
+    - Medical Resource Allocation (fairness criteria in scarcity)
 
-* **Run Browser API:**  
-  * Create a new GET /api/runs endpoint in server.js that reads the /results directory and returns a list of all run.json files found (e.g., \[{runId: "model-001", ...}, ...\]).  
-* **Results Dashboard UI:**  
-  * Add a new "Results" tab/page to the application.  
-  * This page will fetch('/api/runs') and display a clickable list of all past runs.  
-* **Run Importer/Viewer:**  
-  * When a user clicks a run, the front-end will fetch that specific run.json file.  
-  * The app will use the *existing* updateDecisionViews functions \[cite: ryan258/ai-ethics-comparator/ai-ethics-comparator-b02d6a8ff98c3a16a403c7f1ea3d835990f36978/public/app.js\] to parse and render the summary and detailed responses, populating the *same* UI components.  
-* **Data Export (from original roadmap):**  
-  * Add a "Export to CSV" button to the results pane, which converts the responses array into a CSV format for external analysis.
+### **Phase 3: Deepen the Research (V3.0) - Testing Alignment & Priming**
 
-## **Phase 5: Automation & Advanced Analysis (V-Next)**
+**Goal:** Enable testing of how AI ethical reasoning can be influenced by ethical frameworks.
 
-**Goal:** Implement "power user" features for large-scale, comparative analysis.
+* ✅ **System Prompt UI:**
+  * Added collapsible "Advanced Settings" section
+  * Optional textarea for system prompt/context
+  * Placeholder examples guide users on effective priming
+* ✅ **Back-End Update:**
+  * Dual API support: `responses.create` (legacy) and `chat.completions` (with system prompt)
+  * Automatically uses chat.completions when system prompt provided
+  * System messages properly formatted: `{role: "system", content: systemPrompt}`
+* ✅ **Data Persistence:**
+  * System prompt saved to run.json for full reproducibility
+  * Includes paradoxType for proper result rendering
+* ✅ **Documentation:**
+  * README.md thoroughly updated with system prompt usage
+  * HANDBOOK.md created with ethical priming examples and research methodology
+  * Example prompts for utilitarian, deontological, virtue ethics, and care ethics frameworks
 
-* **Batch Model Runner (from original roadmap):**  
-  * Allow users to select *multiple* models from the dropdown.  
-  * When "Query AI" is pressed, the server will run the *same* scenario/prompt across all selected models, creating a separate run.json for each.  
-* **Side-by-Side Comparison (from original roadmap):**  
-  * In the "Results" dashboard, allow users to select 2-3 runs and view them in a side-by-side layout for direct comparison of summaries and responses.  
-* **Visualization Toolkit (from original roadmap):**  
-  * Integrate a simple charting library (like Chart.js or D3) to add bar charts to the summary view for trolley type runs.  
-* **Ethics Taxonomy Scoring (from original roadmap):**  
-  * *Experimental:* Add a feature to take an AI's explanation and send it to a "classifier" model (e.g., Claude 3.5 Sonnet) with a prompt like: "Classify this response as 'Utilitarian', 'Deontological', 'Virtue Ethics', or 'Other'."  
-  * Aggregate and display these taxonomy tags in the run summary.
+### **Phase 4: Complete the Loop (V4.0) - The Results Dashboard**
+
+**Goal:** Self-contained research tool with full results management.
+
+* ✅ **Run Browser API:**
+  * `GET /api/runs` - Returns metadata for all past runs, sorted by timestamp
+  * `GET /api/runs/:runId` - Fetches complete data for specific run
+* ✅ **Results Dashboard UI:**
+  * New "Results" tab with browsable list of all past experiments
+  * Each card shows: Run ID, model, paradox, iteration count, timestamp
+  * Clean, clickable interface for exploration
+* ✅ **Run Importer/Viewer:**
+  * Click any run to view full details
+  * Reuses existing rendering functions for consistency
+  * Shows summary, chart (trolley-type), and iteration details
+  * "Back to List" navigation
+* ✅ **Data Export:**
+  * "Export to CSV" button on run viewer
+  * Proper CSV formatting with headers
+  * Different structures for trolley-type vs. open-ended
+  * Compatible with Excel, R, Python, Google Sheets
+
+### **Phase 5: Automation & Advanced Analysis (V-Next) - Partial**
+
+**Goal:** Power-user features for large-scale comparative analysis.
+
+* ✅ **Visualization Toolkit:**
+  * Chart.js integration complete
+  * Automatic bar charts for trolley-type runs
+  * Shows Group 1, Group 2, and Undecided distributions
+  * Responsive design with proper legends and titles
+
+---
+
+## **🚧 Future Enhancements**
+
+The following features are planned for future releases:
+
+### **Remaining Phase 1 Items**
+
+* ⏸️ **Contradiction Flagging** (Complex)
+  * Detect when AI explanation contradicts chosen token
+  * Requires secondary AI call for text analysis
+  * Example: AI chooses `{1}` but text says "therefore I save Group 1"
+  * **Complexity:** High - requires NLP or additional LLM call
+  * **Priority:** Low - edge case, rare occurrence
+
+### **Remaining Phase 2 Items**
+
+* ⏸️ **Prompt Management UI** (Feature Request)
+  * In-app interface to add, edit, or duplicate paradoxes
+  * Direct editing of paradoxes.json through web UI
+  * Validation and preview before saving
+  * **Complexity:** Medium - requires full CRUD interface
+  * **Priority:** Medium - useful for researchers creating custom scenarios
+  * **Workaround:** Currently users can manually edit paradoxes.json
+
+### **Remaining Phase 5 Items**
+
+* ⏸️ **Batch Model Runner**
+  * Multi-select models from dropdown
+  * Run same scenario across all selected models simultaneously
+  * Creates separate run.json for each model
+  * Progress indicator for batch operations
+  * **Use case:** Cross-model comparison studies
+  * **Priority:** High - frequently requested feature
+
+* ⏸️ **Side-by-Side Comparison**
+  * Select 2-3 runs from Results dashboard
+  * View in split-screen layout
+  * Compare summaries, charts, and responses directly
+  * Highlight differences between runs
+  * **Use case:** Comparing priming effects or model differences
+  * **Priority:** High - core research functionality
+
+* ⏸️ **Ethics Taxonomy Scoring** (Experimental)
+  * Send AI explanations to classifier model (e.g., Claude 3.5 Sonnet)
+  * Classify as: Utilitarian, Deontological, Virtue Ethics, Care Ethics, Other
+  * Aggregate taxonomy tags in run summary
+  * Show distribution of ethical frameworks across iterations
+  * **Complexity:** High - requires additional API calls and cost
+  * **Priority:** Medium - valuable for qualitative analysis but expensive
+  * **Consideration:** Adds ~2-3x API cost per run
+
+---
+
+## **📋 Additional Feature Ideas**
+
+Beyond the original roadmap, the following enhancements could add value:
+
+### **Statistical Analysis Tools**
+* Chi-square test for decision significance
+* Confidence intervals for decision percentages
+* Inter-model consistency metrics
+* Response clustering and pattern detection
+
+### **Export Enhancements**
+* Export multiple runs at once (batch export)
+* JSON export for programmatic analysis
+* PDF report generation with charts
+* Markdown export for documentation
+
+### **UI/UX Improvements**
+* Dark mode toggle
+* Keyboard shortcuts for common actions
+* Run tagging and categorization
+* Search/filter runs by model, date, or paradox
+* Favorites/bookmarking system
+
+### **Research Features**
+* Custom paradox templates with variables
+* A/B testing framework (built-in comparison mode)
+* Collaborative features (share runs via URL)
+* Anonymous data submission for public research corpus
+
+### **Performance Optimizations**
+* Pagination for Results list (>100 runs)
+* Lazy loading of run details
+* Caching of frequently accessed runs
+* Background processing for long batch runs
+
+---
+
+## **🎯 Contribution Opportunities**
+
+Interested in contributing? Here are areas where help would be most valuable:
+
+1. **High Priority:**
+   - Batch Model Runner implementation
+   - Side-by-Side Comparison UI
+   - Search/filter functionality for Results tab
+
+2. **Medium Priority:**
+   - Prompt Management UI
+   - Ethics Taxonomy Scoring (experimental)
+   - Statistical analysis tools
+
+3. **Nice to Have:**
+   - Dark mode
+   - PDF export
+   - Additional paradox scenarios
+   - Localization (i18n)
+
+See the GitHub repository for contribution guidelines and current issues.
+
+---
+
+## **📚 Documentation**
+
+All features are documented in:
+- **README.md** - Technical overview and quick start
+- **HANDBOOK.md** - Comprehensive user guide with research methodology
+- **This file (ROADMAP.md)** - Development status and future plans

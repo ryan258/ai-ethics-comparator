@@ -2,15 +2,30 @@
 
 ## Overview
 
-AI Ethics Comparator probes how contemporary large language models navigate trolley-style dilemmas. For every run you pick a model, describe two groups of pedestrians, and the app repeatedly asks the model which group to sacrifice. Results are aggregated, saved locally, and rendered in the UI so you can spot patterns such as consistent biases or contradictory reasoning.
+AI Ethics Comparator is a comprehensive research tool for analyzing how large language models reason about ethical dilemmas. The application supports both **trolley-style scenarios** (binary choice between two groups) and **open-ended ethical questions**, allowing researchers to probe AI decision-making across a wide range of moral frameworks.
+
+For each run, you select a model, configure the scenario, and optionally add ethical priming through system prompts. The tool executes multiple iterations, aggregates results with statistical summaries and visualizations, and provides a complete research dashboard for browsing and exporting past experiments.
 
 ## Key Features
 
-- **Model-agnostic input:** Paste any OpenRouter-compatible identifier (e.g. `openai/gpt-4o`) to target the model you want to examine.
-- **Prompt templating:** Every scenario is Markdown-based with placeholders for “Group 1” and “Group 2”. The preview updates live as you edit descriptions.
-- **Batch interrogation:** Choose 1–50 iterations (defaults to 10). The server executes that many back-to-back calls, captures the raw `{1}`/`{2}` token, and logs the explanation for each pass.
-- **Instant summary:** The UI surfaces aggregated counts and percentages per group, followed by a detailed breakdown of every iteration.
-- **Structured run logs:** Each batch is written to `results/<model>-NNN/run.json`, making it trivial to plug the data into your own analyses or dashboards.
+### Core Functionality
+- **Dual Paradox Support:** Test models on both trolley-type dilemmas (A vs B choices) and open-ended ethical scenarios
+- **Model-Agnostic:** Compatible with any OpenRouter model (GPT-4, Claude, Gemini, Llama, etc.)
+- **Batch Testing:** Run 1–50 iterations per scenario to identify consistency and patterns
+- **Ethical Priming:** Add system prompts to test how different moral frameworks (utilitarian, deontological, etc.) influence responses
+
+### Advanced Features
+- **Results Dashboard:** Browse, filter, and view all past experimental runs in a dedicated Results tab
+- **Data Export:** Export any run to CSV format for external analysis (Excel, R, Python, etc.)
+- **Visual Analytics:** Automatic bar charts show decision distribution for trolley-type scenarios
+- **Undecided Detection:** Iterations where the AI fails to choose are flagged with ⚠️ warnings
+- **Enhanced Error Reporting:** Specific error messages for API issues (rate limits, invalid models, billing problems, etc.)
+
+### User Experience
+- **Live Prompt Preview:** See exactly what the AI will receive as you edit scenarios
+- **Session Persistence:** Your last-used model is remembered between sessions
+- **Clear Run Button:** Quickly reset results to start fresh
+- **Responsive UI:** Tab-based interface with Query and Results views
 
 ## Quick Start
 
@@ -39,46 +54,145 @@ Open `http://localhost:3000` in your browser.
 
 ## Using the App
 
-1. **Select a model.** Paste the OpenRouter slug (e.g. `anthropic/claude-3.5-sonnet`).
-2. **Pick a scenario.** Scenarios live in `paradoxes.json`; each expresses the dilemma in Markdown.
-3. **Describe the groups.** Edit the “Group 1” and “Group 2” text areas. The prompt preview updates instantly.
-4. **Set iterations.** Choose how many times to rerun the prompt (1–50, defaults to 10).
-5. **Ask the model.** The server sends all iterations, compiles the counts, and returns the full prompt plus every response.
-6. **Review results.** The summary card shows the raw `{n}` token, total counts, percentages, and the filesystem path where the run was stored.
-7. **Inspect run logs.** Each run is stored under `results/<model>-NNN/run.json` with fields:
-   - `prompt`, `iterationCount`, and `groups`
-   - `summary` counts and percentages per group
-   - `responses[]` with the iteration index, `{n}` token, explanation, raw text, and timestamp
+### Query Tab (Running Experiments)
 
-`results/` is ignored by git, so local experimentation stays out of version control.
+1. **Select a model.** Enter or select an OpenRouter model identifier (e.g., `anthropic/claude-3.5-sonnet`, `openai/gpt-4o`)
+2. **Pick a scenario.** Choose from 12 built-in ethical paradoxes:
+   - **7 Trolley-Type Scenarios:** Binary choices between two groups (younger vs. older, criminal vs. surgeon, etc.)
+   - **5 Open-Ended Scenarios:** Complex ethical questions (white lies, privacy vs. security, resource allocation, etc.)
+3. **Configure the scenario:**
+   - For trolley-type: Edit Group 1 and Group 2 descriptions (the UI shows/hides these automatically)
+   - For open-ended: The prompt is fixed (no group editing needed)
+4. **Set iterations.** Choose 1–50 iterations (default: 10). More iterations = better statistical confidence.
+5. **(Optional) Add system prompt.** Expand "Advanced Settings" to add ethical priming:
+   - Example: `"You are a strict utilitarian who prioritizes the greatest good for the greatest number."`
+   - Example: `"You are a deontologist who believes in absolute moral rules."`
+6. **Ask the model.** Click "Ask the Model" to run all iterations
+7. **Review results:**
+   - **Summary Card:** Shows run ID, model, iteration count, and decision breakdown with percentages
+   - **Visual Chart:** Bar chart displays decision distribution (trolley-type only)
+   - **Iteration Details:** Expand to see every individual response with explanations
+   - **Undecided Warning:** Responses without valid `{1}` or `{2}` tokens are flagged with ⚠️
+8. **Clear results.** Use the "Clear Run" button to reset and start fresh
+
+### Results Tab (Browsing Past Runs)
+
+1. **Switch to Results tab** to see all past experimental runs
+2. **Browse runs.** Each card shows:
+   - Run ID (model name + sequential number)
+   - Model used
+   - Paradox tested
+   - Number of iterations
+   - Timestamp
+3. **View run details.** Click any run to see full results with summary, chart, and iteration details
+4. **Export to CSV.** Click "Export to CSV" to download results for external analysis
+5. **Return to list.** Use "← Back to List" to browse other runs
+
+### Data Persistence
+
+Each run is automatically saved to `results/<model>-NNN/run.json` with complete data:
+- `runId`, `timestamp`, `modelName`, `paradoxId`, `paradoxType`
+- `prompt` (the exact text sent to the AI)
+- `systemPrompt` (if ethical priming was used)
+- `groups` (Group 1 and Group 2 descriptions)
+- `iterationCount`
+- `summary` (aggregated counts and percentages)
+- `responses[]` (every iteration with decision token, group choice, explanation, raw text, and timestamp)
+
+The `results/` directory is gitignored, keeping your experiments local.
 
 ## Project Structure
 
 ```
 ai-ethics-comparator/
 ├── public/
-│   ├── index.html        # UI layout
+│   ├── index.html        # UI layout with Query and Results tabs
 │   ├── style.css         # Styling and markdown rhythm
-│   └── app.js            # Client logic, fetches, markdown rendering
-├── paradoxes.json        # Scenario templates with group defaults
-├── aiService.js          # OpenRouter client wrapper
-├── server.js             # Express API, iteration engine, result persistence
-├── results/              # Local run archives (gitignored)
+│   └── app.js            # Client logic: tabs, results dashboard, charts, CSV export
+├── paradoxes.json        # 12 ethical scenarios (7 trolley-type, 5 open-ended)
+├── aiService.js          # OpenRouter client with dual API support
+├── server.js             # Express API with /query and /runs endpoints
+├── results/              # Local run archives (gitignored, auto-created)
 ├── package.json          # Scripts and dependencies
+├── README.md             # This file
+├── ROADMAP.md            # Development roadmap and future features
+├── HANDBOOK.md           # Comprehensive user guide
 └── ...
 ```
 
 ## Available Scripts
 
-- `npm run dev` – start the server with nodemon (auto-restart on file changes).
-- `npm start` – launch the server once with Node.
+- `npm run dev` – Start server with nodemon (auto-restart on file changes)
+- `npm start` – Launch server once with Node
 
 ## Tech Stack
 
-- **Front end:** Vanilla HTML, CSS, JavaScript + `marked` for Markdown rendering.
-- **Back end:** Node.js, Express, filesystem persistence.
-- **AI access:** OpenRouter via the official `openai` SDK.
+- **Front-end:** Vanilla HTML, CSS, JavaScript
+  - `marked.js` for Markdown rendering
+  - `Chart.js` for data visualization
+- **Back-end:** Node.js, Express
+  - Filesystem-based persistence (JSON)
+  - RESTful API architecture
+- **AI Integration:** OpenRouter via official `openai` SDK
+  - Supports both `responses.create` and `chat.completions` APIs
+  - Compatible with 100+ models (GPT, Claude, Gemini, Llama, Mistral, etc.)
 
-## Next Steps
+## API Endpoints
 
-Roadmap items—such as multi-model comparisons, visualization overlays, and richer analytics—are tracked in [`ROADMAP.md`](ROADMAP.md). Contributions and ideas are welcome.
+### `GET /api/paradoxes`
+Returns the list of available ethical scenarios from `paradoxes.json`.
+
+### `POST /api/query`
+Executes a batch of iterations for a given model and scenario.
+
+**Request body:**
+```json
+{
+  "modelName": "anthropic/claude-3.5-sonnet",
+  "paradoxId": "trolley_problem",
+  "groups": {
+    "group1": "A 20-year-old who recently committed a crime",
+    "group2": "A 55-year-old community volunteer"
+  },
+  "iterations": 10,
+  "systemPrompt": "You are a utilitarian." // optional
+}
+```
+
+**Response:** Complete run data with summary and all iteration responses.
+
+### `GET /api/runs`
+Returns metadata for all past runs (sorted by timestamp, newest first).
+
+### `GET /api/runs/:runId`
+Returns complete data for a specific run by ID.
+
+## Research Use Cases
+
+This tool is designed for researchers studying:
+
+1. **AI Alignment:** How do models make ethical decisions by default?
+2. **Consistency Testing:** Do models give the same answer across multiple iterations?
+3. **Bias Detection:** Are there systematic patterns in how models value different demographics?
+4. **Priming Effects:** How do system prompts influence moral reasoning?
+5. **Cross-Model Comparison:** How do different AI systems approach the same dilemma?
+6. **Framework Analysis:** Do models exhibit utilitarian, deontological, or virtue ethics patterns?
+
+## Contributing
+
+Contributions are welcome! See [`ROADMAP.md`](ROADMAP.md) for planned features. Areas of interest:
+- Additional ethical scenarios
+- Multi-model batch comparison
+- Side-by-side run comparison UI
+- Ethical framework taxonomy classifier
+- Statistical significance testing
+
+## License
+
+[Add your license here]
+
+## Documentation
+
+- **README.md** (this file) – Quick start and technical overview
+- **HANDBOOK.md** – Comprehensive user guide with research methodology and best practices
+- **ROADMAP.md** – Development roadmap and future enhancements

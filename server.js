@@ -23,14 +23,79 @@ app.get('/api/paradoxes', async (req, res) => {
   }
 });
 
+app.get('/api/runs', async (req, res) => {
+  try {
+    // Check if results directory exists
+    try {
+      await fs.access(RESULTS_ROOT);
+    } catch {
+      // Results directory doesn't exist yet
+      return res.json([]);
+    }
+
+    // Read all directories in results/
+    const entries = await fs.readdir(RESULTS_ROOT, { withFileTypes: true });
+    const runs = [];
+
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        const runJsonPath = path.join(RESULTS_ROOT, entry.name, 'run.json');
+        try {
+          const runData = await fs.readFile(runJsonPath, 'utf8');
+          const run = JSON.parse(runData);
+          // Include basic metadata for list view
+          runs.push({
+            runId: run.runId,
+            timestamp: run.timestamp,
+            modelName: run.modelName,
+            paradoxId: run.paradoxId,
+            iterationCount: run.iterationCount,
+            filePath: `results/${entry.name}/run.json`
+          });
+        } catch (error) {
+          console.warn(`Failed to read run.json in ${entry.name}:`, error.message);
+        }
+      }
+    }
+
+    // Sort by timestamp, newest first
+    runs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    res.json(runs);
+  } catch (error) {
+    console.error('Error reading runs:', error);
+    res.status(500).json({ error: 'Failed to read runs directory.' });
+  }
+});
+
+app.get('/api/runs/:runId', async (req, res) => {
+  try {
+    const { runId } = req.params;
+    const runPath = path.join(RESULTS_ROOT, runId, 'run.json');
+
+    const runData = await fs.readFile(runPath, 'utf8');
+    const run = JSON.parse(runData);
+
+    res.json(run);
+  } catch (error) {
+    console.error('Error reading run:', error);
+    if (error.code === 'ENOENT') {
+      res.status(404).json({ error: 'Run not found.' });
+    } else {
+      res.status(500).json({ error: 'Failed to read run data.' });
+    }
+  }
+});
+
 app.post('/api/query', async (req, res) => {
-  const { modelName, paradoxId, groups = {}, iterations } = req.body;
+  const { modelName, paradoxId, groups = {}, iterations, systemPrompt } = req.body;
 
   if (!modelName || !paradoxId) {
     return res.status(400).json({ error: 'Missing modelName or paradoxId in request body.' });
   }
 
   const iterationCount = normalizeIterationCount(iterations);
+  const systemPromptText = systemPrompt && typeof systemPrompt === 'string' ? systemPrompt.trim() : '';
 
   try {
     const paradoxesData = await fs.readFile('paradoxes.json', 'utf8');
@@ -41,28 +106,47 @@ app.post('/api/query', async (req, res) => {
       return res.status(404).json({ error: 'Paradox not found.' });
     }
 
+    const paradoxType = paradox.type || 'trolley';
     const { prompt, group1Text, group2Text } = buildPrompt(paradox, groups);
     const responses = [];
 
     for (let iteration = 0; iteration < iterationCount; iteration += 1) {
-      const rawResponse = await aiService.getModelResponse(modelName, prompt);
-      const parsed = parseDecision(rawResponse);
-      const explanationText = parsed?.explanation?.trim?.() || '';
+      const rawResponse = await aiService.getModelResponse(modelName, prompt, systemPromptText);
 
-      responses.push({
-        iteration: iteration + 1,
-        decisionToken: parsed?.token ?? null,
-        group: parsed?.group ?? null,
-        explanation: explanationText,
-        raw: rawResponse,
-        timestamp: new Date().toISOString()
-      });
+      if (paradoxType === 'trolley') {
+        // Parse decision tokens for trolley-type paradoxes
+        const parsed = parseDecision(rawResponse);
+        const explanationText = parsed?.explanation?.trim?.() || '';
+
+        responses.push({
+          iteration: iteration + 1,
+          decisionToken: parsed?.token ?? null,
+          group: parsed?.group ?? null,
+          explanation: explanationText,
+          raw: rawResponse,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        // For open-ended paradoxes, just store the full response
+        responses.push({
+          iteration: iteration + 1,
+          response: rawResponse,
+          raw: rawResponse,
+          timestamp: new Date().toISOString()
+        });
+      }
     }
 
-    const summary = computeSummary(responses, {
-      group1: group1Text,
-      group2: group2Text
-    });
+    const summary = paradoxType === 'trolley'
+      ? computeSummary(responses, {
+          group1: group1Text,
+          group2: group2Text
+        })
+      : {
+          total: iterationCount,
+          type: 'open_ended',
+          message: `${iterationCount} iteration${iterationCount !== 1 ? 's' : ''} completed`
+        };
 
     const { runDir, runId } = await createRunDirectory(modelName);
     const runTimestamp = new Date().toISOString();
@@ -71,7 +155,9 @@ app.post('/api/query', async (req, res) => {
       timestamp: runTimestamp,
       modelName,
       paradoxId,
+      paradoxType,
       prompt,
+      systemPrompt: systemPromptText || undefined,
       groups: { group1: group1Text, group2: group2Text },
       iterationCount,
       summary,

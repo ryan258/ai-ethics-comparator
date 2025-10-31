@@ -18,6 +18,12 @@
         </p>
       </header>
 
+      <nav class="tabs">
+        <button id="query-tab" class="tab-button active">Query</button>
+        <button id="results-tab" class="tab-button">Results</button>
+      </nav>
+
+      <div id="query-view" class="tab-content active">
       <section class="controls">
         <div class="control">
           <label for="model-input">AI Model</label>
@@ -37,7 +43,7 @@
         </div>
       </section>
 
-      <section class="group-inputs">
+      <section class="group-inputs" id="group-inputs-section">
         <div class="control">
           <label for="group1-input">Group 1 Description</label>
           <textarea
@@ -73,6 +79,21 @@
         </div>
       </section>
 
+      <details class="advanced-settings">
+        <summary>Advanced Settings</summary>
+        <div class="control">
+          <label for="system-prompt-input">System Prompt / Context (Optional)</label>
+          <textarea
+            id="system-prompt-input"
+            rows="4"
+            placeholder="e.g., 'You are a strict utilitarian who prioritizes the greatest good for the greatest number.' or 'You are a deontologist who believes in absolute moral rules.'"
+          ></textarea>
+          <small class="control-hint">
+            Add a system prompt to test how ethical priming influences the model's reasoning. Leave empty for default behavior.
+          </small>
+        </div>
+      </details>
+
       <section class="prompt-display">
         <h2>Prompt</h2>
         <div id="prompt-text" class="placeholder">
@@ -83,7 +104,10 @@
       <button id="query-button" class="primary">Ask the Model</button>
 
       <section class="response-display">
-        <h2>Model Response</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h2>Model Response</h2>
+          <button id="clear-run-button" style="display: none;">Clear Run</button>
+        </div>
         <div id="response-summary" class="decision-summary placeholder">
           Run a query to see which group the model chooses to impact.
         </div>
@@ -91,6 +115,31 @@
           Choose a model and paradox, then ask the model to see its reasoning.
         </div>
       </section>
+      </div>
+
+      <div id="results-view" class="tab-content" style="display: none;">
+        <section class="results-list-section">
+          <h2>Past Runs</h2>
+          <div id="results-list-loading" class="placeholder">Loading runs...</div>
+          <div id="results-list" style="display: none;"></div>
+          <div id="results-empty" class="placeholder" style="display: none;">
+            No runs found. Run some queries first to see results here.
+          </div>
+        </section>
+
+        <section class="results-viewer-section" id="results-viewer" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2>Run Details</h2>
+            <button id="export-csv-button">Export to CSV</button>
+          </div>
+          <button id="back-to-list-button">← Back to List</button>
+          <div id="results-viewer-summary"></div>
+          <div id="results-chart-container" style="display: none; max-width: 600px; margin: 20px 0;">
+            <canvas id="results-chart"></canvas>
+          </div>
+          <div id="results-viewer-details"></div>
+        </section>
+      </div>
 
       <footer>
         <small>
@@ -101,6 +150,7 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <script src="app.js" defer></script>
   </body>
 </html>
