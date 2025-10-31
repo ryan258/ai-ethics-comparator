@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AI Ethics Comparator</title>
     <link rel="stylesheet" href="style.css" />
+    <!-- DOMPurify for XSS protection -->
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
   </head>
   <body>
     <noscript>
@@ -101,6 +103,88 @@
           <small class="control-hint">
             Add a system prompt to test how ethical priming influences the model's reasoning. Leave empty for default behavior.
           </small>
+        </div>
+
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
+          <h3 style="font-size: 1em; margin-bottom: 15px; color: #555;">Generation Parameters (For Reproducibility)</h3>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div class="control">
+              <label for="temperature-input">Temperature</label>
+              <input
+                id="temperature-input"
+                type="number"
+                min="0"
+                max="2"
+                step="0.1"
+                value="1.0"
+              />
+              <small class="control-hint">Randomness (0=deterministic, 2=very random). Default: 1.0</small>
+            </div>
+
+            <div class="control">
+              <label for="top-p-input">Top P</label>
+              <input
+                id="top-p-input"
+                type="number"
+                min="0"
+                max="1"
+                step="0.05"
+                value="1.0"
+              />
+              <small class="control-hint">Nucleus sampling (0-1). Default: 1.0</small>
+            </div>
+
+            <div class="control">
+              <label for="max-tokens-input">Max Tokens</label>
+              <input
+                id="max-tokens-input"
+                type="number"
+                min="50"
+                max="4000"
+                step="50"
+                value="1000"
+              />
+              <small class="control-hint">Maximum response length. Default: 1000</small>
+            </div>
+
+            <div class="control">
+              <label for="seed-input">Seed (Optional)</label>
+              <input
+                id="seed-input"
+                type="number"
+                min="0"
+                placeholder="Leave empty for random"
+              />
+              <small class="control-hint">For deterministic output (if supported)</small>
+            </div>
+
+            <div class="control">
+              <label for="frequency-penalty-input">Frequency Penalty</label>
+              <input
+                id="frequency-penalty-input"
+                type="number"
+                min="0"
+                max="2"
+                step="0.1"
+                value="0"
+              />
+              <small class="control-hint">Penalize token repetition (0-2). Default: 0</small>
+            </div>
+
+            <div class="control">
+              <label for="presence-penalty-input">Presence Penalty</label>
+              <input
+                id="presence-penalty-input"
+                type="number"
+                min="0"
+                max="2"
+                step="0.1"
+                value="0"
+              />
+              <small class="control-hint">Penalize used tokens (0-2). Default: 0</small>
+            </div>
+          </div>
         </div>
       </details>
 
@@ -221,6 +305,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="stats.js"></script>
     <script src="app.js" defer></script>
   </body>
 </html>

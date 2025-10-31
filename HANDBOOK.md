@@ -330,6 +330,59 @@ Key Insights
 - Can regenerate with different analyst models for varied perspectives
 - Choose faster/cheaper models (Gemini Flash) or more sophisticated ones (Claude, GPT-4) based on your needs
 
+### Generation Parameters for Reproducibility
+
+**What is it?**
+Generation parameters control how the AI model generates text. In version 5.0+, you can now configure all major parameters to ensure complete reproducibility of your experiments.
+
+**Available Parameters:**
+
+1. **Temperature (0-2, default: 1.0)**
+   - Controls randomness in the output
+   - 0 = Deterministic (always picks most likely tokens)
+   - 1.0 = Balanced creativity
+   - 2.0 = Maximum randomness
+   - **Research tip:** Use 0.7-1.0 for consistent ethical reasoning
+
+2. **Top P (0-1, default: 1.0)**
+   - Nucleus sampling threshold
+   - 0.9 = Consider top 90% probability mass
+   - 1.0 = Consider all tokens
+   - **Research tip:** Use 0.9-0.95 for more focused responses
+
+3. **Max Tokens (50-4000, default: 1000)**
+   - Maximum length of the response
+   - Affects how detailed the explanation can be
+   - **Research tip:** 500-1000 is usually sufficient for trolley problems
+
+4. **Seed (optional)**
+   - Set a specific number for deterministic output
+   - Models that support seeding will produce identical outputs with same seed
+   - Leave blank for random behavior
+   - **Research tip:** Use seeds when you need exact reproducibility
+
+5. **Frequency Penalty (0-2, default: 0)**
+   - Reduces repetition of tokens based on how often they appear
+   - Higher = less repetition
+   - **Research tip:** Usually keep at 0 for ethical reasoning
+
+6. **Presence Penalty (0-2, default: 0)**
+   - Reduces repetition of topics/concepts
+   - Higher = more diverse topic coverage
+   - **Research tip:** Usually keep at 0 for ethical reasoning
+
+**How to use:**
+
+1. Click "Advanced Settings" to expand
+2. Scroll to "Generation Parameters (For Reproducibility)"
+3. Adjust parameters as needed
+4. All parameters are automatically saved with your run
+
+**Why this matters:**
+- **Reproducibility:** Other researchers can replicate your exact experiment
+- **Transparency:** Results reports include all parameters used
+- **Consistency:** Control for unwanted variation in model behavior
+
 ### Ethical Priming with System Prompts
 
 **What is it?**
@@ -338,8 +391,9 @@ System prompts let you "prime" the AI with a specific ethical framework before i
 **How to use:**
 
 1. Click "Advanced Settings" to expand
-2. Enter a system prompt in the textarea
-3. Run your experiment as normal
+2. Enter a system prompt in the textarea (located above Generation Parameters)
+3. Configure generation parameters if desired
+4. Run your experiment as normal
 
 **Example System Prompts:**
 
@@ -874,6 +928,146 @@ combined.groupby(['model', 'Group']).size()
    - If you find surprising bias, run again to confirm
    - Test with multiple models to see if it's model-specific
    - Try slight variations to check robustness
+
+## Study Design Checklist
+
+Before conducting AI ethics research with this tool, review this checklist to ensure methodological rigor and responsible research practices.
+
+### Pre-Study Planning
+
+**1. Research Question & Hypothesis**
+- ✅ Clearly defined research question
+- ✅ Specific, testable hypothesis
+- ✅ Appropriate paradox type selected (trolley vs. open-ended)
+- ✅ Justification for model selection
+
+**2. Sampling & Power**
+- ✅ Iteration count justified (minimum 20 for trolley-type)
+- ✅ Multiple models tested to avoid single-model bias
+- ✅ Sample size sufficient for statistical power
+
+**3. Reproducibility (CRITICAL for V5.0+)**
+- ✅ All generation parameters documented and saved (temperature, top_p, max_tokens, seed, frequency_penalty, presence_penalty)
+- ✅ System prompts saved verbatim
+- ✅ OpenRouter model identifiers recorded with version/date
+- ✅ Tool version documented (check /health endpoint - returns version in response)
+- ✅ Parameters displayed in Results view for reference
+- ✅ Parameters exported with CSV/JSON data
+
+**4. Randomization**
+- ✅ If testing order effects, randomize scenario presentation
+- ✅ For A/B tests (e.g., Group 1 vs Group 2 position swap), randomize conditions
+- ✅ Consider using seed parameter for reproducibility vs. randomness tradeoff
+
+**5. Priming Variants**
+- ✅ Control condition (no system prompt) included
+- ✅ System prompts are neutral and avoid leading language
+- ✅ Multiple ethical frameworks tested if exploring priming effects
+
+### During Study
+
+**6. Data Collection**
+- ✅ All runs saved to results/ directory with complete parameter sets
+- ✅ Export run.json for each critical experiment (includes all params)
+- ✅ Document any errors, API failures, or anomalies
+- ✅ Track rate limiting issues (V5.0+ has automatic retry with exponential backoff)
+- ✅ Note: Concurrency is automatically limited to 3 concurrent requests
+- ✅ Failed iterations are automatically retried up to 3 times
+
+**7. Quality Control**
+- ✅ Check for high undecided rates (>10% may indicate instruction-following issues)
+- ✅ Review individual responses for unexpected patterns
+- ✅ Verify generation parameters are being applied correctly (check run.json params field)
+- ✅ Confirm retry logic didn't mask systematic failures
+- ✅ Review Results view to see saved parameters for each run
+
+### Post-Study Analysis
+
+**8. Statistical Rigor**
+- ✅ Use Chi-square tests for trolley-type comparisons (built-in for 2-run comparisons)
+- ✅ Report confidence intervals where appropriate
+- ✅ Apply multiple comparison corrections if testing many hypotheses
+- ✅ Distinguish statistical significance from practical significance
+
+**9. Ethical Considerations**
+- ✅ Results interpreted in context (see Interpretation Caveats below)
+- ✅ Limitations clearly stated
+- ✅ Potential biases in scenarios acknowledged
+- ✅ Research use approved (if human subjects involved in scenario design)
+
+## Interpretation Caveats
+
+**CRITICAL REMINDER:** LLM "ethical frames" are artifacts of training data, RLHF tuning, and prompt engineering—NOT ground truth moral reasoning.
+
+### Key Limitations to Acknowledge
+
+**1. Training Artifacts, Not Moral Agency**
+- AI models do not possess moral beliefs, values, or genuine ethical reasoning
+- Responses reflect statistical patterns in training data, not principled decision-making
+- "Consistency" in AI responses ≠ coherent ethical framework
+- Models are optimized to produce human-preferred outputs, not morally correct ones
+
+**2. Sampling Bias in Training Data**
+- Training corpora over-represent certain demographics, cultures, and viewpoints
+- Western philosophical frameworks (utilitarian, deontological) may be over-represented
+- Historical biases in text data are encoded in model weights
+- Non-English language ethics traditions may be under-represented
+
+**3. Prompt Sensitivity**
+- Small wording changes can produce dramatically different results
+- Framing effects are amplified in AI systems compared to human reasoning
+- The {1}/{2} response format constrains natural moral reasoning
+- System prompts may override default model behavior unpredictably
+
+**4. Context Collapse**
+- Real ethical dilemmas have rich context that brief prompts cannot capture
+- Models lack embodied experience, emotions, and social relationships
+- Trolley problems abstract away crucial moral factors (relationships, history, uncertainty)
+- Open-ended scenarios still cannot match real-world complexity
+
+**5. Reproducibility Challenges**
+- Model updates and API changes can alter results over time
+- Temperature and sampling parameters introduce stochasticity
+- OpenRouter routing may select different model versions
+- Seed parameter support varies by model
+
+### Responsible Reporting
+
+When publishing or presenting results:
+
+**DO:**
+- Describe AI responses as "model outputs" or "generated text," not "decisions" or "beliefs"
+- Acknowledge that results reflect training/tuning, not moral truth
+- Report all parameters for full reproducibility
+- Discuss limitations prominently
+- Frame findings as exploratory or hypothesis-generating (unless large-scale study)
+
+**DON'T:**
+- Claim models "believe" or "value" certain outcomes
+- Generalize from one model to "AI systems" broadly
+- Present results as evidence of "correct" ethical reasoning
+- Ignore cultural and demographic biases in training data
+- Over-interpret small sample sizes (n<20 iterations)
+
+### Recommended Language
+
+**Instead of:** "Claude believes utilitarian outcomes are correct"
+**Use:** "Claude 3.5 Sonnet outputs align with utilitarian framing in 85% of iterations"
+
+**Instead of:** "GPT-4 has age bias"
+**Use:** "GPT-4o shows a statistical preference for younger individuals in this scenario (p<0.01), likely reflecting biases in training data"
+
+**Instead of:** "AI makes ethical decisions"
+**Use:** "AI models generate text that resembles ethical reasoning patterns found in training data"
+
+### Further Reading
+
+For responsible AI ethics research methodology:
+- [AI Ethics Guidelines Working Group] - Best practices for LLM bias studies
+- [ACM FAT* Conference] - Fairness, Accountability, and Transparency in ML
+- [Partnership on AI] - Responsible practices for AI development
+
+**Remember:** This tool helps study how AI systems process ethical scenarios, not how they "think" or what they "believe." Treat results as data about model behavior, not moral philosophy.
 
 ---
 

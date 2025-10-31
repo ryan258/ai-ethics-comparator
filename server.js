@@ -1,17 +1,95 @@
 
 require('dotenv').config();
 const express = require('express');
+const helmet = require('helmet');
+const pLimit = require('p-limit');
+const { z } = require('zod');
 const fs = require('fs').promises;
 const path = require('path');
 const aiService = require('./aiService');
 
 const RESULTS_ROOT = path.join(__dirname, 'results');
+const VERSION = require('./package.json').version;
+const APP_BASE_URL = process.env.APP_BASE_URL || 'http://localhost:3000';
+
+// Concurrency limit for API requests (prevent rate limiting)
+const limit = pLimit(3); // Max 3 concurrent requests
+
+// Validation schemas
+const queryRequestSchema = z.object({
+  modelName: z.string().min(1).max(200).regex(/^[a-z0-9\-_/:.]+$/i, 'Invalid model name format'),
+  paradoxId: z.string().min(1).max(100).regex(/^[a-z0-9_-]+$/i, 'Invalid paradox ID format'),
+  groups: z.object({
+    group1: z.string().max(1000).optional(),
+    group2: z.string().max(1000).optional()
+  }).optional(),
+  iterations: z.number().int().min(1).max(50).optional(),
+  systemPrompt: z.string().max(2000).optional(),
+  params: z.object({
+    temperature: z.number().min(0).max(2).optional(),
+    top_p: z.number().min(0).max(1).optional(),
+    max_tokens: z.number().int().min(1).max(4000).optional(),
+    seed: z.number().int().min(0).optional(),
+    frequency_penalty: z.number().min(0).max(2).optional(),
+    presence_penalty: z.number().min(0).max(2).optional()
+  }).optional()
+});
+
+const insightRequestSchema = z.object({
+  runData: z.object({
+    responses: z.array(z.any()).min(1)
+  }).passthrough(),
+  analystModel: z.string().min(1).max(200).optional()
+});
 
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Security headers with helmet
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "cdn.jsdelivr.net"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "https:"],
+      connectSrc: ["'self'"]
+    }
+  }
+}));
+
+// Disable x-powered-by header for security
+app.disable('x-powered-by');
+
+// CORS - restrict to APP_BASE_URL
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (!origin || origin === APP_BASE_URL) {
+    res.setHeader('Access-Control-Allow-Origin', origin || APP_BASE_URL);
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  }
+  next();
+});
+
 app.use(express.json());
 app.use(express.static('public'));
+
+// Add version header to all responses
+app.use((req, res, next) => {
+  res.setHeader('X-App-Version', VERSION);
+  next();
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    version: VERSION,
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
 
 app.get('/api/paradoxes', async (req, res) => {
   try {
@@ -88,11 +166,16 @@ app.get('/api/runs/:runId', async (req, res) => {
 });
 
 app.post('/api/insight', async (req, res) => {
-  const { runData, analystModel } = req.body;
-
-  if (!runData || !runData.responses || runData.responses.length === 0) {
-    return res.status(400).json({ error: 'Missing or invalid run data.' });
+  // Validate request body
+  const validation = insightRequestSchema.safeParse(req.body);
+  if (!validation.success) {
+    return res.status(400).json({
+      error: 'Invalid request data',
+      details: validation.error.format()
+    });
   }
+
+  const { runData, analystModel } = validation.data;
 
   try {
     const paradoxType = runData.paradoxType || 'trolley';
@@ -147,7 +230,10 @@ ${compiledText}`;
     // Use the analyst model (default to Gemini 2.0 Flash)
     const modelToUse = analystModel || 'google/gemini-2.0-flash-001';
 
-    const insightResponse = await aiService.getModelResponse(modelToUse, metaPrompt, '');
+    const insightResponse = await aiService.getModelResponse(modelToUse, metaPrompt, '', {
+      temperature: 0.7,  // Slightly lower for more consistent analysis
+      max_tokens: 2000   // Allow longer responses for detailed analysis
+    });
 
     res.json({ insight: insightResponse, model: modelToUse });
   } catch (error) {
@@ -157,14 +243,31 @@ ${compiledText}`;
 });
 
 app.post('/api/query', async (req, res) => {
-  const { modelName, paradoxId, groups = {}, iterations, systemPrompt } = req.body;
-
-  if (!modelName || !paradoxId) {
-    return res.status(400).json({ error: 'Missing modelName or paradoxId in request body.' });
+  // Validate request body
+  const validation = queryRequestSchema.safeParse(req.body);
+  if (!validation.success) {
+    return res.status(400).json({
+      error: 'Invalid request data',
+      details: validation.error.format()
+    });
   }
+
+  const { modelName, paradoxId, groups = {}, iterations, systemPrompt, params = {} } = validation.data;
 
   const iterationCount = normalizeIterationCount(iterations);
   const systemPromptText = systemPrompt && typeof systemPrompt === 'string' ? systemPrompt.trim() : '';
+  const generationParams = {
+    temperature: params.temperature ?? 1.0,
+    top_p: params.top_p ?? 1.0,
+    max_tokens: params.max_tokens ?? 1000,
+    frequency_penalty: params.frequency_penalty ?? 0,
+    presence_penalty: params.presence_penalty ?? 0
+  };
+
+  // Only include seed if it was provided
+  if (params.seed !== undefined && params.seed !== null) {
+    generationParams.seed = params.seed;
+  }
 
   try {
     const paradoxesData = await fs.readFile('paradoxes.json', 'utf8');
@@ -179,8 +282,27 @@ app.post('/api/query', async (req, res) => {
     const { prompt, group1Text, group2Text } = buildPrompt(paradox, groups);
     const responses = [];
 
+    // Create array of promises with concurrency limit
+    const iterationPromises = [];
     for (let iteration = 0; iteration < iterationCount; iteration += 1) {
-      const rawResponse = await aiService.getModelResponse(modelName, prompt, systemPromptText);
+      const iterationIndex = iteration;
+      const promise = limit(() =>
+        aiService.getModelResponse(modelName, prompt, systemPromptText, generationParams)
+          .then(rawResponse => ({
+            iterationIndex,
+            rawResponse,
+            timestamp: new Date().toISOString()
+          }))
+      );
+      iterationPromises.push(promise);
+    }
+
+    // Execute all iterations with controlled concurrency
+    const results = await Promise.all(iterationPromises);
+
+    // Process results in order
+    for (const result of results) {
+      const { iterationIndex, rawResponse, timestamp } = result;
 
       if (paradoxType === 'trolley') {
         // Parse decision tokens for trolley-type paradoxes
@@ -188,23 +310,26 @@ app.post('/api/query', async (req, res) => {
         const explanationText = parsed?.explanation?.trim?.() || '';
 
         responses.push({
-          iteration: iteration + 1,
+          iteration: iterationIndex + 1,
           decisionToken: parsed?.token ?? null,
           group: parsed?.group ?? null,
           explanation: explanationText,
           raw: rawResponse,
-          timestamp: new Date().toISOString()
+          timestamp
         });
       } else {
         // For open-ended paradoxes, just store the full response
         responses.push({
-          iteration: iteration + 1,
+          iteration: iterationIndex + 1,
           response: rawResponse,
           raw: rawResponse,
-          timestamp: new Date().toISOString()
+          timestamp
         });
       }
     }
+
+    // Sort responses by iteration number to maintain order
+    responses.sort((a, b) => a.iteration - b.iteration);
 
     const summary = paradoxType === 'trolley'
       ? computeSummary(responses, {
@@ -229,6 +354,7 @@ app.post('/api/query', async (req, res) => {
       systemPrompt: systemPromptText || undefined,
       groups: { group1: group1Text, group2: group2Text },
       iterationCount,
+      params: generationParams,
       summary,
       responses
     };

@@ -15,13 +15,17 @@ For each run, you select a model, configure the scenario, and optionally add eth
 - **Ethical Priming:** Add system prompts to test how different moral frameworks (utilitarian, deontological, etc.) influence responses
 
 ### Advanced Features
+- **Full Reproducibility:** Capture all generation parameters (temperature, top_p, max_tokens, seed, frequency_penalty, presence_penalty) for complete experimental reproducibility
 - **Batch Model Runner:** Select multiple models and run the same scenario across all of them simultaneously with real-time progress tracking
 - **Side-by-Side Comparison:** Compare 2-3 runs in split-screen view with automated Chi-square statistical testing for trolley-type runs
+- **Enhanced Statistics Module:** Wilson confidence intervals, bootstrap consistency estimation, Cohen's h effect sizes, and comprehensive statistical summaries
 - **AI Insight Summary:** Generate AI-powered analysis of run results, automatically detecting ethical frameworks, consistency patterns, and key insights
 - **Results Dashboard:** Browse, filter, and view all past experimental runs in a dedicated Results tab
 - **Data Export:** Export runs to CSV or JSON format, with batch export capability for all runs at once
 - **Visual Analytics:** Automatic bar charts show decision distribution for trolley-type scenarios
 - **Statistical Validation:** Chi-square tests with p-values to determine if decision distributions are statistically significant
+- **Rate Limiting & Retry Logic:** Automatic retry with exponential backoff for API failures, with concurrency control to prevent rate limiting
+- **Security Hardened:** Input validation, XSS protection with DOMPurify, helmet security headers, and strict CORS
 - **Undecided Detection:** Iterations where the AI fails to choose are flagged with ⚠️ warnings
 - **Enhanced Error Reporting:** Specific error messages for API issues (rate limits, invalid models, billing problems, etc.)
 
@@ -69,10 +73,11 @@ Open `http://localhost:3000` in your browser.
    - For trolley-type: Edit Group 1 and Group 2 descriptions (the UI shows/hides these automatically)
    - For open-ended: The prompt is fixed (no group editing needed)
 4. **Set iterations.** Choose 1–50 iterations (default: 10). More iterations = better statistical confidence.
-5. **(Optional) Add system prompt.** Expand "Advanced Settings" to add ethical priming:
-   - Example: `"You are a strict utilitarian who prioritizes the greatest good for the greatest number."`
-   - Example: `"You are a deontologist who believes in absolute moral rules."`
-6. **Ask the model.** Click "Ask the Model" to run all iterations
+5. **(Optional) Configure advanced settings.** Expand "Advanced Settings" to customize:
+   - **System Prompt:** Add ethical priming (e.g., "You are a strict utilitarian who prioritizes the greatest good for the greatest number.")
+   - **Generation Parameters:** Control temperature (0-2), top_p (0-1), max_tokens (50-4000), seed (for reproducibility), frequency_penalty (0-2), presence_penalty (0-2)
+   - All parameters are saved with the run for complete reproducibility
+6. **Ask the model.** Click "Ask the Model" to run all iterations (with automatic retry on failures)
 7. **Review results:**
    - **Summary Card:** Shows run ID, model, iteration count, and decision breakdown with percentages
    - **Visual Chart:** Bar chart displays decision distribution (trolley-type only)
@@ -113,6 +118,7 @@ Each run is automatically saved to `results/<model>-NNN/run.json` with complete 
 - `systemPrompt` (if ethical priming was used)
 - `groups` (Group 1 and Group 2 descriptions)
 - `iterationCount`
+- `params` (all generation parameters: temperature, top_p, max_tokens, seed, frequency_penalty, presence_penalty)
 - `summary` (aggregated counts and percentages)
 - `responses[]` (every iteration with decision token, group choice, explanation, raw text, and timestamp)
 
@@ -156,14 +162,24 @@ ai-ethics-comparator/
 
 ## API Endpoints
 
+### `GET /health`
+Health check endpoint returning application status, version, timestamp, and uptime.
+
+**Response:**
+```json
+{
+  "status": "healthy",
+  "version": "5.0.0",
+  "timestamp": "2025-10-31T...",
+  "uptime": 12345.67
+}
+```
+
 ### `GET /api/paradoxes`
 Returns the list of available ethical scenarios from `paradoxes.json`.
 
 ### `POST /api/query`
-Executes a batch of iterations for a given model and scenario.
-
-### `POST /api/insight`
-Generates AI-powered analysis of a run's results.
+Executes a batch of iterations for a given model and scenario with automatic retry on failures and concurrency control.
 
 **Request body:**
 ```json
@@ -175,11 +191,19 @@ Generates AI-powered analysis of a run's results.
     "group2": "A 55-year-old community volunteer"
   },
   "iterations": 10,
-  "systemPrompt": "You are a utilitarian." // optional
+  "systemPrompt": "You are a utilitarian.", // optional
+  "params": { // optional - all generation parameters
+    "temperature": 1.0,
+    "top_p": 1.0,
+    "max_tokens": 1000,
+    "seed": 12345, // optional
+    "frequency_penalty": 0,
+    "presence_penalty": 0
+  }
 }
 ```
 
-**Response:** Complete run data with summary and all iteration responses.
+**Response:** Complete run data with summary, parameters, and all iteration responses.
 
 ### `POST /api/insight`
 Generates AI-powered insight summary for a run.
@@ -228,9 +252,25 @@ Contributions are welcome! See [`ROADMAP.md`](ROADMAP.md) for planned features. 
 - Prompt management UI
 - Dark mode and UI enhancements
 
+## Security Features
+
+The application includes production-ready security measures:
+- **Input Validation:** Server-side validation with Zod for all API requests
+- **XSS Protection:** Client-side sanitization with DOMPurify
+- **Security Headers:** Helmet middleware with Content Security Policy
+- **CORS Protection:** Strict origin validation
+- **Rate Limiting:** Automatic retry with exponential backoff for API failures
+- **Concurrency Control:** Limited to 3 concurrent requests to prevent rate limiting
+
+## Version & Health Monitoring
+
+- **Current Version:** 5.0.0
+- **Health Endpoint:** `GET /health` for monitoring
+- **Version Header:** All responses include `X-App-Version` header
+
 ## License
 
-[Add your license here]
+MIT License - See [LICENSE](LICENSE) file for details
 
 ## Documentation
 

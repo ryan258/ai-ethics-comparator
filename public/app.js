@@ -21,6 +21,14 @@ const iterationsInput = document.getElementById('iterations-input');
 const systemPromptInput = document.getElementById('system-prompt-input');
 const responseSummary = document.getElementById('response-summary');
 const clearRunButton = document.getElementById('clear-run-button');
+
+// Generation parameters
+const temperatureInput = document.getElementById('temperature-input');
+const topPInput = document.getElementById('top-p-input');
+const maxTokensInput = document.getElementById('max-tokens-input');
+const seedInput = document.getElementById('seed-input');
+const frequencyPenaltyInput = document.getElementById('frequency-penalty-input');
+const presencePenaltyInput = document.getElementById('presence-penalty-input');
 const rendererTarget = document.createElement('div');
 const domParser = new DOMParser();
 
@@ -65,6 +73,24 @@ let currentChart = null;
 let isBatchMode = false;
 let isCompareMode = false;
 let selectedRunsForComparison = [];
+
+function gatherGenerationParams() {
+  const params = {
+    temperature: parseFloat(temperatureInput.value) || 1.0,
+    top_p: parseFloat(topPInput.value) || 1.0,
+    max_tokens: parseInt(maxTokensInput.value) || 1000,
+    frequency_penalty: parseFloat(frequencyPenaltyInput.value) || 0,
+    presence_penalty: parseFloat(presencePenaltyInput.value) || 0
+  };
+
+  // Only include seed if it's set
+  const seedValue = parseInt(seedInput.value);
+  if (!isNaN(seedValue) && seedValue >= 0) {
+    params.seed = seedValue;
+  }
+
+  return params;
+}
 
 function populateModelSuggestions() {
   modelSuggestions.innerHTML = '';
@@ -224,6 +250,7 @@ async function queryModel() {
 
   try {
     const systemPrompt = systemPromptInput ? systemPromptInput.value.trim() : '';
+    const genParams = gatherGenerationParams();
 
     const response = await fetch('/api/query', {
       method: 'POST',
@@ -236,7 +263,8 @@ async function queryModel() {
           group1: group1Input.value,
           group2: group2Input.value
         },
-        systemPrompt: systemPrompt || undefined
+        systemPrompt: systemPrompt || undefined,
+        params: genParams
       })
     });
 
@@ -304,6 +332,7 @@ async function runBatchQuery() {
 
     try {
       const systemPrompt = systemPromptInput ? systemPromptInput.value.trim() : '';
+      const genParams = gatherGenerationParams();
 
       const response = await fetch('/api/query', {
         method: 'POST',
@@ -316,7 +345,8 @@ async function runBatchQuery() {
             group1: group1Input.value,
             group2: group2Input.value
           },
-          systemPrompt: systemPrompt || undefined
+          systemPrompt: systemPrompt || undefined,
+          params: genParams
         })
       });
 
@@ -412,15 +442,31 @@ function renderMarkdown(markdownText, targetElement, fallbackText = '') {
   targetElement.innerHTML = rendererTarget.innerHTML;
 }
 
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
 function sanitizeHtml(html) {
+  // Use DOMPurify for robust XSS protection
+  if (typeof DOMPurify !== 'undefined') {
+    return DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: ['b', 'i', 'em', 'strong', 'a', 'p', 'br', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'code', 'pre', 'blockquote', 'div', 'span'],
+      ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'style'],
+      ALLOW_DATA_ATTR: false
+    });
+  }
+
+  // Fallback if DOMPurify is not available
   const doc = domParser.parseFromString(html, 'text/html');
-  doc.querySelectorAll('script, style, iframe, object, embed').forEach(el => el.remove());
+  doc.querySelectorAll('script, style, iframe, object, embed, form, input, textarea, button').forEach(el => el.remove());
 
   doc.body.querySelectorAll('*').forEach(el => {
     [...el.attributes].forEach(attr => {
       const name = attr.name.toLowerCase();
       const value = attr.value;
-      if (name.startsWith('on') || value.toLowerCase().includes('javascript:')) {
+      if (name.startsWith('on') || name.startsWith('data-') || value.toLowerCase().includes('javascript:')) {
         el.removeAttribute(attr.name);
       }
     });
@@ -752,22 +798,22 @@ function displayRunsList() {
       contentDiv.style.flex = '1';
       contentDiv.style.cursor = 'default';
       contentDiv.innerHTML = `
-        <strong>${run.runId}</strong><br/>
-        Model: ${run.modelName}<br/>
-        Paradox: ${run.paradoxId}<br/>
+        <strong>${escapeHtml(run.runId)}</strong><br/>
+        Model: ${escapeHtml(run.modelName)}<br/>
+        Paradox: ${escapeHtml(run.paradoxId)}<br/>
         Iterations: ${run.iterationCount}<br/>
-        Date: ${timestamp}
+        Date: ${escapeHtml(timestamp)}
       `;
       runItem.appendChild(contentDiv);
     } else {
       // Normal mode - clickable to view
       runItem.style.cursor = 'pointer';
       runItem.innerHTML = `
-        <strong>${run.runId}</strong><br/>
-        Model: ${run.modelName}<br/>
-        Paradox: ${run.paradoxId}<br/>
+        <strong>${escapeHtml(run.runId)}</strong><br/>
+        Model: ${escapeHtml(run.modelName)}<br/>
+        Paradox: ${escapeHtml(run.paradoxId)}<br/>
         Iterations: ${run.iterationCount}<br/>
-        Date: ${timestamp}
+        Date: ${escapeHtml(timestamp)}
       `;
       runItem.addEventListener('click', () => viewRun(run.runId));
     }
