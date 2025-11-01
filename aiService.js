@@ -3,8 +3,8 @@ const OpenAI = require('openai');
 let cachedClient = null;
 
 // Retry configuration
-const MAX_RETRIES = 3;
-const INITIAL_RETRY_DELAY = 1000; // 1 second
+const MAX_RETRIES = 4; // Increased to 4 for better reliability
+const INITIAL_RETRY_DELAY = 2000; // 2 seconds (increased from 1s)
 
 async function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -49,6 +49,8 @@ async function getModelResponseWithRetry(modelName, prompt, systemPrompt = '', p
       requestParams.seed = params.seed;
     }
 
+    let response;
+
     // Use chat.completions API if a system prompt is provided, otherwise use responses.create
     if (systemPrompt && systemPrompt.length > 0) {
       const messages = [
@@ -56,10 +58,20 @@ async function getModelResponseWithRetry(modelName, prompt, systemPrompt = '', p
         { role: 'user', content: prompt }
       ];
 
-      const response = await client.chat.completions.create({
-        ...requestParams,
-        messages: messages
-      });
+      try {
+        response = await client.chat.completions.create({
+          ...requestParams,
+          messages: messages
+        });
+      } catch (apiError) {
+        // Add more context to JSON parsing errors
+        if (apiError.message && apiError.message.includes('JSON')) {
+          console.error('JSON parsing error - API may have returned HTML or empty response');
+          console.error('Model:', modelName);
+          console.error('Retry count:', retryCount);
+        }
+        throw apiError;
+      }
 
       if (response?.choices?.[0]?.message?.content) {
         return response.choices[0].message.content.trim();
@@ -69,13 +81,23 @@ async function getModelResponseWithRetry(modelName, prompt, systemPrompt = '', p
     } else {
       // Legacy responses.create API (no system prompt)
       // Note: responses.create may not support all parameters
-      const response = await client.responses.create({
-        model: modelName,
-        input: prompt,
-        // Include parameters that are supported by responses.create
-        temperature: requestParams.temperature,
-        max_tokens: requestParams.max_tokens
-      });
+      try {
+        response = await client.responses.create({
+          model: modelName,
+          input: prompt,
+          // Include parameters that are supported by responses.create
+          temperature: requestParams.temperature,
+          max_tokens: requestParams.max_tokens
+        });
+      } catch (apiError) {
+        // Add more context to JSON parsing errors
+        if (apiError.message && apiError.message.includes('JSON')) {
+          console.error('JSON parsing error - API may have returned HTML or empty response');
+          console.error('Model:', modelName);
+          console.error('Retry count:', retryCount);
+        }
+        throw apiError;
+      }
 
       if (response?.output_text) {
         return response.output_text.trim();
@@ -136,7 +158,27 @@ async function getModelResponseWithRetry(modelName, prompt, systemPrompt = '', p
 
     // Handle network or other errors
     if (error.code) {
-      throw new Error(`Network error (${error.code}): ${error.message || 'Connection failed'}`);
+      // Network errors are retryable
+      const shouldRetry = retryCount < MAX_RETRIES;
+      if (shouldRetry) {
+        const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
+        console.log(`Network error - retrying after ${delay}ms (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+        await sleep(delay);
+        return getModelResponseWithRetry(modelName, prompt, systemPrompt, params, retryCount + 1);
+      }
+      throw new Error(`Network error after ${MAX_RETRIES} retries (${error.code}): ${error.message || 'Connection failed'}`);
+    }
+
+    // Handle JSON parsing errors specifically
+    if (error.message && error.message.includes('JSON')) {
+      const shouldRetry = retryCount < MAX_RETRIES;
+      if (shouldRetry) {
+        const delay = INITIAL_RETRY_DELAY * Math.pow(2, retryCount);
+        console.log(`JSON parsing error - retrying after ${delay}ms (attempt ${retryCount + 1}/${MAX_RETRIES})...`);
+        await sleep(delay);
+        return getModelResponseWithRetry(modelName, prompt, systemPrompt, params, retryCount + 1);
+      }
+      throw new Error(`API returned invalid response after ${MAX_RETRIES} retries. This may indicate rate limiting or an API outage.`);
     }
 
     throw new Error(`Failed to retrieve response: ${error.message || 'Unknown error'}`);

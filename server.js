@@ -13,7 +13,7 @@ const VERSION = require('./package.json').version;
 const APP_BASE_URL = process.env.APP_BASE_URL || 'http://localhost:3000';
 
 // Concurrency limit for API requests (prevent rate limiting)
-const limit = pLimit(3); // Max 3 concurrent requests
+const limit = pLimit(2); // Max 2 concurrent requests (reduced to avoid provider rate limits)
 
 // Validation schemas
 const queryRequestSchema = z.object({
@@ -311,18 +311,24 @@ app.post('/api/query', async (req, res) => {
     const { prompt, group1Text, group2Text } = buildPrompt(paradox, groups);
     const responses = [];
 
-    // Create array of promises with concurrency limit
+    // Create array of promises with concurrency limit and staggered delays
     const iterationPromises = [];
     for (let iteration = 0; iteration < iterationCount; iteration += 1) {
       const iterationIndex = iteration;
-      const promise = limit(() =>
-        aiService.getModelResponse(modelName, prompt, systemPromptText, generationParams)
-          .then(rawResponse => ({
-            iterationIndex,
-            rawResponse,
-            timestamp: new Date().toISOString()
-          }))
-      );
+
+      // Add a small delay between starting each request to avoid bursting
+      const delayMs = iteration * 200; // 200ms stagger between requests
+
+      const promise = new Promise(resolve => setTimeout(resolve, delayMs))
+        .then(() => limit(() =>
+          aiService.getModelResponse(modelName, prompt, systemPromptText, generationParams)
+            .then(rawResponse => ({
+              iterationIndex,
+              rawResponse,
+              timestamp: new Date().toISOString()
+            }))
+        ));
+
       iterationPromises.push(promise);
     }
 
