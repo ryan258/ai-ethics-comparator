@@ -263,7 +263,8 @@ textarea {
   color: #4b5563;
 }
 
-#insight-result {
+#insight-result,
+#query-insight-result {
     color: rgb(38, 44, 50);
 }
 

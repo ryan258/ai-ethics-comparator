@@ -65,14 +65,21 @@ const comparisonViewer = document.getElementById('comparison-viewer');
 const comparisonStats = document.getElementById('comparison-stats');
 const comparisonContent = document.getElementById('comparison-content');
 const backToListFromComparisonButton = document.getElementById('back-to-list-from-comparison-button');
+const queryInsightPanel = document.getElementById('query-insight-panel');
+const queryAnalystModelInput = document.getElementById('query-analyst-model-input');
+const queryGenerateInsightButton = document.getElementById('query-generate-insight-button');
+const queryInsightLoading = document.getElementById('query-insight-loading');
+const queryInsightResult = document.getElementById('query-insight-result');
 
 let paradoxes = [];
 let runs = [];
 let currentViewedRun = null;
+let currentQueryRun = null; // Track the current run data in query view
 let currentChart = null;
 let isBatchMode = false;
 let isCompareMode = false;
 let selectedRunsForComparison = [];
+let isViewingRun = false; // Track if user is viewing a specific run
 
 function gatherGenerationParams() {
   const params = {
@@ -275,11 +282,17 @@ async function queryModel() {
     }
 
     const runData = await response.json();
+    currentQueryRun = runData; // Store run data for insight generation
     updateDecisionViews(runData);
 
     if (runData.prompt) {
       renderMarkdown(runData.prompt, promptText, 'Select a paradox to view the full prompt.');
       promptText.classList.remove('placeholder');
+    }
+
+    // Show insight panel after successful run
+    if (queryInsightPanel) {
+      queryInsightPanel.style.display = 'block';
     }
   } catch (error) {
     responseText.textContent = error.message;
@@ -521,11 +534,22 @@ function resetResponseText() {
 function clearRun() {
   resetDecisionSummary();
   resetResponseText();
+  currentQueryRun = null; // Clear query run data
   if (clearRunButton) {
     clearRunButton.style.display = 'none';
   }
   if (batchProgress) {
     batchProgress.style.display = 'none';
+  }
+  if (queryInsightPanel) {
+    queryInsightPanel.style.display = 'none';
+  }
+  if (queryInsightResult) {
+    queryInsightResult.style.display = 'none';
+    queryInsightResult.innerHTML = '';
+  }
+  if (queryInsightLoading) {
+    queryInsightLoading.style.display = 'none';
   }
 }
 
@@ -663,9 +687,20 @@ function formatPercentage(value) {
   return `${clean % 1 === 0 ? clean.toFixed(0) : clean}%`;
 }
 
+function hideQueryInsightPanel() {
+  if (queryInsightPanel) {
+    queryInsightPanel.style.display = 'none';
+  }
+  if (queryInsightResult) {
+    queryInsightResult.style.display = 'none';
+  }
+  currentQueryRun = null;
+}
+
 modelInput.addEventListener('input', () => {
   resetResponseText();
   resetDecisionSummary();
+  hideQueryInsightPanel();
 });
 
 paradoxSelect.addEventListener('change', () => {
@@ -674,24 +709,28 @@ paradoxSelect.addEventListener('change', () => {
   updatePromptDisplay();
   resetResponseText();
   resetDecisionSummary();
+  hideQueryInsightPanel();
 });
 
 group1Input.addEventListener('input', () => {
   updatePromptDisplay();
   resetResponseText();
   resetDecisionSummary();
+  hideQueryInsightPanel();
 });
 
 group2Input.addEventListener('input', () => {
   updatePromptDisplay();
   resetResponseText();
   resetDecisionSummary();
+  hideQueryInsightPanel();
 });
 
 if (iterationsInput) {
   iterationsInput.addEventListener('input', () => {
     resetDecisionSummary();
     resetResponseText();
+    hideQueryInsightPanel();
   });
 
   iterationsInput.addEventListener('change', () => {
@@ -722,7 +761,11 @@ function switchToResultsView() {
   resultsView.style.display = 'block';
   queryTab.classList.remove('active');
   resultsTab.classList.add('active');
-  loadRuns();
+
+  // Only reload runs list if not currently viewing a specific run
+  if (!isViewingRun) {
+    loadRuns();
+  }
 }
 
 if (queryTab) {
@@ -739,6 +782,7 @@ async function loadRuns() {
   resultsList.style.display = 'none';
   resultsEmpty.style.display = 'none';
   resultsViewer.style.display = 'none';
+  isViewingRun = false; // Reset to list view state
 
   try {
     const response = await fetch('/api/runs');
@@ -870,6 +914,7 @@ async function viewRun(runId) {
 
     const runData = await response.json();
     currentViewedRun = runData;
+    isViewingRun = true; // Mark that we're viewing a specific run
 
     // Hide list, show viewer
     resultsList.parentElement.style.display = 'none';
@@ -962,6 +1007,7 @@ async function startComparison() {
     // Hide list, show comparison viewer
     resultsList.parentElement.style.display = 'none';
     comparisonViewer.style.display = 'block';
+    isViewingRun = true; // Mark that we're viewing comparison (not the list)
 
     displayComparison(runDataList);
   } catch (error) {
@@ -1456,6 +1502,7 @@ if (backToListButton) {
   backToListButton.addEventListener('click', () => {
     resultsViewer.style.display = 'none';
     resultsList.parentElement.style.display = 'block';
+    isViewingRun = false; // Mark that we're back to viewing the list
   });
 }
 
@@ -1499,7 +1546,91 @@ if (backToListFromComparisonButton) {
   backToListFromComparisonButton.addEventListener('click', () => {
     comparisonViewer.style.display = 'none';
     resultsList.parentElement.style.display = 'block';
+    isViewingRun = false; // Mark that we're back to viewing the list
   });
+}
+
+// Query page insight generation
+async function generateQueryInsight() {
+  if (!currentQueryRun) {
+    alert('No run data available to analyze. Please run a query first.');
+    return;
+  }
+
+  try {
+    // Get analyst model from input, or use default
+    const analystModel = queryAnalystModelInput?.value?.trim() || 'google/gemini-2.0-flash-001';
+
+    // Show loading state
+    queryGenerateInsightButton.disabled = true;
+    queryGenerateInsightButton.textContent = 'Generating...';
+    queryInsightLoading.style.display = 'block';
+    queryInsightResult.style.display = 'none';
+
+    const response = await fetch('/api/insight', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        runData: currentQueryRun,
+        analystModel: analystModel
+      })
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      const errorMessage = errorBody.error || 'Failed to generate insight.';
+      throw new Error(errorMessage);
+    }
+
+    const result = await response.json();
+
+    // Display the newly generated insight
+    queryInsightLoading.style.display = 'none';
+    queryInsightResult.style.display = 'block';
+
+    let insightHtml = '<div style="margin-bottom: 10px; padding: 10px; background: #e3f2fd; border-radius: 4px;">';
+    insightHtml += `<strong>✨ Insight Generated</strong><br>`;
+    insightHtml += `<span style="font-size: 0.9em; color: #666;">Analyst Model: ${escapeHtml(result.model)}</span>`;
+    insightHtml += '</div>';
+    insightHtml += '<div style="line-height: 1.6;">';
+
+    if (window.marked) {
+      insightHtml += window.marked.parse(result.insight);
+    } else {
+      insightHtml += result.insight.replace(/\n/g, '<br/>');
+    }
+
+    insightHtml += '</div>';
+    queryInsightResult.innerHTML = insightHtml;
+
+    queryGenerateInsightButton.disabled = false;
+    queryGenerateInsightButton.textContent = 'Generate Another Insight';
+
+    // Update currentQueryRun with the insight (if it was saved to the run.json)
+    if (currentQueryRun && currentQueryRun.runId) {
+      try {
+        const reloadResponse = await fetch(`/api/runs/${currentQueryRun.runId}`);
+        if (reloadResponse.ok) {
+          const updatedRunData = await reloadResponse.json();
+          currentQueryRun = updatedRunData;
+        }
+      } catch (reloadError) {
+        console.error('Error reloading run data:', reloadError);
+        // Don't fail - insight was still generated
+      }
+    }
+  } catch (error) {
+    console.error('Error generating insight:', error);
+    queryInsightLoading.style.display = 'none';
+    queryInsightResult.style.display = 'block';
+    queryInsightResult.innerHTML = `<div style="color: #c62828;"><strong>Error:</strong> ${error.message}</div>`;
+    queryGenerateInsightButton.disabled = false;
+    queryGenerateInsightButton.textContent = 'Generate AI Insight Summary';
+  }
+}
+
+if (queryGenerateInsightButton) {
+  queryGenerateInsightButton.addEventListener('click', generateQueryInsight);
 }
 
 populateModelSuggestions();
