@@ -1,4 +1,5 @@
 const MODEL_SUGGESTIONS = [
+  'openrouter/polaris-alpha',
   'google/gemini-1.5-flash-latest',
   'anthropic/claude-3.5-sonnet',
   'openai/gpt-4o',
