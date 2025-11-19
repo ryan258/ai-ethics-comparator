@@ -113,15 +113,12 @@ function populateBatchModelCheckboxes() {
   batchModelCheckboxes.innerHTML = '';
   MODEL_SUGGESTIONS.forEach(modelName => {
     const label = document.createElement('label');
-    label.style.display = 'block';
-    label.style.marginBottom = '6px';
-    label.style.cursor = 'pointer';
+    label.className = 'batch-model-label';
 
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.value = modelName;
     checkbox.className = 'batch-model-checkbox';
-    checkbox.style.marginRight = '8px';
 
     label.appendChild(checkbox);
     label.appendChild(document.createTextNode(modelName));
@@ -133,12 +130,12 @@ function toggleBatchMode() {
   isBatchMode = batchModeToggle.checked;
 
   if (isBatchMode) {
-    modelInput.style.display = 'none';
-    batchModelSelection.style.display = 'block';
+    modelInput.classList.add('hidden');
+    batchModelSelection.classList.remove('hidden');
     populateBatchModelCheckboxes();
   } else {
-    modelInput.style.display = 'block';
-    batchModelSelection.style.display = 'none';
+    modelInput.classList.remove('hidden');
+    batchModelSelection.classList.add('hidden');
   }
 }
 
@@ -183,13 +180,13 @@ function updateUIForParadoxType(paradox) {
 
   if (paradoxType === 'trolley') {
     // Show group inputs for trolley-type paradoxes
-    groupInputsSection.style.display = 'block';
+    groupInputsSection.classList.remove('hidden');
   } else if (paradoxType === 'open_ended') {
     // Hide group inputs for open-ended paradoxes
-    groupInputsSection.style.display = 'none';
+    groupInputsSection.classList.add('hidden');
   } else {
     // Default to showing group inputs
-    groupInputsSection.style.display = 'block';
+    groupInputsSection.classList.remove('hidden');
   }
 }
 
@@ -293,7 +290,7 @@ async function queryModel() {
 
     // Show insight panel after successful run
     if (queryInsightPanel) {
-      queryInsightPanel.style.display = 'block';
+      queryInsightPanel.classList.remove('hidden');
     }
   } catch (error) {
     responseText.textContent = error.message;
@@ -326,14 +323,15 @@ async function runBatchQuery() {
   }
 
   // Show progress bar
-  batchProgress.style.display = 'block';
+  batchProgress.classList.remove('hidden');
   batchProgressFill.style.width = '0%';
-  batchProgressText.textContent = `Running batch query for ${selectedModels.length} model${selectedModels.length !== 1 ? 's' : ''}...`;
+  batchProgressText.textContent = 'Starting batch run...';
 
+  // Reset results display
+  responseText.innerHTML = '<div class="batch-results-header">Batch Run Results</div>';
   queryButton.disabled = true;
   queryButton.textContent = 'Running Batch...';
   responseText.classList.remove('error', 'placeholder');
-  responseText.innerHTML = '<div style="font-weight: 500; margin-bottom: 10px;">Batch Run Results</div>';
 
   const results = [];
   const errors = [];
@@ -390,7 +388,7 @@ async function runBatchQuery() {
 
   // Show clear button
   if (clearRunButton) {
-    clearRunButton.style.display = 'inline-block';
+    clearRunButton.classList.remove('hidden');
   }
 }
 
@@ -398,8 +396,8 @@ function displayBatchResults(results) {
   const successCount = results.filter(r => r.success).length;
   const errorCount = results.filter(r => !r.success).length;
 
-  let html = `<div style="font-weight: 500; margin-bottom: 15px;">Batch Run Complete</div>`;
-  html += `<div style="margin-bottom: 15px; padding: 10px; background: #f9f9f9; border-radius: 4px;">`;
+  let html = `<div class="batch-summary">Batch Run Complete</div>`;
+  html += `<div class="batch-result-card">`;
   html += `<strong>Summary:</strong> ${successCount} succeeded, ${errorCount} failed<br/>`;
   html += `</div>`;
 
@@ -409,11 +407,9 @@ function displayBatchResults(results) {
       const summary = runData.summary || {};
       const paradoxType = runData.paradoxType || 'trolley';
 
-      html += `<div style="margin-bottom: 20px; padding: 15px; border: 1px solid #4CAF50; border-radius: 4px; background: #f1f8f4;">`;
-      html += `<div style="font-weight: 500; color: #2e7d32; margin-bottom: 8px;">✓ ${result.modelName}</div>`;
-      html += `<div style="font-size: 0.9em; color: #555;">`;
-      html += `Run ID: <code>${runData.runId}</code><br/>`;
-
+      html += `<div class="batch-success-card">`;
+      html += `<div class="batch-card-header success">✓ ${result.modelName}</div>`;
+      html += `<div class="batch-card-details">`;
       if (paradoxType === 'trolley') {
         const g1 = summary.group1 || {};
         const g2 = summary.group2 || {};
@@ -425,14 +421,14 @@ function displayBatchResults(results) {
 
       html += `</div></div>`;
     } else {
-      html += `<div style="margin-bottom: 20px; padding: 15px; border: 1px solid #f44336; border-radius: 4px; background: #ffebee;">`;
-      html += `<div style="font-weight: 500; color: #c62828; margin-bottom: 8px;">✗ ${result.modelName}</div>`;
-      html += `<div style="font-size: 0.9em; color: #555;">Error: ${result.error}</div>`;
+      html += `<div class="batch-error-card">`;
+      html += `<div class="batch-card-header error">✗ ${result.modelName}</div>`;
+      html += `<div class="batch-card-details">Error: ${result.error}</div>`;
       html += `</div>`;
     }
   });
 
-  html += `<div style="margin-top: 15px; padding: 10px; background: #e3f2fd; border-radius: 4px; font-size: 0.9em;">`;
+  html += `<div class="batch-info-box">`;
   html += `All results have been saved to the <strong>Results</strong> tab. Click on the Results tab to view detailed information for each run.`;
   html += `</div>`;
 
@@ -537,20 +533,20 @@ function clearRun() {
   resetResponseText();
   currentQueryRun = null; // Clear query run data
   if (clearRunButton) {
-    clearRunButton.style.display = 'none';
+    clearRunButton.classList.add('hidden');
   }
   if (batchProgress) {
-    batchProgress.style.display = 'none';
+    batchProgress.classList.add('hidden');
   }
   if (queryInsightPanel) {
-    queryInsightPanel.style.display = 'none';
+    queryInsightPanel.classList.add('hidden');
   }
   if (queryInsightResult) {
-    queryInsightResult.style.display = 'none';
+    queryInsightResult.classList.add('hidden');
     queryInsightResult.innerHTML = '';
   }
   if (queryInsightLoading) {
-    queryInsightLoading.style.display = 'none';
+    queryInsightLoading.classList.add('hidden');
   }
 }
 
@@ -579,7 +575,7 @@ function updateDecisionViews(runResult) {
 
   // Show clear button when there are results
   if (clearRunButton) {
-    clearRunButton.style.display = 'inline-block';
+    clearRunButton.classList.remove('hidden');
   }
 }
 
@@ -660,8 +656,8 @@ function buildDetailsMarkdown(runResult) {
         response.group === '1'
           ? `Group 1 — ${group1Description}`
           : response.group === '2'
-          ? `Group 2 — ${group2Description}`
-          : 'Undecided / invalid';
+            ? `Group 2 — ${group2Description}`
+            : 'Undecided / invalid';
       const explanation =
         response.explanation && response.explanation.trim().length > 0
           ? response.explanation.trim()
@@ -690,10 +686,10 @@ function formatPercentage(value) {
 
 function hideQueryInsightPanel() {
   if (queryInsightPanel) {
-    queryInsightPanel.style.display = 'none';
+    queryInsightPanel.classList.add('hidden');
   }
   if (queryInsightResult) {
-    queryInsightResult.style.display = 'none';
+    queryInsightResult.classList.add('hidden');
   }
   currentQueryRun = null;
 }
@@ -751,17 +747,21 @@ if (batchModeToggle) {
 
 // Tab switching
 function switchToQueryView() {
-  queryView.style.display = 'block';
-  resultsView.style.display = 'none';
+  queryView.classList.add('block');
+  queryView.classList.remove('hidden');
+  resultsView.classList.add('hidden');
+  resultsView.classList.remove('block');
   queryTab.classList.add('active');
   resultsTab.classList.remove('active');
 }
 
 function switchToResultsView() {
-  queryView.style.display = 'none';
-  resultsView.style.display = 'block';
-  queryTab.classList.remove('active');
+  queryView.classList.add('hidden');
+  queryView.classList.remove('block');
+  resultsView.classList.add('block');
+  resultsView.classList.remove('hidden');
   resultsTab.classList.add('active');
+  queryTab.classList.remove('active');
 
   // Only reload runs list if not currently viewing a specific run
   if (!isViewingRun) {
@@ -779,10 +779,10 @@ if (resultsTab) {
 
 // Results management
 async function loadRuns() {
-  resultsListLoading.style.display = 'block';
-  resultsList.style.display = 'none';
-  resultsEmpty.style.display = 'none';
-  resultsViewer.style.display = 'none';
+  resultsListLoading.classList.remove('hidden');
+  resultsList.classList.add('hidden');
+  resultsEmpty.classList.add('hidden');
+  resultsViewer.classList.add('hidden');
   isViewingRun = false; // Reset to list view state
 
   try {
@@ -794,8 +794,8 @@ async function loadRuns() {
     runs = await response.json();
 
     if (runs.length === 0) {
-      resultsListLoading.style.display = 'none';
-      resultsEmpty.style.display = 'block';
+      resultsListLoading.classList.add('hidden');
+      resultsEmpty.classList.remove('hidden');
       return;
     }
 
@@ -807,20 +807,14 @@ async function loadRuns() {
 }
 
 function displayRunsList() {
-  resultsListLoading.style.display = 'none';
-  resultsList.style.display = 'block';
+  resultsListLoading.classList.add('hidden');
+  resultsList.classList.remove('hidden');
   resultsList.innerHTML = '';
 
   runs.forEach(run => {
     const runItem = document.createElement('div');
-    runItem.className = 'run-item';
-    runItem.style.padding = '10px';
-    runItem.style.marginBottom = '10px';
-    runItem.style.border = '1px solid #ccc';
-    runItem.style.borderRadius = '4px';
-    runItem.style.display = 'flex';
-    runItem.style.alignItems = 'center';
-    runItem.style.gap = '10px';
+    runItem.className = 'run-card';
+
 
     const timestamp = new Date(run.timestamp).toLocaleString();
 
@@ -830,9 +824,7 @@ function displayRunsList() {
       checkbox.type = 'checkbox';
       checkbox.value = run.runId;
       checkbox.checked = selectedRunsForComparison.includes(run.runId);
-      checkbox.style.width = '20px';
-      checkbox.style.height = '20px';
-      checkbox.style.cursor = 'pointer';
+      checkbox.className = 'compare-checkbox';
       checkbox.addEventListener('change', (e) => {
         e.stopPropagation();
         toggleRunSelection(run.runId);
@@ -840,8 +832,7 @@ function displayRunsList() {
       runItem.appendChild(checkbox);
 
       const contentDiv = document.createElement('div');
-      contentDiv.style.flex = '1';
-      contentDiv.style.cursor = 'default';
+      contentDiv.className = 'run-content';
       contentDiv.innerHTML = `
         <strong>${escapeHtml(run.runId)}</strong><br/>
         Model: ${escapeHtml(run.modelName)}<br/>
@@ -852,7 +843,6 @@ function displayRunsList() {
       runItem.appendChild(contentDiv);
     } else {
       // Normal mode - clickable to view
-      runItem.style.cursor = 'pointer';
       runItem.innerHTML = `
         <strong>${escapeHtml(run.runId)}</strong><br/>
         Model: ${escapeHtml(run.modelName)}<br/>
@@ -872,13 +862,14 @@ function toggleCompareMode() {
   selectedRunsForComparison = [];
 
   if (isCompareMode) {
-    compareModeToggle.textContent = 'Disable Compare Mode';
-    comparisonInstructions.style.display = 'block';
-    startComparisonButton.style.display = 'inline-block';
+    comparisonInstructions.classList.remove('hidden');
+    startComparisonButton.classList.remove('hidden');
+    compareModeToggle.textContent = 'Cancel Comparison';
   } else {
-    compareModeToggle.textContent = 'Enable Compare Mode';
-    comparisonInstructions.style.display = 'none';
-    startComparisonButton.style.display = 'none';
+    comparisonInstructions.classList.add('hidden');
+    startComparisonButton.classList.add('hidden');
+    compareModeToggle.textContent = 'Compare Runs';
+    selectedRunsForComparison = [];
   }
 
   displayRunsList();
@@ -918,8 +909,8 @@ async function viewRun(runId) {
     isViewingRun = true; // Mark that we're viewing a specific run
 
     // Hide list, show viewer
-    resultsList.parentElement.style.display = 'none';
-    resultsViewer.style.display = 'block';
+    resultsList.parentElement.classList.add('hidden');
+    resultsViewer.classList.remove('hidden');
 
     // Use existing functions to render the run data
     const summaryMarkdown = buildSummaryMarkdown(runData);
@@ -937,11 +928,11 @@ async function viewRun(runId) {
     } else {
       // Clear insight panel if no saved insights
       if (insightResult) {
-        insightResult.style.display = 'none';
+        insightResult.classList.add('hidden');
         insightResult.innerHTML = '';
       }
       if (insightLoading) {
-        insightLoading.style.display = 'none';
+        insightLoading.classList.add('hidden');
       }
     }
   } catch (error) {
@@ -953,18 +944,18 @@ async function viewRun(runId) {
 function displaySavedInsights(insights) {
   if (!insightResult) return;
 
-  insightLoading.style.display = 'none';
-  insightResult.style.display = 'block';
+  insightLoading.classList.add('hidden');
+  insightResult.classList.remove('hidden');
 
-  let html = '<div style="margin-bottom: 15px; padding: 10px; background: #e8f5e9; border-left: 4px solid #4CAF50; border-radius: 4px;">';
+  let html = '<div class="insight-header">';
   html += '<strong>📊 Saved Insights</strong> ';
-  html += `<span style="color: #666; font-size: 0.9em;">(${insights.length} analysis${insights.length !== 1 ? 'es' : ''})</span>`;
+  html += `<span style="font-size: 0.9em; opacity: 0.8;">(${insights.length} analysis${insights.length !== 1 ? 'es' : ''})</span>`;
   html += '</div>';
 
   insights.forEach((insight, index) => {
     const date = new Date(insight.timestamp).toLocaleString();
 
-    html += '<div style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 4px;">';
+    html += '<div style="margin-bottom: 20px; padding: 15px; background: #f5f5f5; border-radius: 4px; color: darkslategray;">';
     html += `<div style="font-size: 0.85em; color: #666; margin-bottom: 10px;">`;
     html += `<strong>Analysis ${index + 1}</strong> | `;
     html += `${date} | `;
@@ -972,7 +963,7 @@ function displaySavedInsights(insights) {
     html += '</div>';
 
     // Parse markdown and render the insight content
-    html += '<div style="line-height: 1.6;">';
+    html += '<div class="insight-card">';
     if (window.marked) {
       html += window.marked.parse(insight.content);
     } else {
@@ -1006,8 +997,8 @@ async function startComparison() {
     const runDataList = await Promise.all(runDataPromises);
 
     // Hide list, show comparison viewer
-    resultsList.parentElement.style.display = 'none';
-    comparisonViewer.style.display = 'block';
+    resultsList.parentElement.classList.add('hidden');
+    comparisonViewer.classList.remove('hidden');
     isViewingRun = true; // Mark that we're viewing comparison (not the list)
 
     displayComparison(runDataList);
@@ -1106,50 +1097,47 @@ function displayComparison(runDataList) {
     const stats = calculateChiSquare(runDataList[0], runDataList[1]);
     if (stats) {
       const significanceText = stats.significant
-        ? '<strong style="color: #2e7d32;">statistically significant</strong>'
-        : '<strong style="color: #666;">not statistically significant</strong>';
+        ? '<strong class="text-success">statistically significant</strong>'
+        : '<strong class="text-muted">not statistically significant</strong>';
 
       comparisonStats.innerHTML = `
-        <div style="padding: 15px; background: #f5f5f5; border-radius: 4px; margin-bottom: 20px;">
-          <h3 style="margin-top: 0;">Statistical Analysis</h3>
-          <p style="margin: 10px 0;">Chi-square test results for decision distribution:</p>
-          <ul style="margin: 10px 0;">
+        <div class="stats-analysis-box">
+          <h3 class="stats-header">Statistical Analysis</h3>
+          <p class="stats-note">Chi-square test results for decision distribution:</p>
+          <ul class="stats-list">
             <li><strong>χ² statistic:</strong> ${stats.chiSquare}</li>
             <li><strong>Degrees of freedom:</strong> ${stats.degreesOfFreedom}</li>
             <li><strong>p-value:</strong> ${stats.pValue}</li>
             <li><strong>Result:</strong> The difference in decision distributions is ${significanceText} (α = 0.05)</li>
           </ul>
-          <p style="margin: 10px 0; font-size: 0.9em; color: #666;">
+          <p class="stats-note">
             ${stats.significant
-              ? 'The p-value is less than 0.05, indicating the two runs have significantly different decision distributions.'
-              : 'The p-value is greater than 0.05, indicating the two runs do not have significantly different decision distributions.'}
+          ? 'The p-value is less than 0.05, indicating the two runs have significantly different decision distributions.'
+          : 'The p-value is greater than 0.05, indicating the two runs do not have significantly different decision distributions.'}
           </p>
         </div>
       `;
     }
   }
 
-  // Set grid layout based on number of runs
+  // Set grid columns based on number of runs
   if (runDataList.length === 2) {
-    comparisonContent.style.gridTemplateColumns = '1fr 1fr';
-  } else if (runDataList.length === 3) {
-    comparisonContent.style.gridTemplateColumns = '1fr 1fr 1fr';
+    comparisonContent.className = 'comparison-grid-2';
+  } else {
+    comparisonContent.className = 'comparison-grid-3';
   }
 
   runDataList.forEach(runData => {
     const runCard = document.createElement('div');
-    runCard.style.border = '1px solid #ddd';
-    runCard.style.borderRadius = '4px';
-    runCard.style.padding = '15px';
-    runCard.style.background = '#fff';
+    runCard.className = 'comparison-card';
 
     const summaryDiv = document.createElement('div');
     const summaryMarkdown = buildSummaryMarkdown(runData);
     renderMarkdown(summaryMarkdown, summaryDiv, 'Summary unavailable.');
 
-    const chartDiv = document.createElement('div');
-    if (runData.paradoxType === 'trolley') {
-      chartDiv.style.marginTop = '20px';
+    if (runData.paradoxType === 'trolley' && runData.summary) {
+      const chartDiv = document.createElement('div');
+      chartDiv.className = 'chart-container';
       chartDiv.innerHTML = '<canvas></canvas>';
       runCard.appendChild(summaryDiv);
       runCard.appendChild(chartDiv);
@@ -1223,11 +1211,11 @@ function renderResultsChart(runData) {
 
   // Only show chart for trolley-type paradoxes
   if (paradoxType !== 'trolley' || !runData.summary) {
-    resultsChartContainer.style.display = 'none';
+    resultsChartContainer.classList.add('hidden');
     return;
   }
 
-  resultsChartContainer.style.display = 'block';
+  resultsChartContainer.classList.remove('hidden');
 
   const summary = runData.summary;
   const labels = [];
@@ -1254,7 +1242,7 @@ function renderResultsChart(runData) {
 
   if (!window.Chart) {
     console.warn('Chart.js not loaded');
-    resultsChartContainer.style.display = 'none';
+    resultsChartContainer.classList.add('hidden');
     return;
   }
 
@@ -1340,7 +1328,7 @@ function exportToCSV(runData) {
   const url = URL.createObjectURL(blob);
   link.setAttribute('href', url);
   link.setAttribute('download', `${runData.runId || 'run'}.csv`);
-  link.style.visibility = 'hidden';
+  link.classList.add('invisible');
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -1358,7 +1346,7 @@ function exportToJSON(runData) {
   const url = URL.createObjectURL(blob);
   link.setAttribute('href', url);
   link.setAttribute('download', `${runData.runId || 'run'}.json`);
-  link.style.visibility = 'hidden';
+  link.classList.add('invisible');
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -1399,7 +1387,7 @@ async function batchExportAllRuns() {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
     link.setAttribute('href', url);
     link.setAttribute('download', `ai-ethics-comparator-export-${timestamp}.json`);
-    link.style.visibility = 'hidden';
+    link.classList.add('invisible');
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1427,8 +1415,8 @@ async function generateInsight() {
     // Show loading state
     generateInsightButton.disabled = true;
     generateInsightButton.textContent = 'Generating...';
-    insightLoading.style.display = 'block';
-    insightResult.style.display = 'none';
+    insightLoading.classList.remove('hidden');
+    insightResult.classList.add('hidden');
 
     const response = await fetch('/api/insight', {
       method: 'POST',
@@ -1468,19 +1456,19 @@ async function generateInsight() {
 
     // If reload failed or no runId, show the newly generated insight
     if (!insightResult.innerHTML || insightResult.innerHTML.indexOf('Saved Insights') === -1) {
-      insightLoading.style.display = 'none';
-      insightResult.style.display = 'block';
+      insightLoading.classList.add('hidden');
+      insightResult.classList.remove('hidden');
 
-      let insightHtml = '<div style="margin-bottom: 10px; padding: 10px; background: #e3f2fd; border-radius: 4px;">';
+      let insightHtml = '<div class="insight-header-card">';
       insightHtml += `<strong>✨ New Insight Generated</strong><br>`;
-      insightHtml += `<span style="font-size: 0.9em; color: #666;">Analyst Model: ${escapeHtml(result.model)}</span>`;
+      insightHtml += `<span class="insight-model-info">Analyst Model: ${escapeHtml(result.model)}</span>`;
       insightHtml += '</div>';
-      insightHtml += '<div style="line-height: 1.6;">';
-
+      insightHtml += '<div class="insight-content">';
+      const insightContent = result.insight; // Assuming result.insight holds the content
       if (window.marked) {
-        insightHtml += window.marked.parse(result.insight);
+        insightHtml += window.marked.parse(insightContent);
       } else {
-        insightHtml += result.insight.replace(/\n/g, '<br/>');
+        insightHtml += sanitizeHtml(insightContent.replace(/\n/g, '<br />'));
       }
 
       insightHtml += '</div>';
@@ -1491,9 +1479,9 @@ async function generateInsight() {
     generateInsightButton.textContent = 'Generate Another Insight';
   } catch (error) {
     console.error('Error generating insight:', error);
-    insightLoading.style.display = 'none';
-    insightResult.style.display = 'block';
-    insightResult.innerHTML = `<div style="color: #c62828;"><strong>Error:</strong> ${error.message}</div>`;
+    insightLoading.classList.add('hidden');
+    insightResult.classList.remove('hidden');
+    insightResult.innerHTML = `<div class="error-message"><strong>Error:</strong> ${error.message}</div>`;
     generateInsightButton.disabled = false;
     generateInsightButton.textContent = 'Generate AI Insight Summary';
   }
@@ -1501,8 +1489,8 @@ async function generateInsight() {
 
 if (backToListButton) {
   backToListButton.addEventListener('click', () => {
-    resultsViewer.style.display = 'none';
-    resultsList.parentElement.style.display = 'block';
+    resultsViewer.classList.add('hidden');
+    resultsList.parentElement.classList.remove('hidden');
     isViewingRun = false; // Mark that we're back to viewing the list
   });
 }
@@ -1545,8 +1533,8 @@ if (startComparisonButton) {
 
 if (backToListFromComparisonButton) {
   backToListFromComparisonButton.addEventListener('click', () => {
-    comparisonViewer.style.display = 'none';
-    resultsList.parentElement.style.display = 'block';
+    comparisonViewer.classList.add('hidden');
+    resultsList.parentElement.classList.remove('hidden');
     isViewingRun = false; // Mark that we're back to viewing the list
   });
 }
@@ -1565,8 +1553,8 @@ async function generateQueryInsight() {
     // Show loading state
     queryGenerateInsightButton.disabled = true;
     queryGenerateInsightButton.textContent = 'Generating...';
-    queryInsightLoading.style.display = 'block';
-    queryInsightResult.style.display = 'none';
+    queryInsightLoading.classList.remove('hidden');
+    queryInsightResult.classList.add('hidden');
 
     const response = await fetch('/api/insight', {
       method: 'POST',
@@ -1586,14 +1574,14 @@ async function generateQueryInsight() {
     const result = await response.json();
 
     // Display the newly generated insight
-    queryInsightLoading.style.display = 'none';
-    queryInsightResult.style.display = 'block';
+    queryInsightLoading.classList.add('hidden');
+    queryInsightResult.classList.remove('hidden');
 
-    let insightHtml = '<div style="margin-bottom: 10px; padding: 10px; background: #e3f2fd; border-radius: 4px;">';
+    let insightHtml = '<div class="insight-header-card">';
     insightHtml += `<strong>✨ Insight Generated</strong><br>`;
-    insightHtml += `<span style="font-size: 0.9em; color: #666;">Analyst Model: ${escapeHtml(result.model)}</span>`;
+    insightHtml += `<span class="insight-model-info">Analyst Model: ${escapeHtml(result.model)}</span>`;
     insightHtml += '</div>';
-    insightHtml += '<div style="line-height: 1.6;">';
+    insightHtml += '<div class="insight-content">';
 
     if (window.marked) {
       insightHtml += window.marked.parse(result.insight);
@@ -1622,9 +1610,9 @@ async function generateQueryInsight() {
     }
   } catch (error) {
     console.error('Error generating insight:', error);
-    queryInsightLoading.style.display = 'none';
-    queryInsightResult.style.display = 'block';
-    queryInsightResult.innerHTML = `<div style="color: #c62828;"><strong>Error:</strong> ${error.message}</div>`;
+    queryInsightLoading.classList.add('hidden');
+    queryInsightResult.classList.remove('hidden');
+    queryInsightResult.innerHTML = `<div class="error-message"><strong>Error:</strong> ${error.message}</div>`;
     queryGenerateInsightButton.disabled = false;
     queryGenerateInsightButton.textContent = 'Generate AI Insight Summary';
   }
