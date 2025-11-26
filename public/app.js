@@ -1410,7 +1410,7 @@ async function generateInsight() {
 
   try {
     // Get analyst model from input, or use default
-    const analystModel = analystModelInput?.value?.trim() || 'google/gemini-2.0-flash-001';
+    const analystModel = analystModelInput?.value?.trim() || 'x-ai/grok-4.1-fast:free';
 
     // Show loading state
     generateInsightButton.disabled = true;
@@ -1548,7 +1548,7 @@ async function generateQueryInsight() {
 
   try {
     // Get analyst model from input, or use default
-    const analystModel = queryAnalystModelInput?.value?.trim() || 'google/gemini-2.0-flash-001';
+    const analystModel = queryAnalystModelInput?.value?.trim() || 'x-ai/grok-4.1-fast:free';
 
     // Show loading state
     queryGenerateInsightButton.disabled = true;
