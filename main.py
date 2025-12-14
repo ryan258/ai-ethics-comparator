@@ -35,14 +35,22 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Config
-from lib.config import config
+from lib.config import AppConfig
 
-# Config is passed via config object
+# Load and validate config
+try:
+    config = AppConfig.load()
+    config.validate_secrets()
+except ValueError as e:
+    import sys
+    logger.critical(str(e))
+    sys.exit(1)
+
 logger.info(f"Starting {config.APP_NAME} v{config.VERSION}")
 
 # Initialize services
 ai_service = AIService(
-    api_key=config.OPENROUTER_API_KEY,
+    api_key=config.OPENROUTER_API_KEY, # type: ignore (validated above)
     base_url=config.OPENROUTER_BASE_URL,
     referer=config.APP_BASE_URL,
     app_name=config.APP_NAME
@@ -50,6 +58,7 @@ ai_service = AIService(
 
 storage = RunStorage(str(config.results_path))
 query_processor = QueryProcessor(ai_service, concurrency_limit=2)
+# AnalysisEngine no longer needs config, just ai_service
 analysis_engine = AnalysisEngine(ai_service)
 
 # FastAPI setup
@@ -59,8 +68,16 @@ app = FastAPI(title=config.APP_NAME, version=config.VERSION)
 templates = Jinja2Templates(directory="templates")
 
 import markdown
+import html
+from markupsafe import Markup
+
 def markdown_filter(text):
-    return markdown.markdown(text)
+    # Escape raw HTML in the input text to prevent injection
+    escaped_text = html.escape(str(text))
+    # Render markdown
+    rendered = markdown.markdown(escaped_text)
+    # Mark as safe for Jinja (since we verified input is safe-ish by escaping)
+    return Markup(rendered)
 
 templates.env.filters['markdown'] = markdown_filter
 
@@ -111,7 +128,7 @@ async def health_check():
     """Health check endpoint"""
     return {
         "status": "healthy",
-        "version": VERSION,
+        "version": config.VERSION,
         "timestamp": datetime.utcnow().isoformat() + "Z",
         "uptime": "N/A"  # Can add process uptime if needed
     }
@@ -126,7 +143,8 @@ async def get_paradoxes():
             paradoxes = json.load(f)
         return paradoxes
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Failed to read paradoxes file.")
+        logger.error(f"Failed to read paradoxes: {e}")
+        raise HTTPException(status_code=500, detail="Failed to read paradoxes.")
 
 
 @app.get("/api/runs")
@@ -136,7 +154,8 @@ async def list_runs():
         runs = await storage.list_runs()
         return runs
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Failed to read runs directory.")
+        logger.error(f"Failed to list runs: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve runs.")
 
 
 @app.get("/api/runs/{run_id}")
@@ -148,7 +167,8 @@ async def get_run(run_id: str):
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Run not found.")
     except Exception as e:
-        raise HTTPException(status_code=500, detail="Failed to read run data.")
+        logger.error(f"Failed to get run {run_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve run data.")
 
 
 @app.post("/api/query")
@@ -210,7 +230,8 @@ async def execute_query(request: Request, query_request: QueryRequest):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Query execution failed: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/api/insight")
@@ -229,17 +250,29 @@ async def generate_insight(request: InsightRequest):
         # Save insight to run.json if runId provided
         if "runId" in request.runData:
             try:
+                # We need to fetch, append, and save.
+                # Since storage.update_run is now available, we should use it if we implemented it properly.
+                # But let's stick to get/save pattern for now to be safe with existing logic logic
+                # Actually storage.update_run was implemented to do partial updates?
+                # The prompt implemented update_run to update the file content.
+                # But we need to append to a list. Does update_run handle list appending? No.
+                # So we must get, modify, save.
+                
                 existing_run = await storage.get_run(request.runData["runId"])
                 if "insights" not in existing_run:
                     existing_run["insights"] = []
                 existing_run["insights"].append(insight_data)
+                
+                # Use update_run just to save the whole blob again? Or save_run.
+                # save_run overwrites.
                 await storage.save_run(request.runData["runId"], existing_run)
             except Exception as save_error:
                 logger.error(f"Error saving insight: {save_error}")
 
         return {"insight": insight_data["content"], "model": model_to_use}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Insight generation failed: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
 
 @app.post("/api/runs/{run_id}/analyze")
@@ -291,7 +324,7 @@ async def analyze_run(request: Request, run_id: str):
         
     except Exception as e:
         logger.error(f"Analysis failed: {e}")
-        return HTMLResponse(f"<div class='error'>Analysis failed: {str(e)}</div>", status_code=500)
+        return HTMLResponse(f"<div class='error'>Analysis failed. Please check logs.</div>", status_code=500)
 
 
 if __name__ == "__main__":

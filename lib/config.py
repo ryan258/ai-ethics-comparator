@@ -27,53 +27,57 @@ class AppConfig(BaseModel):
     OPENROUTER_BASE_URL: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
     
     # Secrets
-    OPENROUTER_API_KEY: Optional[str] = os.getenv("OPENROUTER_API_KEY")
+    OPENROUTER_API_KEY: Optional[str] = Field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY"))
 
-    def __init__(self, **data):
-        super().__init__(**data)
-        # Validate required environment variables
+    def validate_secrets(self) -> None:
+        """Validate that required secrets are present."""
         if not self.OPENROUTER_API_KEY:
-            import sys
-            print("ERROR: OPENROUTER_API_KEY not found in environment", file=sys.stderr)
-            print("Please create a .env file with: OPENROUTER_API_KEY=sk-or-your-key", file=sys.stderr)
-            sys.exit(1)
+             raise ValueError(
+                "OPENROUTER_API_KEY not found in environment. "
+                "Please create a .env file with: OPENROUTER_API_KEY=sk-or-your-key"
+            )
     
     # Models (Loaded from env JSON or file)
     AVAILABLE_MODELS: List[ModelConfig] = Field(default_factory=list)
-    ANALYST_MODEL: Optional[str] = os.getenv("ANALYST_MODEL")
-    DEFAULT_MODEL: Optional[str] = os.getenv("DEFAULT_MODEL")
+    ANALYST_MODEL: Optional[str] = Field(default_factory=lambda: os.getenv("ANALYST_MODEL"))
+    DEFAULT_MODEL: Optional[str] = Field(default_factory=lambda: os.getenv("DEFAULT_MODEL"))
 
     @property
     def results_path(self):
         from pathlib import Path
         return Path(__file__).parent.parent / "results"
 
-# Singleton
-config = AppConfig()
+    @classmethod
+    def load(cls) -> "AppConfig":
+        """Load configuration from environment and files."""
+        # Initialize with env vars
+        config = cls()
+        
+        # Load models from file if env not set
+        _models_json = os.getenv("AVAILABLE_MODELS_JSON")
+        if _models_json:
+            try:
+                data = json.loads(_models_json)
+                config.AVAILABLE_MODELS = [ModelConfig(**m) for m in data]
+            except Exception:
+                pass
+        else:
+            # Load from models.json
+            try:
+                from pathlib import Path
+                models_path = Path(__file__).parent.parent / "models.json"
+                if models_path.exists():
+                     with open(models_path, 'r') as f:
+                         data = json.load(f)
+                         config.AVAILABLE_MODELS = [ModelConfig(**m) for m in data]
+            except Exception:
+                pass
 
-# Load models from file if env not set
-_models_json = os.getenv("AVAILABLE_MODELS_JSON")
-if _models_json:
-    try:
-        data = json.loads(_models_json)
-        config.AVAILABLE_MODELS = [ModelConfig(**m) for m in data]
-    except Exception:
-        pass
-else:
-    # Load from models.json
-    try:
-        from pathlib import Path
-        models_path = Path(__file__).parent.parent / "models.json"
-        if models_path.exists():
-             with open(models_path, 'r') as f:
-                 data = json.load(f)
-                 config.AVAILABLE_MODELS = [ModelConfig(**m) for m in data]
-    except Exception:
-        pass
-
-# Ensure analyst model has a fallback from available models if possible, but no hardcoded string here
-if not config.ANALYST_MODEL and config.AVAILABLE_MODELS:
-    config.ANALYST_MODEL = config.AVAILABLE_MODELS[0].id
-
-if not config.DEFAULT_MODEL and config.AVAILABLE_MODELS:
-    config.DEFAULT_MODEL = config.AVAILABLE_MODELS[0].id
+        # Smart defaults for models
+        if not config.ANALYST_MODEL and config.AVAILABLE_MODELS:
+            config.ANALYST_MODEL = config.AVAILABLE_MODELS[0].id
+        
+        if not config.DEFAULT_MODEL and config.AVAILABLE_MODELS:
+            config.DEFAULT_MODEL = config.AVAILABLE_MODELS[0].id
+            
+        return config

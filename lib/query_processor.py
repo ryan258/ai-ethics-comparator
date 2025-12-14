@@ -8,6 +8,7 @@ import asyncio
 import re
 from typing import Dict, Any, List
 from datetime import datetime
+from lib.ai_service import AIService
 
 
 def parse_trolley_response(response_text: str) -> Dict[str, Any]:
@@ -71,13 +72,15 @@ class RunConfig:
     params: Dict[str, Any] = field(default_factory=dict)
 
 
+
+
 class QueryProcessor:
     """
     Query Processor
     Manages concurrent iteration execution with paradox-aware parsing
     """
 
-    def __init__(self, ai_service, concurrency_limit: int = 2):
+    def __init__(self, ai_service: AIService, concurrency_limit: int = 2):
         self.ai_service = ai_service
         self.semaphore = asyncio.Semaphore(concurrency_limit)
 

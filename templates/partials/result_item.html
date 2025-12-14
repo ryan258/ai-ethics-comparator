@@ -10,7 +10,7 @@
             <div class="markdown-body">
                 {{ paradox.promptTemplate.replace('{{GROUP1}}', run_data.groups.group1 or
                 paradox.group1Default).replace('{{GROUP2}}', run_data.groups.group2 or paradox.group2Default) | markdown
-                | safe }}
+                }}
             </div>
         </div>
 
@@ -53,7 +53,7 @@
                     Analysis by <strong>{{ run_data.insights[-1].analystModel }}</strong> (Cached)
                 </div>
                 <div class="markdown-body">
-                    {{ run_data.insights[-1].content | markdown | safe }}
+                    {{ run_data.insights[-1].content | markdown }}
                 </div>
             </div>
             {% else %}

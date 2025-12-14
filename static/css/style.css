@@ -254,9 +254,7 @@ textarea:focus {
     border: 1px solid var(--border-color);
 }
 
-margin-top: 1.5rem;
-text-align: left;
-}
+
 
 .status-badge {
     display: inline-block;
@@ -302,8 +300,7 @@ text-align: left;
     margin-bottom: 0.5rem;
 }
 
-color: var(--accent-success);
-}
+
 
 /* New Logic-Free Utility Classes (Strict Candlelight) */
 .scenario-title {

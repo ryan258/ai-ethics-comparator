@@ -8,7 +8,6 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from datetime import datetime
 
-from lib.config import config
 from lib.ai_service import AIService
 
 @dataclass

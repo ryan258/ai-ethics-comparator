@@ -22,9 +22,9 @@ class AIService:
     def __init__(
         self,
         api_key: str,
-        base_url: str = "https://openrouter.ai/api/v1",
-        referer: str = "http://localhost:8000",
-        app_name: str = "AI Research Tool"
+        base_url: str,
+        referer: str,
+        app_name: str
     ):
         if not api_key:
             raise ValueError("API key is required")
