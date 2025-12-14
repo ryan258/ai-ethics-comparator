@@ -1,0 +1,10 @@
+<div class="analysis-content">
+    <div class="analysis-meta"
+        style="margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--border-color); font-size: 0.8rem; opacity: 0.7;">
+        Analysis by <strong>{{ model }}</strong> {% if cached %}(Cached){% endif %}
+    </div>
+
+    <div class="markdown-body">
+        {{ insight | markdown | safe }}
+    </div>
+</div>
