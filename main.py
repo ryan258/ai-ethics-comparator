@@ -25,6 +25,7 @@ from lib.ai_service import AIService
 from lib.storage import RunStorage
 from lib.query_processor import QueryProcessor
 from lib.analysis import AnalysisEngine, AnalysisConfig
+from lib.view_models import safe_markdown, fetch_recent_run_view_models
 
 # Logger setup
 import logging
@@ -50,7 +51,7 @@ logger.info(f"Starting {config.APP_NAME} v{config.VERSION}")
 
 # Initialize services
 ai_service = AIService(
-    api_key=config.OPENROUTER_API_KEY, # type: ignore (validated above)
+    api_key=str(config.OPENROUTER_API_KEY), # Validated above, safe cast
     base_url=config.OPENROUTER_BASE_URL,
     referer=config.APP_BASE_URL,
     app_name=config.APP_NAME
@@ -66,20 +67,8 @@ app = FastAPI(title=config.APP_NAME, version=config.VERSION)
 
 # Templates
 templates = Jinja2Templates(directory="templates")
-
-import markdown
-import html
-from markupsafe import Markup
-
-def markdown_filter(text):
-    # Escape raw HTML in the input text to prevent injection
-    escaped_text = html.escape(str(text))
-    # Render markdown
-    rendered = markdown.markdown(escaped_text)
-    # Mark as safe for Jinja (since we verified input is safe-ish by escaping)
-    return Markup(rendered)
-
-templates.env.filters['markdown'] = markdown_filter
+# Use the centralized safe markdown filter
+templates.env.filters['markdown'] = safe_markdown
 
 # Static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -105,26 +94,34 @@ async def add_version_header(request: Request, call_next):
 # Routes
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
+async def index(request: Request) -> HTMLResponse:
     """Serve main application page"""
-    # Load paradoxes for the dropdown
     try:
         paradoxes_path = Path(__file__).parent / "paradoxes.json"
         with open(paradoxes_path, 'r') as f:
             paradoxes = json.load(f)
-    except Exception:
+    except Exception as e:
+        logger.error(f"Failed to load paradoxes: {e}")
         paradoxes = []
         
+    # Load recent runs for persistence using centralized helper
+    recent_run_contexts = await fetch_recent_run_view_models(
+        storage,
+        paradoxes,
+        config.ANALYST_MODEL
+    )
+
     return templates.TemplateResponse("index.html", {
         "request": request, 
         "paradoxes": paradoxes,
         "models": config.AVAILABLE_MODELS,
-        "default_model": config.DEFAULT_MODEL
+        "default_model": config.DEFAULT_MODEL,
+        "recent_run_contexts": recent_run_contexts
     })
 
 
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict:
     """Health check endpoint"""
     return {
         "status": "healthy",
@@ -135,7 +132,7 @@ async def health_check():
 
 
 @app.get("/api/paradoxes")
-async def get_paradoxes():
+async def get_paradoxes() -> list:
     """Get available paradoxes"""
     try:
         paradoxes_path = Path(__file__).parent / "paradoxes.json"
@@ -148,7 +145,7 @@ async def get_paradoxes():
 
 
 @app.get("/api/runs")
-async def list_runs():
+async def list_runs() -> list:
     """List all runs (metadata only)"""
     try:
         runs = await storage.list_runs()
@@ -159,7 +156,7 @@ async def list_runs():
 
 
 @app.get("/api/runs/{run_id}")
-async def get_run(run_id: str):
+async def get_run(run_id: str) -> dict:
     """Get specific run by ID"""
     try:
         run = await storage.get_run(run_id)
@@ -172,7 +169,7 @@ async def get_run(run_id: str):
 
 
 @app.post("/api/query")
-async def execute_query(request: Request, query_request: QueryRequest):
+async def execute_query(request: Request, query_request: QueryRequest) -> dict:
     """Execute experimental run"""
     try:
         # Load paradox
@@ -235,7 +232,7 @@ async def execute_query(request: Request, query_request: QueryRequest):
 
 
 @app.post("/api/insight")
-async def generate_insight(request: InsightRequest):
+async def generate_insight(request: InsightRequest) -> dict:
     """Generate AI insight summary"""
     try:
         model_to_use = request.analystModel or config.ANALYST_MODEL
@@ -276,7 +273,7 @@ async def generate_insight(request: InsightRequest):
 
 
 @app.post("/api/runs/{run_id}/analyze")
-async def analyze_run(request: Request, run_id: str):
+async def analyze_run(request: Request, run_id: str) -> HTMLResponse:
     """Generate and return analysis for a run (HTMX plain text/html)"""
     try:
         # Get form data if present

@@ -66,7 +66,9 @@
 <div class="card">
     <h2>Results Stream</h2>
     <div id="results-area">
-        <!-- Results will be injected here -->
+        {% for ctx in recent_run_contexts %}
+        {% include "partials/result_item.html" %}
+        {% endfor %}
     </div>
 </div>
 

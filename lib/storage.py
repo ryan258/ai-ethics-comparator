@@ -9,7 +9,7 @@ import asyncio
 import re
 from pathlib import Path
 from typing import Dict, List, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class RunStorage:
@@ -18,7 +18,7 @@ class RunStorage:
     def __init__(self, results_root: str):
         self.results_root = Path(results_root)
 
-    async def ensure_results_dir(self):
+    async def ensure_results_dir(self) -> None:
         """Ensure results directory exists"""
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, lambda: self.results_root.mkdir(parents=True, exist_ok=True))
@@ -65,7 +65,7 @@ class RunStorage:
 
         return await loop.run_in_executor(None, _get_next_id)
 
-    async def save_run(self, run_id: str, run_data: Dict[str, Any]):
+    async def save_run(self, run_id: str, run_data: Dict[str, Any]) -> None:
         """
         Save run data to filesystem (flat file)
 
@@ -131,10 +131,28 @@ class RunStorage:
 
                 except Exception as e:
                     # Log error but continue listing other files
-                    print(f"Error reading run file {entry}: {e}")
+                    import logging
+                    logging.getLogger(__name__).error(f"Error reading run file {entry}: {e}")
+
+            # Helper for robust timestamp parsing
+            def parse_ts(ts):
+                # Sentinel: earliest possible time, strictly UTC-aware to match stored runs
+                sentinel = datetime.min.replace(tzinfo=timezone.utc)
+                if not ts: return sentinel
+
+                # Handle 'Z' -> '+00:00'
+                ts = ts.replace("Z", "+00:00")
+                try:
+                    dt = datetime.fromisoformat(ts)
+                    # If naive, force to UTC
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
+                    return dt
+                except ValueError:
+                    return sentinel
 
             # Sort by timestamp, newest first
-            runs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+            runs.sort(key=lambda x: parse_ts(x.get("timestamp", "")), reverse=True)
             return runs
 
         return await loop.run_in_executor(None, _list)
@@ -172,7 +190,7 @@ class RunStorage:
 
         return await loop.run_in_executor(None, _read)
 
-    async def update_run(self, run_id: str, updates: Dict[str, Any]):
+    async def update_run(self, run_id: str, updates: Dict[str, Any]) -> None:
         """
         Update existing run (e.g., adding insights)
 

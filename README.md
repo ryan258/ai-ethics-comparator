@@ -1,280 +1,67 @@
-# AI Ethics Comparator
+# AI Ethics Comparator (Python/FastAPI)
 
-## Overview
+A research tool for analyzing how large language models (LLMs) reason about ethical dilemmas. It supports both **trolley-style scenarios** (binary choices) and **open-ended ethical questions**.
 
-AI Ethics Comparator is a comprehensive research tool for analyzing how large language models reason about ethical dilemmas. The application supports both **trolley-style scenarios** (binary choice between two groups) and **open-ended ethical questions**, allowing researchers to probe AI decision-making across a wide range of moral frameworks.
-
-For each run, you select a model, configure the scenario, and optionally add ethical priming through system prompts. The tool executes multiple iterations, aggregates results with statistical summaries and visualizations, and provides a complete research dashboard for browsing and exporting past experiments.
-
-## Key Features
-
-### Core Functionality
-- **Dual Paradox Support:** Test models on both trolley-type dilemmas (A vs B choices) and open-ended ethical scenarios
-- **Model-Agnostic:** Compatible with any OpenRouter model (GPT-4, Claude, Gemini, Llama, etc.)
-- **Batch Testing:** Run 1–50 iterations per scenario to identify consistency and patterns
-- **Ethical Priming:** Add system prompts to test how different moral frameworks (utilitarian, deontological, etc.) influence responses
-
-### Advanced Features
-- **Full Reproducibility:** Capture all generation parameters (temperature, top_p, max_tokens, seed, frequency_penalty, presence_penalty) for complete experimental reproducibility
-- **Batch Model Runner:** Select multiple models and run the same scenario across all of them simultaneously with real-time progress tracking
-- **Side-by-Side Comparison:** Compare 2-3 runs in split-screen view with automated Chi-square statistical testing for trolley-type runs
-- **Enhanced Statistics Module:** Wilson confidence intervals, bootstrap consistency estimation, Cohen's h effect sizes, and comprehensive statistical summaries
-- **AI Insight Summary:** Generate AI-powered analysis of run results, automatically detecting ethical frameworks, consistency patterns, and key insights
-- **Results Dashboard:** Browse, filter, and view all past experimental runs in a dedicated Results tab
-- **Data Export:** Export runs to CSV or JSON format, with batch export capability for all runs at once
-- **Visual Analytics:** Automatic bar charts show decision distribution for trolley-type scenarios
-- **Statistical Validation:** Chi-square tests with p-values to determine if decision distributions are statistically significant
-- **Rate Limiting & Retry Logic:** Automatic retry with exponential backoff for API failures, with concurrency control to prevent rate limiting
-- **Security Hardened:** Input validation, XSS protection with DOMPurify, helmet security headers, and strict CORS
-- **Undecided Detection:** Iterations where the AI fails to choose are flagged with ⚠️ warnings
-- **Enhanced Error Reporting:** Specific error messages for API issues (rate limits, invalid models, billing problems, etc.)
-
-### User Experience
-- **Live Prompt Preview:** See exactly what the AI will receive as you edit scenarios
-- **Session Persistence:** Your last-used model is remembered between sessions
-- **Clear Run Button:** Quickly reset results to start fresh
-- **Responsive UI:** Tab-based interface with Query and Results views
+## Core Features
+*   **Arsenal Architecture**: Modular, dependency-injected design (FastAPI + HTMX).
+*   **Dual Paradox Support**: Binary choices & open-ended scenarios.
+*   **Deep Analysis**: "Moral Complexes" detection (Duty, Consequence, etc.) by an Analyst Agent.
+*   **Persistence**: Run history saved to local JSON files.
+*   **Reproducibility**: Experiments capture all parameters (temperature, full prompt, seeds).
 
 ## Quick Start
 
-```bash
-npm install
-```
+### Prerequisites
+*   Python 3.10+
+*   An OpenRouter API Key
 
-Create `.env` with your OpenRouter credentials (copy `.example.env` if you like):
+### Installation
 
-```env
-OPENROUTER_API_KEY=sk-or-your-key
-# optional:
-# OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-# APP_BASE_URL=http://localhost:3000
-# APP_NAME="AI Ethics Comparator"
-```
+1.  **Clone & Setup**:
+    ```bash
+    git clone <repo>
+    cd ai-ethics-comparator
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install -r requirements.txt
+    ```
 
-Launch the app:
+2.  **Configuration**:
+    Create a `.env` file:
+    ```env
+    OPENROUTER_API_KEY=sk-or-your-key-here
+    OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+    APP_BASE_URL=http://localhost:8000
+    APP_NAME="AI Ethics Comparator"
+    # optional:
+    ANALYST_MODEL=provider/model-name
+    ```
 
-```bash
-npm run dev   # nodemon auto-restarts on changes
-# or npm start for a one-off process
-```
+3.  **Run**:
+    ```bash
+    ./run_server.sh
+    # OR
+    source venv/bin/activate
+    uvicorn main:app --reload
+    ```
 
-Open `http://localhost:3000` in your browser.
-
-## Using the App
-
-### Query Tab (Running Experiments)
-
-1. **Select a model.** Enter or select an OpenRouter model identifier (e.g., `anthropic/claude-3.5-sonnet`, `openai/gpt-4o`)
-   - **Batch Mode:** Enable "Batch mode" checkbox to select multiple models and run them all sequentially with progress tracking
-2. **Pick a scenario.** Choose from 12 built-in ethical paradoxes:
-   - **7 Trolley-Type Scenarios:** Binary choices between two groups (younger vs. older, criminal vs. surgeon, etc.)
-   - **5 Open-Ended Scenarios:** Complex ethical questions (white lies, privacy vs. security, resource allocation, etc.)
-3. **Configure the scenario:**
-   - For trolley-type: Edit Group 1 and Group 2 descriptions (the UI shows/hides these automatically)
-   - For open-ended: The prompt is fixed (no group editing needed)
-4. **Set iterations.** Choose 1–50 iterations (default: 10). More iterations = better statistical confidence.
-5. **(Optional) Configure advanced settings.** Expand "Advanced Settings" to customize:
-   - **System Prompt:** Add ethical priming (e.g., "You are a strict utilitarian who prioritizes the greatest good for the greatest number.")
-   - **Generation Parameters:** Control temperature (0-2), top_p (0-1), max_tokens (50-4000), seed (for reproducibility), frequency_penalty (0-2), presence_penalty (0-2)
-   - All parameters are saved with the run for complete reproducibility
-6. **Ask the model.** Click "Ask the Model" to run all iterations (with automatic retry on failures)
-7. **Review results:**
-   - **Summary Card:** Shows run ID, model, iteration count, and decision breakdown with percentages
-   - **Visual Chart:** Bar chart displays decision distribution (trolley-type only)
-   - **Iteration Details:** Expand to see every individual response with explanations
-   - **Undecided Warning:** Responses without valid `{1}` or `{2}` tokens are flagged with ⚠️
-8. **Clear results.** Use the "Clear Run" button to reset and start fresh
-
-### Results Tab (Browsing Past Runs)
-
-1. **Switch to Results tab** to see all past experimental runs
-2. **Browse runs.** Each card shows:
-   - Run ID (model name + sequential number)
-   - Model used
-   - Paradox tested
-   - Number of iterations
-   - Timestamp
-3. **Compare runs.** Click "Enable Compare Mode" to select 2-3 runs for side-by-side comparison
-   - Automatically runs Chi-square test for trolley-type runs
-   - Displays p-values and statistical significance
-   - Shows charts side-by-side for easy comparison
-4. **View run details.** Click any run to see full results with summary, chart, and iteration details
-5. **Generate AI Insights.** Click "Generate AI Insight Summary" to get automated analysis of the run
-   - Choose your analyst model (defaults to `google/gemini-2.0-flash-001`)
-   - Identifies dominant ethical framework
-   - Analyzes common justifications and reasoning patterns
-   - Detects contradictions and consistency issues
-6. **Export data:**
-   - **Export to CSV:** Individual run in CSV format
-   - **Export to JSON:** Individual run in JSON format
-   - **Export All:** Batch export all runs as a single JSON file
-7. **Return to list.** Use "← Back to List" to browse other runs
-
-### Data Persistence
-
-Each run is automatically saved to `results/<model>-NNN/run.json` with complete data:
-- `runId`, `timestamp`, `modelName`, `paradoxId`, `paradoxType`
-- `prompt` (the exact text sent to the AI)
-- `systemPrompt` (if ethical priming was used)
-- `groups` (Group 1 and Group 2 descriptions)
-- `iterationCount`
-- `params` (all generation parameters: temperature, top_p, max_tokens, seed, frequency_penalty, presence_penalty)
-- `summary` (aggregated counts and percentages)
-- `responses[]` (every iteration with decision token, group choice, explanation, raw text, and timestamp)
-- `insights[]` (AI-generated analyses with timestamp, analyst model, and content - saved when you generate insights)
-
-The `results/` directory is gitignored, keeping your experiments local.
+4.  **Access**: Open `http://localhost:8000`
 
 ## Project Structure
 
-```
-ai-ethics-comparator/
-├── public/
-│   ├── index.html        # UI layout with Query and Results tabs
-│   ├── style.css         # Styling and markdown rhythm
-│   └── app.js            # Client logic: tabs, results dashboard, charts, CSV export
-├── paradoxes.json        # 12 ethical scenarios (7 trolley-type, 5 open-ended)
-├── aiService.js          # OpenRouter client with dual API support
-├── server.js             # Express API with /query and /runs endpoints
-├── results/              # Local run archives (gitignored, auto-created)
-├── package.json          # Scripts and dependencies
-├── README.md             # This file
-├── ROADMAP.md            # Development roadmap and future features
-├── HANDBOOK.md           # Comprehensive user guide
-└── ...
-```
+*   `main.py`: Fast API entry point & routing.
+*   `lib/`: Core logic modules (Arsenal Strategy).
+    *   `ai_service.py`: OpenRouter interaction.
+    *   `analysis.py`: Insight generation & Moral Complexes.
+    *   `query_processor.py`: Experiment execution engine.
+    *   `storage.py`: Async filesystem result storage.
+    *   `stats.py`: Statistical utilities.
+*   `templates/`: Jinja2 templates (HTMX partials).
+*   `static/`: CSS & assets (Candlelight theme).
+*   `results/`: Local JSON storage for runs (gitignored).
 
-## Available Scripts
+## Usage
 
-- `npm run dev` – Start server with nodemon (auto-restart on file changes)
-- `npm start` – Launch server once with Node
-
-## Tech Stack
-
-- **Front-end:** Vanilla HTML, CSS, JavaScript
-  - `marked.js` for Markdown rendering
-  - `Chart.js` for data visualization
-- **Back-end:** Node.js, Express
-  - Filesystem-based persistence (JSON)
-  - RESTful API architecture
-- **AI Integration:** OpenRouter via official `openai` SDK
-  - Supports both `responses.create` and `chat.completions` APIs
-  - Compatible with 100+ models (GPT, Claude, Gemini, Llama, Mistral, etc.)
-
-## API Endpoints
-
-### `GET /health`
-Health check endpoint returning application status, version, timestamp, and uptime.
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "version": "5.0.0",
-  "timestamp": "2025-10-31T...",
-  "uptime": 12345.67
-}
-```
-
-### `GET /api/paradoxes`
-Returns the list of available ethical scenarios from `paradoxes.json`.
-
-### `POST /api/query`
-Executes a batch of iterations for a given model and scenario with automatic retry on failures and concurrency control.
-
-**Request body:**
-```json
-{
-  "modelName": "anthropic/claude-3.5-sonnet",
-  "paradoxId": "trolley_problem",
-  "groups": {
-    "group1": "A 20-year-old who recently committed a crime",
-    "group2": "A 55-year-old community volunteer"
-  },
-  "iterations": 10,
-  "systemPrompt": "You are a utilitarian.", // optional
-  "params": { // optional - all generation parameters
-    "temperature": 1.0,
-    "top_p": 1.0,
-    "max_tokens": 1000,
-    "seed": 12345, // optional
-    "frequency_penalty": 0,
-    "presence_penalty": 0
-  }
-}
-```
-
-**Response:** Complete run data with summary, parameters, and all iteration responses.
-
-### `POST /api/insight`
-Generates AI-powered insight summary for a run.
-
-**Request body:**
-```json
-{
-  "runData": { /* complete run.json data */ },
-  "analystModel": "google/gemini-2.0-flash-001" // optional, defaults to gemini-2.0-flash
-}
-```
-
-**Response:**
-```json
-{
-  "insight": "Comprehensive analysis text...",
-  "model": "anthropic/claude-3.5-sonnet"
-}
-```
-
-### `GET /api/runs`
-Returns metadata for all past runs (sorted by timestamp, newest first).
-
-### `GET /api/runs/:runId`
-Returns complete data for a specific run by ID.
-
-## Research Use Cases
-
-This tool is designed for researchers studying:
-
-1. **AI Alignment:** How do models make ethical decisions by default?
-2. **Consistency Testing:** Do models give the same answer across multiple iterations?
-3. **Bias Detection:** Are there systematic patterns in how models value different demographics?
-4. **Priming Effects:** How do system prompts influence moral reasoning?
-5. **Cross-Model Comparison:** How do different AI systems approach the same dilemma?
-6. **Framework Analysis:** Do models exhibit utilitarian, deontological, or virtue ethics patterns?
-7. **Statistical Validation:** Use Chi-square tests to determine if differences between runs are statistically significant
-8. **Large-Scale Studies:** Run batch experiments across multiple models simultaneously for comprehensive comparative analysis
-
-## Contributing
-
-Contributions are welcome! See [`ROADMAP.md`](ROADMAP.md) for planned features. Areas of interest:
-- Additional ethical scenarios
-- Search/filter functionality for Results tab
-- Advanced statistical analysis (confidence intervals, consistency metrics)
-- Prompt management UI
-- Dark mode and UI enhancements
-
-## Security Features
-
-The application includes production-ready security measures:
-- **Input Validation:** Server-side validation with Zod for all API requests
-- **XSS Protection:** Client-side sanitization with DOMPurify
-- **Security Headers:** Helmet middleware with Content Security Policy
-- **CORS Protection:** Strict origin validation
-- **Rate Limiting:** Automatic retry with exponential backoff for API failures
-- **Concurrency Control:** Limited to 3 concurrent requests to prevent rate limiting
-
-## Version & Health Monitoring
-
-- **Current Version:** 5.0.0
-- **Health Endpoint:** `GET /health` for monitoring
-- **Version Header:** All responses include `X-App-Version` header
-
-## License
-
-MIT License - See [LICENSE](LICENSE) file for details
-
-## Documentation
-
-- **README.md** (this file) – Quick start and technical overview
-- **HANDBOOK.md** – Comprehensive user guide with research methodology and best practices
-- **ROADMAP.md** – Development roadmap and future enhancements
+1.  **Configure**: Select a paradox and an AI model (or type any OpenRouter ID).
+2.  **Run**: Set iterations (e.g., 5 or 10) and click "Run Experiment".
+3.  **Analyze**: Click "View Analysis" on any result to generate an AI-powered breakdown of ethical frameworks used.

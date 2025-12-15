@@ -1,59 +1,60 @@
 <div class="result-item">
     <div class="result-header">
-        <h3>{{ run_data.modelName }}</h3>
-        <span class="result-subtitle">{{ paradox.title }}</span>
+        <h3>{{ ctx.model_name }}</h3>
+        <span class="result-subtitle">{{ ctx.paradox_title }}</span>
     </div>
 
     <div class="result-body">
         <div class="scenario-box">
             <h4 class="scenario-title">The Scenario</h4>
             <div class="markdown-body">
-                {{ paradox.promptTemplate.replace('{{GROUP1}}', run_data.groups.group1 or
-                paradox.group1Default).replace('{{GROUP2}}', run_data.groups.group2 or paradox.group2Default) | markdown
-                }}
+                {{ ctx.scenario_html }}
             </div>
         </div>
 
+        {% if ctx.paradox_type == 'trolley' %}
         <div class="result-stats">
-            <span class="result-stats-count">{{ summary.group1.count|default(0) }} ({{ p1 }}%)</span>
-            <span title="{{ run_data.groups.group1 or paradox.group1Default }}">
-                <strong>Option 1:</strong> {{ run_data.groups.group1 or paradox.group1Default }}
+            <span class="result-stats-count">{{ ctx.count1 }} ({{ ctx.p1 }}%)</span>
+            <span title="{{ ctx.group1_desc }}">
+                <strong>Option 1:</strong> {{ ctx.group1_desc }}
             </span>
         </div>
         <div class="result-stats">
-            <span class="result-stats-count">{{ summary.group2.count|default(0) }} ({{ p2 }}%)</span>
-            <span title="{{ run_data.groups.group2 or paradox.group2Default }}">
-                <strong>Option 2:</strong> {{ run_data.groups.group2 or paradox.group2Default }}
+            <span class="result-stats-count">{{ ctx.count2 }} ({{ ctx.p2 }}%)</span>
+            <span title="{{ ctx.group2_desc }}">
+                <strong>Option 2:</strong> {{ ctx.group2_desc }}
             </span>
         </div>
         <div class="progress-bar">
-            <div class="progress-fill success" style="width: {{ p1 }}%;"></div>
-            <div class="progress-fill danger" style="width: {{ p2 }}%;"></div>
+            <div class="progress-fill success" style="width: {{ ctx.p1 }}%;"></div>
+            <div class="progress-fill danger" style="width: {{ ctx.p2 }}%;"></div>
         </div>
-        <div class="result-id">Run ID: {{ run_id }}</div>
+        {% endif %}
+        <div class="result-id">Run ID: {{ ctx.run_id }}</div>
     </div>
 
     <div class="result-actions">
-        <button class="btn btn-primary btn-sm" onclick="document.getElementById('analysis-{{ run_id }}').showModal()">
+        <button class="btn btn-primary btn-sm"
+            onclick="document.getElementById('analysis-{{ ctx.run_id }}').showModal()">
             View Analysis
         </button>
     </div>
 
-    <dialog id="analysis-{{ run_id }}" class="analysis-modal">
+    <dialog id="analysis-{{ ctx.run_id }}" class="analysis-modal">
         <div class="modal-header">
             <h2>Ethical Analysis</h2>
-            <button class="btn btn-sm" onclick="document.getElementById('analysis-{{ run_id }}').close()">✕</button>
+            <button class="btn btn-sm" onclick="document.getElementById('analysis-{{ ctx.run_id }}').close()">✕</button>
         </div>
 
         <!-- Analysis Container (Loads via HTMX) -->
-        <div id="analysis-content-{{ run_id }}">
-            {% if run_data.insights %}
+        <div id="analysis-content-{{ ctx.run_id }}">
+            {% if ctx.has_insight %}
             <div class="analysis-content">
                 <div class="analysis-meta">
-                    Analysis by <strong>{{ run_data.insights[-1].analystModel }}</strong> (Cached)
+                    Analysis by <strong>{{ ctx.insight_model }}</strong> (Cached)
                 </div>
                 <div class="markdown-body">
-                    {{ run_data.insights[-1].content | markdown }}
+                    {{ ctx.insight_html }}
                 </div>
             </div>
             {% else %}
@@ -61,21 +62,21 @@
                 <p class="empty-state-text">No analysis generated yet.</p>
 
                 <div class="analysis-input-group">
-                    <label for="analystModel-{{ run_id }}" class="analysis-input-label">Analyst Model</label>
-                    <input type="text" name="analyst_model" id="analystModel-{{ run_id }}"
-                        value="{{ config_analyst_model }}" placeholder="e.g. provider/model-name"
+                    <label for="analystModel-{{ ctx.run_id }}" class="analysis-input-label">Analyst Model</label>
+                    <input type="text" name="analyst_model" id="analystModel-{{ ctx.run_id }}"
+                        value="{{ ctx.config_analyst_model }}" placeholder="e.g. provider/model-name"
                         class="analysis-input-field">
                     <div class="analysis-input-help">
                         Override the default analyst model if desired.
                     </div>
                 </div>
 
-                <button class="btn btn-primary" hx-post="/api/runs/{{ run_id }}/analyze"
-                    hx-include="#analystModel-{{ run_id }}" hx-target="#analysis-content-{{ run_id }}"
-                    hx-swap="innerHTML" hx-indicator="#loading-{{ run_id }}">
+                <button class="btn btn-primary" hx-post="/api/runs/{{ ctx.run_id }}/analyze"
+                    hx-include="#analystModel-{{ ctx.run_id }}" hx-target="#analysis-content-{{ ctx.run_id }}"
+                    hx-swap="innerHTML" hx-indicator="#loading-{{ ctx.run_id }}">
                     ✨ Generate Ethical Analysis
                 </button>
-                <div id="loading-{{ run_id }}" class="htmx-indicator manual-analyze-btn">
+                <div id="loading-{{ ctx.run_id }}" class="htmx-indicator manual-analyze-btn">
                     Analyzing...
                 </div>
             </div>
@@ -86,7 +87,7 @@
             <details>
                 <summary class="summary-toggle">View Raw JSON Data</summary>
                 <div class="json-dump">
-                    {{ run_data_json }}
+                    {{ ctx.run_data_json }}
                 </div>
             </details>
         </div>
