@@ -228,6 +228,14 @@ async def execute_query(request: Request, query_request: QueryRequest) -> dict:
         raise
     except Exception as e:
         logger.error(f"Query execution failed: {e}")
+        error_str = str(e).lower()
+        if "401" in error_str or "unauthorized" in error_str:
+             raise HTTPException(status_code=401, detail="Invalid API Key or Unauthorized.")
+        elif "429" in error_str or "rate limit" in error_str:
+             raise HTTPException(status_code=429, detail="Rate limit exceeded. Try fewer iterations.")
+        elif "insufficient_quota" in error_str or "quota" in error_str:
+             raise HTTPException(status_code=402, detail="Insufficient API credits.")
+
         raise HTTPException(status_code=500, detail="Internal server error")
 
 

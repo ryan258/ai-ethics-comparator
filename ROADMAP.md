@@ -26,6 +26,11 @@ The project has been fully rewritten in Python using FastAPI + HTMX, following t
 7. ✅ **Verification Scripts** - Added `quick_verify.py`, `verify_persistence.py`, `verify_moral_complexes.py`
 8. ✅ **README Simplification** - From 280 to 67 lines (focused quick start)
 
+**Latest improvements (2025-12-14 - Ready to Ship):**
+1. ✅ **Enhanced Retry Logic** - Increased MAX_RETRIES from 4 to 5 for better transient failure handling
+2. ✅ **API Error Handling** - Specific HTTP status codes for auth (401), rate limits (429), and quota (402) errors
+3. ✅ **Bedrock Paradoxes Documentation** - NEW `paradoxes.md` with 30 curated scenarios (King, Jung, Lovecraft, Serling, Borges)
+
 **V6.0 Status:**
 🚢 **READY TO SHIP** - All features complete, production-ready, security hardened
 
@@ -165,13 +170,14 @@ The project has been fully rewritten in Python using FastAPI + HTMX, following t
 
 ### **Minor (Non-Blocking)**
 - ⚠️ **HTMX Form Serialization:** Nested params handled by validator but may have edge cases
+- ⚠️ **Long-running requests:** No progress indicators for experiments >20 iterations
 
 ### **Nice to Have**
-- Testing Infrastructure (pytest)
+- Testing Infrastructure (pytest) - planned for Phase 8
 - SQLite storage backend (when filesystem scales out)
 - Frontend refactoring (split JavaScript)
 - Dark/Light mode toggle
-- Return type hints for all public methods
+- Timeout configuration for long-running experiments
 
 ---
 
@@ -222,7 +228,7 @@ The project has been fully rewritten in Python using FastAPI + HTMX, following t
 - **Lines of Code:** ~2,000 total (1,654 Python, 250 HTML, 307 CSS)
 - **Arsenal Modules:** 8 (validation, ai_service, storage, query_processor, stats, config, analysis, view_models)
 - **API Endpoints:** 7 (health, paradoxes, runs, query, insight, analyze)
-- **Paradoxes:** 12 (7 trolley, 5 open-ended)
+- **Paradoxes:** 12 active scenarios (7 trolley, 5 open-ended) + 30 documented "Bedrock" scenarios in paradoxes.md
 - **Dependencies:** 9 Python packages (fastapi, uvicorn, pydantic, python-dotenv, httpx, jinja2, python-multipart, markdown, openai)
 - **Build Steps:** 0 (no npm, webpack, docker)
 

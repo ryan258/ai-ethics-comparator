@@ -12,7 +12,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Retry configuration
-MAX_RETRIES = 4
+MAX_RETRIES = 5
 INITIAL_RETRY_DELAY = 2  # seconds
 
 
