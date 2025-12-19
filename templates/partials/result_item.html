@@ -1,95 +1,113 @@
 <div class="result-item">
-    <div class="result-header">
-        <h3>{{ ctx.model_name }}</h3>
-        <span class="result-subtitle">{{ ctx.paradox_title }}</span>
+  <div class="result-header">
+    <h3>{{ ctx.model_name }}</h3>
+    <span class="result-subtitle">{{ ctx.paradox_title }}</span>
+  </div>
+
+  <div class="result-body">
+    <div class="scenario-box">
+      <h4 class="scenario-title">The Scenario</h4>
+      <div class="markdown-body">{{ ctx.scenario_html }}</div>
     </div>
 
-    <div class="result-body">
-        <div class="scenario-box">
-            <h4 class="scenario-title">The Scenario</h4>
-            <div class="markdown-body">
-                {{ ctx.scenario_html }}
-            </div>
-        </div>
+    {% if ctx.paradox_type == 'trolley' %}
+    <div class="result-stats">
+      <span class="result-stats-count">{{ ctx.count1 }} ({{ ctx.p1 }}%)</span>
+      <span title="{{ ctx.group1_desc }}">
+        <strong>Option 1:</strong> {{ ctx.group1_desc }}
+      </span>
+    </div>
+    <div class="result-stats">
+      <span class="result-stats-count">{{ ctx.count2 }} ({{ ctx.p2 }}%)</span>
+      <span title="{{ ctx.group2_desc }}">
+        <strong>Option 2:</strong> {{ ctx.group2_desc }}
+      </span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill success" style="--width: {{ ctx.p1 }}%;"></div>
+      <div class="progress-fill danger" style="--width: {{ ctx.p2 }}%;"></div>
+    </div>
+    {% endif %}
+    <div class="result-id">Run ID: {{ ctx.run_id }}</div>
+  </div>
 
-        {% if ctx.paradox_type == 'trolley' %}
-        <div class="result-stats">
-            <span class="result-stats-count">{{ ctx.count1 }} ({{ ctx.p1 }}%)</span>
-            <span title="{{ ctx.group1_desc }}">
-                <strong>Option 1:</strong> {{ ctx.group1_desc }}
-            </span>
-        </div>
-        <div class="result-stats">
-            <span class="result-stats-count">{{ ctx.count2 }} ({{ ctx.p2 }}%)</span>
-            <span title="{{ ctx.group2_desc }}">
-                <strong>Option 2:</strong> {{ ctx.group2_desc }}
-            </span>
-        </div>
-        <div class="progress-bar">
-            <div class="progress-fill success" style="width: {{ ctx.p1 }}%;"></div>
-            <div class="progress-fill danger" style="width: {{ ctx.p2 }}%;"></div>
-        </div>
-        {% endif %}
-        <div class="result-id">Run ID: {{ ctx.run_id }}</div>
+  <div class="result-actions">
+    <button
+      class="btn btn-primary btn-sm"
+      onclick="document.getElementById('analysis-{{ ctx.run_id }}').showModal()"
+    >
+      View Analysis
+    </button>
+  </div>
+
+  <dialog id="analysis-{{ ctx.run_id }}" class="analysis-modal">
+    <div class="modal-header">
+      <h2>Ethical Analysis</h2>
+      <button
+        class="btn btn-sm"
+        onclick="document.getElementById('analysis-{{ ctx.run_id }}').close()"
+      >
+        ✕
+      </button>
     </div>
 
-    <div class="result-actions">
-        <button class="btn btn-primary btn-sm"
-            onclick="document.getElementById('analysis-{{ ctx.run_id }}').showModal()">
-            View Analysis
+    <!-- Analysis Container (Loads via HTMX) -->
+    <div id="analysis-content-{{ ctx.run_id }}">
+      {% if ctx.has_insight %}
+      <div class="analysis-content">
+        <div class="analysis-meta">
+          Analysis by <strong>{{ ctx.insight_model }}</strong> (Cached)
+        </div>
+        <div class="markdown-body">{{ ctx.insight_html }}</div>
+      </div>
+      {% else %}
+      <div class="empty-state">
+        <p class="empty-state-text">No analysis generated yet.</p>
+
+        <div class="analysis-input-group">
+          <label
+            for="analystModel-{{ ctx.run_id }}"
+            class="analysis-input-label"
+            >Analyst Model</label
+          >
+          <input
+            type="text"
+            name="analyst_model"
+            id="analystModel-{{ ctx.run_id }}"
+            value="{{ ctx.config_analyst_model }}"
+            placeholder="e.g. provider/model-name"
+            class="analysis-input-field"
+          />
+          <div class="analysis-input-help">
+            Override the default analyst model if desired.
+          </div>
+        </div>
+
+        <button
+          class="btn btn-primary"
+          hx-post="/api/runs/{{ ctx.run_id }}/analyze"
+          hx-include="#analystModel-{{ ctx.run_id }}"
+          hx-target="#analysis-content-{{ ctx.run_id }}"
+          hx-swap="innerHTML"
+          hx-indicator="#loading-{{ ctx.run_id }}"
+        >
+          ✨ Generate Ethical Analysis
         </button>
+        <div
+          id="loading-{{ ctx.run_id }}"
+          class="htmx-indicator manual-analyze-btn"
+        >
+          Analyzing...
+        </div>
+      </div>
+      {% endif %}
     </div>
 
-    <dialog id="analysis-{{ ctx.run_id }}" class="analysis-modal">
-        <div class="modal-header">
-            <h2>Ethical Analysis</h2>
-            <button class="btn btn-sm" onclick="document.getElementById('analysis-{{ ctx.run_id }}').close()">✕</button>
-        </div>
-
-        <!-- Analysis Container (Loads via HTMX) -->
-        <div id="analysis-content-{{ ctx.run_id }}">
-            {% if ctx.has_insight %}
-            <div class="analysis-content">
-                <div class="analysis-meta">
-                    Analysis by <strong>{{ ctx.insight_model }}</strong> (Cached)
-                </div>
-                <div class="markdown-body">
-                    {{ ctx.insight_html }}
-                </div>
-            </div>
-            {% else %}
-            <div class="empty-state">
-                <p class="empty-state-text">No analysis generated yet.</p>
-
-                <div class="analysis-input-group">
-                    <label for="analystModel-{{ ctx.run_id }}" class="analysis-input-label">Analyst Model</label>
-                    <input type="text" name="analyst_model" id="analystModel-{{ ctx.run_id }}"
-                        value="{{ ctx.config_analyst_model }}" placeholder="e.g. provider/model-name"
-                        class="analysis-input-field">
-                    <div class="analysis-input-help">
-                        Override the default analyst model if desired.
-                    </div>
-                </div>
-
-                <button class="btn btn-primary" hx-post="/api/runs/{{ ctx.run_id }}/analyze"
-                    hx-include="#analystModel-{{ ctx.run_id }}" hx-target="#analysis-content-{{ ctx.run_id }}"
-                    hx-swap="innerHTML" hx-indicator="#loading-{{ ctx.run_id }}">
-                    ✨ Generate Ethical Analysis
-                </button>
-                <div id="loading-{{ ctx.run_id }}" class="htmx-indicator manual-analyze-btn">
-                    Analyzing...
-                </div>
-            </div>
-            {% endif %}
-        </div>
-
-        <div class="modal-footer-container">
-            <details>
-                <summary class="summary-toggle">View Raw JSON Data</summary>
-                <div class="json-dump">
-                    {{ ctx.run_data_json }}
-                </div>
-            </details>
-        </div>
-    </dialog>
+    <div class="modal-footer-container">
+      <details>
+        <summary class="summary-toggle">View Raw JSON Data</summary>
+        <div class="json-dump">{{ ctx.run_data_json }}</div>
+      </details>
+    </div>
+  </dialog>
 </div>

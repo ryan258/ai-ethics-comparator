@@ -26,6 +26,7 @@ from lib.storage import RunStorage
 from lib.query_processor import QueryProcessor
 from lib.analysis import AnalysisEngine, AnalysisConfig
 from lib.view_models import safe_markdown, fetch_recent_run_view_models
+from lib.paradoxes import extract_scenario_text, get_paradox_by_id, load_paradoxes
 
 # Logger setup
 import logging
@@ -70,6 +71,9 @@ templates = Jinja2Templates(directory="templates")
 # Use the centralized safe markdown filter
 templates.env.filters['markdown'] = safe_markdown
 
+# Paradoxes data path (used across handlers)
+PARADOXES_PATH = Path(__file__).parent / "paradoxes.json"
+
 # Static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -97,9 +101,7 @@ async def add_version_header(request: Request, call_next):
 async def index(request: Request) -> HTMLResponse:
     """Serve main application page"""
     try:
-        paradoxes_path = Path(__file__).parent / "paradoxes.json"
-        with open(paradoxes_path, 'r') as f:
-            paradoxes = json.load(f)
+        paradoxes = load_paradoxes(PARADOXES_PATH)
     except Exception as e:
         logger.error(f"Failed to load paradoxes: {e}")
         paradoxes = []
@@ -135,13 +137,40 @@ async def health_check() -> dict:
 async def get_paradoxes() -> list:
     """Get available paradoxes"""
     try:
-        paradoxes_path = Path(__file__).parent / "paradoxes.json"
-        with open(paradoxes_path, 'r') as f:
-            paradoxes = json.load(f)
+        paradoxes = load_paradoxes(PARADOXES_PATH)
         return paradoxes
     except Exception as e:
         logger.error(f"Failed to read paradoxes: {e}")
         raise HTTPException(status_code=500, detail="Failed to read paradoxes.")
+
+
+@app.get("/api/fragments/paradox-details")
+async def get_paradox_details(request: Request, paradoxId: str) -> HTMLResponse:
+    """Get HTML fragment for paradox details"""
+    try:
+        paradoxes = load_paradoxes(PARADOXES_PATH)
+        paradox = get_paradox_by_id(paradoxes, paradoxId)
+
+        if not paradox:
+            return HTMLResponse(
+                "<div>Paradox not found</div>",
+                status_code=404
+            )
+
+        # Pre-compute scenario text safely
+        scenario_text = extract_scenario_text(paradox.get("promptTemplate", ""))
+
+        return templates.TemplateResponse("partials/paradox_details.html", {
+            "request": request,
+            "paradox": paradox,
+            "scenario_text": scenario_text
+        })
+    except Exception as e:
+        logger.error(f"Failed to get paradox details: {e}")
+        return HTMLResponse(
+            "<div>Error loading details</div>",
+            status_code=500
+        )
 
 
 @app.get("/api/runs")
@@ -173,13 +202,11 @@ async def execute_query(request: Request, query_request: QueryRequest) -> dict:
     """Execute experimental run"""
     try:
         # Load paradox
-        paradoxes_path = Path(__file__).parent / "paradoxes.json"
-        with open(paradoxes_path, 'r') as f:
-            paradoxes = json.load(f)
+        paradoxes = load_paradoxes(PARADOXES_PATH)
+        paradox = get_paradox_by_id(paradoxes, query_request.paradoxId)
 
-        paradox = next((p for p in paradoxes if p["id"] == query_request.paradoxId), None)
         if not paradox:
-            raise HTTPException(status_code=404, detail="Paradox not found.")
+            raise HTTPException(status_code=404, detail=f"Paradox '{query_request.paradoxId}' not found")
 
         # Execute run
         from lib.query_processor import RunConfig
@@ -205,22 +232,15 @@ async def execute_query(request: Request, query_request: QueryRequest) -> dict:
         # Check for HTMX
         if request.headers.get("HX-Request"):
             # Return an HTML fragment for the results stream
-            summary = run_data.get('summary', {})
-            g1 = summary.get('group1', {})
-            g2 = summary.get('group2', {})
-            p1 = g1.get('percentage', 0)
-            p2 = g2.get('percentage', 0)
+            # defined in lib/view_models.py
+            from lib.view_models import RunViewModel
+            
+            vm = RunViewModel.build(run_data, paradox)
+            vm["config_analyst_model"] = config.ANALYST_MODEL
             
             return templates.TemplateResponse("partials/result_item.html", {
                 "request": request,
-                "run_data": run_data,
-                "paradox": paradox,
-                "run_id": run_id,
-                "summary": summary,
-                "p1": f"{p1:.1f}",
-                "p2": f"{p2:.1f}",
-                "run_data_json": json.dumps(run_data, indent=2),
-                "config_analyst_model": config.ANALYST_MODEL
+                "ctx": vm
             })
 
         return run_data
@@ -230,11 +250,11 @@ async def execute_query(request: Request, query_request: QueryRequest) -> dict:
         logger.error(f"Query execution failed: {e}")
         error_str = str(e).lower()
         if "401" in error_str or "unauthorized" in error_str:
-             raise HTTPException(status_code=401, detail="Invalid API Key or Unauthorized.")
+            raise HTTPException(status_code=401, detail="Invalid API Key or Unauthorized.")
         elif "429" in error_str or "rate limit" in error_str:
-             raise HTTPException(status_code=429, detail="Rate limit exceeded. Try fewer iterations.")
+            raise HTTPException(status_code=429, detail="Rate limit exceeded. Try fewer iterations.")
         elif "insufficient_quota" in error_str or "quota" in error_str:
-             raise HTTPException(status_code=402, detail="Insufficient API credits.")
+            raise HTTPException(status_code=402, detail="Insufficient API credits.")
 
         raise HTTPException(status_code=500, detail="Internal server error")
 
@@ -257,7 +277,7 @@ async def generate_insight(request: InsightRequest) -> dict:
             try:
                 # We need to fetch, append, and save.
                 # Since storage.update_run is now available, we should use it if we implemented it properly.
-                # But let's stick to get/save pattern for now to be safe with existing logic logic
+                # But let's stick to get/save pattern for now to be safe with existing logic
                 # Actually storage.update_run was implemented to do partial updates?
                 # The prompt implemented update_run to update the file content.
                 # But we need to append to a list. Does update_run handle list appending? No.

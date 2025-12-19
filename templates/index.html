@@ -12,7 +12,8 @@
 
             <div class="form-group">
                 <label for="paradoxId">Paradox Scenario</label>
-                <select name="paradoxId" id="paradoxId" required>
+                <select name="paradoxId" id="paradoxId" required hx-get="/api/fragments/paradox-details"
+                    hx-target="#status-container" hx-trigger="change" hx-swap="innerHTML">
                     {% for paradox in paradoxes %}
                     <option value="{{ paradox.id }}">{{ paradox.title }}</option>
                     {% endfor %}

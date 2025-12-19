@@ -1,0 +1,18 @@
+<div class="paradox-details fade-in">
+    <h3>{{ paradox.title }}</h3>
+    <div class="paradox-scenario">
+        <strong>The Scenario:</strong><br>
+        {{ scenario_text }}
+    </div>
+
+    <div class="paradox-options">
+        <div class="paradox-option">
+            <strong>Option 1</strong>
+            <p>{{ paradox.group1Default }}</p>
+        </div>
+        <div class="paradox-option paradox-option--alt">
+            <strong>Option 2</strong>
+            <p>{{ paradox.group2Default }}</p>
+        </div>
+    </div>
+</div>
