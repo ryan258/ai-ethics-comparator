@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>AI Ethics Report - {{ run.runId }}</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 0;
+        background-color: #121212;
+      }
+
+      html {
+        background-color: #121212;
+      }
+
+      body {
+        font-family: "Helvetica", "Arial", sans-serif;
+        line-height: 1.6;
+        color: #ebd2be; /* Warm Beige */
+        background-color: #121212 !important; /* Off-Black */
+        font-size: 11pt;
+        margin: 0;
+        padding: 2cm;
+      }
+
+      /* metadata table */
+      .meta-table {
+        width: 100%;
+        margin-bottom: 30px;
+        border-collapse: collapse;
+      }
+
+      .meta-table td {
+        padding: 8px 0;
+        border-bottom: 1px solid #2a2a2a;
+        color: #e0e0e0;
+      }
+
+      .meta-table tr:last-child td {
+        border-bottom: none;
+      }
+
+      .meta-label {
+        font-weight: bold;
+        color: #a6accd;
+        width: 25%;
+        text-transform: uppercase;
+        font-size: 9pt;
+        letter-spacing: 0.5px;
+      }
+
+      /* typography */
+      h1 {
+        font-size: 26pt;
+        border-bottom: 3px solid #a6accd; /* Lavender */
+        padding-bottom: 15px;
+        margin-bottom: 35px;
+        color: #fff;
+        text-transform: uppercase;
+        letter-spacing: 3px;
+        font-weight: 700;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+      }
+
+      h2 {
+        font-size: 16pt;
+        color: #a6accd; /* Lavender */
+        margin-top: 0;
+        margin-bottom: 20px;
+        border-bottom: 1px solid #333;
+        padding-bottom: 10px;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        font-weight: 600;
+      }
+
+      h3 {
+        font-size: 12pt;
+        color: #98c379; /* Green */
+        margin-top: 5px;
+        margin-bottom: 10px;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+      }
+
+      h4 {
+        font-size: 11pt;
+        color: #fff;
+        margin-top: 15px;
+        margin-bottom: 8px;
+        font-weight: bold;
+        text-decoration: none;
+        border-left: 2px solid #e06c75; /* Red accent */
+        padding-left: 10px;
+      }
+
+      /* components */
+      .result-summary {
+        background: #1a1a1a;
+        padding: 30px;
+        border-radius: 4px; /* Sharper corners */
+        margin-bottom: 30px;
+        border: 1px solid #333;
+        border-left: 6px solid #98c379;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+      }
+
+      .scenario-text {
+        margin-top: 10px;
+        color: #ebd2be;
+        font-style: italic;
+        font-size: 12pt;
+        line-height: 1.8;
+        background: #121212;
+        padding: 15px;
+        border-radius: 4px;
+        border: 1px solid #2a2a2a;
+      }
+
+      .stats-container {
+        margin-top: 25px;
+        overflow: hidden;
+      }
+
+      .stat-box {
+        background: #252525;
+        padding: 20px;
+        border-radius: 4px;
+        margin: 0 3% 0 0;
+        float: left;
+        width: 48%;
+        box-sizing: border-box;
+        border: 1px solid #333;
+        box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);
+      }
+
+      .stat-box strong {
+        color: #fff;
+        display: block;
+        margin-bottom: 8px;
+        font-size: 11pt;
+        border-bottom: 1px solid #444;
+        padding-bottom: 5px;
+      }
+
+      .insight-card {
+        background: #1a1a1a;
+        border: 1px solid #333;
+        padding: 25px;
+        margin-bottom: 25px;
+        border-radius: 4px;
+        page-break-inside: avoid;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+      }
+
+      /* Analysis section headers should look like cards headers */
+      .insight-card h3 {
+        border-bottom: 1px solid #333;
+        padding-bottom: 10px;
+        margin-bottom: 15px;
+      }
+
+      /* list styling */
+      ul {
+        padding-left: 20px;
+        color: #ebd2be;
+        margin-top: 5px;
+      }
+
+      li {
+        margin-bottom: 8px;
+      }
+
+      /* footer */
+      .footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        text-align: center;
+        font-size: 8pt;
+        color: #666;
+        padding: 10px;
+        border-top: 1px solid #333;
+        background-color: #121212;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Ethical Analysis Report</h1>
+
+    <table class="meta-table">
+      <tr>
+        <td class="meta-label">Run ID</td>
+        <td>{{ run.runId }}</td>
+      </tr>
+      <tr>
+        <td class="meta-label">Model</td>
+        <td>{{ run.modelName }}</td>
+      </tr>
+      <tr>
+        <td class="meta-label">Paradox</td>
+        <td>{{ paradox.title }}</td>
+      </tr>
+      <tr>
+        <td class="meta-label">Date</td>
+        <td>{{ generated_at }}</td>
+      </tr>
+    </table>
+
+    <div class="result-summary">
+      <h2>Experimental Results</h2>
+      <div style="margin-bottom: 20px">
+        <strong>Scenario:</strong><br />
+        <div class="scenario-text">
+          {{ paradox.promptTemplate | truncate(400) }}
+        </div>
+      </div>
+
+      {% if run.summary %}
+      <div class="stats-container">
+        <div class="stat-box">
+          <strong>{{ run.groups.group1 | truncate(50) }}</strong>
+          <div style="margin-top: 5px; color: #a6accd">
+            Count: {{ run.summary.group1.count }} ({{
+            "%.1f"|format(run.summary.group1.percentage) }}%)
+          </div>
+        </div>
+        <div class="stat-box">
+          <strong>{{ run.groups.group2 | truncate(50) }}</strong>
+          <div style="margin-top: 5px; color: #a6accd">
+            Count: {{ run.summary.group2.count }} ({{
+            "%.1f"|format(run.summary.group2.percentage) }}%)
+          </div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    {% if insight and insight.content %}
+    <div class="analysis-section">
+      <h2>AI Analysis</h2>
+
+      {% set content = insight.content %} {% if content.legacy_text %}
+      <div class="insight-card">
+        <p>{{ content.legacy_text }}</p>
+      </div>
+      {% else %}
+      <div class="insight-card">
+        <h3>Dominant Ethical Framework</h3>
+        <p>
+          <strong style="color: #98c379; font-size: 12pt"
+            >{{ content.dominant_framework }}</strong
+          >
+        </p>
+      </div>
+
+      <div class="insight-card">
+        <h3>Key Insights</h3>
+        <ul>
+          {% for point in content.key_insights %}
+          <li>{{ point }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="insight-card">
+        <h3>Moral Complexes</h3>
+        <ul>
+          {% for complex in content.moral_complexes %}
+          <li><strong>{{ complex.label }}:</strong> {{ complex.count }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+
+      <div class="insight-card">
+        <h3>Consistency & Justification</h3>
+        <h4>Pattern Recognition</h4>
+        <ul>
+          {% if content.justifications is string %}
+          <li>{{ content.justifications }}</li>
+          {% else %} {% for item in content.justifications %}
+          <li>{{ item }}</li>
+          {% endfor %} {% endif %}
+        </ul>
+
+        <h4>Consistency Check</h4>
+        <ul>
+          {% if content.consistency is string %}
+          <li>{{ content.consistency }}</li>
+          {% else %} {% for item in content.consistency %}
+          <li>{{ item }}</li>
+          {% endfor %} {% endif %}
+        </ul>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="footer">Generated by Anti-Gravity AI Ethics Comparator</div>
+  </body>
+</html>

@@ -7,3 +7,4 @@ jinja2
 python-multipart
 markdown
 openai
+weasyprint==61.2

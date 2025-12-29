@@ -38,6 +38,21 @@
     >
       View Analysis
     </button>
+    <a
+      href="/api/runs/{{ ctx.run_id }}/pdf"
+      class="btn btn-sm"
+      target="_blank"
+      rel="noopener noreferrer"
+      style="
+        text-decoration: none;
+        margin-left: 0.5rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      "
+    >
+      📄 PDF
+    </a>
   </div>
 
   <dialog id="analysis-{{ ctx.run_id }}" class="analysis-modal">

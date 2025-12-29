@@ -15,7 +15,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+import io
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +29,10 @@ from lib.query_processor import QueryProcessor
 from lib.analysis import AnalysisEngine, AnalysisConfig
 from lib.view_models import safe_markdown, fetch_recent_run_view_models
 from lib.paradoxes import extract_scenario_text, get_paradox_by_id, load_paradoxes
+from lib.reporting import ReportGenerator
+
+# Global services
+report_generator = ReportGenerator(templates_dir="templates")
 
 # Logger setup
 import logging
@@ -419,6 +424,51 @@ async def analyze_run(request: Request, run_id: str, regenerate: bool = False) -
         </div>
         """
         return HTMLResponse(error_html, status_code=200) # Return 200 to allow HTMX to swap content
+
+
+
+
+
+
+@app.get("/api/runs/{run_id}/pdf")
+async def download_pdf_report(run_id: str) -> StreamingResponse:
+    """Generate and download PDF report"""
+    # Security: Validate run_id to prevent path traversal
+    if not run_id or "/" in run_id or ".." in run_id or "\\" in run_id:
+        raise HTTPException(status_code=400, detail="Invalid run_id")
+        
+    try:
+        # Load Data
+        run_data = await storage.get_run(run_id)
+        paradoxes = load_paradoxes(PARADOXES_PATH)
+        paradox = get_paradox_by_id(paradoxes, run_data["paradoxId"])
+        
+        if not paradox:
+             raise HTTPException(status_code=404, detail="Paradox definition not found")
+
+        # Get latest insight if available
+        insight = None
+        if "insights" in run_data and run_data["insights"]:
+            insight = run_data["insights"][-1]
+
+        # Generate PDF (using global instance)
+        pdf_bytes = report_generator.generate_pdf_report(run_data, paradox, insight)
+        
+        # Stream response
+        return StreamingResponse(
+            io.BytesIO(pdf_bytes),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f"attachment; filename=report_{run_id}.pdf"
+            }
+        )
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"PDF generation failed for {run_id}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
 
 
 if __name__ == "__main__":
