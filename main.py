@@ -207,28 +207,29 @@ async def execute_query(request: Request, query_request: QueryRequest) -> dict:
     try:
         # Load paradox
         paradoxes = load_paradoxes(PARADOXES_PATH)
-        paradox = get_paradox_by_id(paradoxes, query_request.paradoxId)
+        paradox = get_paradox_by_id(paradoxes, query_request.paradox_id)
 
         if not paradox:
-            raise HTTPException(status_code=404, detail=f"Paradox '{query_request.paradoxId}' not found")
+            raise HTTPException(status_code=404, detail=f"Paradox '{query_request.paradox_id}' not found")
 
         # Execute run
         from lib.query_processor import RunConfig
 
         # Create typed run configuration
+        # Create typed run configuration
         run_config = RunConfig(
-            modelName=query_request.modelName,
+            modelName=query_request.model_name,
             paradox=paradox,
             groups=query_request.groups.dict() if query_request.groups else {},
             iterations=query_request.iterations or 10,
-            systemPrompt=query_request.systemPrompt or "",
+            systemPrompt=query_request.system_prompt or "",
             params=query_request.params.dict() if query_request.params else {}
         )
 
         run_data = await query_processor.execute_run(run_config)
 
         # Generate unique run ID and save
-        run_id = await storage.generate_run_id(query_request.modelName)
+        run_id = await storage.generate_run_id(query_request.model_name)
         run_data["runId"] = run_id
 
         await storage.save_run(run_id, run_data)
