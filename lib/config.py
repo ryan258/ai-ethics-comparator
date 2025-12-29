@@ -27,6 +27,9 @@ class AppConfig(BaseModel):
     AI_MAX_RETRIES: int = 5
     AI_RETRY_DELAY: int = 2
     
+    # Limits
+    MAX_ITERATIONS: int = int(os.getenv("MAX_ITERATIONS", "20"))
+    
     # URLs
     APP_BASE_URL: str = os.getenv("APP_BASE_URL", "http://localhost:8000")
     OPENROUTER_BASE_URL: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")

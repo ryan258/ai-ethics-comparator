@@ -132,7 +132,8 @@ async def index(request: Request) -> HTMLResponse:
         "default_model": config.DEFAULT_MODEL,
         "recent_run_contexts": recent_run_contexts,
         "initial_paradox": initial_paradox,
-        "initial_scenario_text": initial_scenario_text
+        "initial_scenario_text": initial_scenario_text,
+        "max_iterations": config.MAX_ITERATIONS
     })
 
 
@@ -221,6 +222,14 @@ async def execute_query(request: Request, query_request: QueryRequest) -> dict:
 
         if not paradox:
             raise HTTPException(status_code=404, detail=f"Paradox '{query_request.paradox_id}' not found")
+
+        # Validate iterations against config limit
+        req_iterations = query_request.iterations or 10
+        if req_iterations > config.MAX_ITERATIONS:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Iterations {req_iterations} exceeds limit of {config.MAX_ITERATIONS}"
+            )
 
         # Execute run
         from lib.query_processor import RunConfig

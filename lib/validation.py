@@ -29,7 +29,7 @@ class QueryRequest(BaseModel):
     model_name: str = Field(..., alias="modelName", min_length=1, max_length=200)
     paradox_id: str = Field(..., alias="paradoxId", min_length=1, max_length=100)
     groups: Optional[GroupInputs] = None
-    iterations: Optional[int] = Field(default=10, ge=1, le=50)
+    iterations: Optional[int] = Field(default=10, ge=1, le=1000)
     system_prompt: Optional[str] = Field(default=None, alias="systemPrompt", max_length=2000)
     params: Optional[GenerationParams] = None
 

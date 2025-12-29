@@ -37,7 +37,7 @@
 
             <div class="form-group">
                 <label for="iterations">Iterations</label>
-                <input type="number" name="iterations" id="iterations" value="5" min="1" max="20">
+                <input type="number" name="iterations" id="iterations" value="5" min="1" max="{{ max_iterations }}">
             </div>
 
             <button type="submit" class="btn btn-primary" hx-disabled-elt="this">Run Experiment</button>
