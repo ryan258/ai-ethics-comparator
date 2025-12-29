@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from datetime import datetime
 import re
+import random
 
 from dotenv import load_dotenv
 # Load environment immediately - MUST be before any lib imports that use config
@@ -117,12 +118,21 @@ async def index(request: Request) -> HTMLResponse:
         config.ANALYST_MODEL
     )
 
+    # Select random paradox for initial display
+    initial_paradox = None
+    initial_scenario_text = ""
+    if paradoxes:
+        initial_paradox = random.choice(paradoxes)
+        initial_scenario_text = extract_scenario_text(initial_paradox.get("promptTemplate", ""))
+
     return templates.TemplateResponse("index.html", {
         "request": request, 
         "paradoxes": paradoxes,
         "models": config.AVAILABLE_MODELS,
         "default_model": config.DEFAULT_MODEL,
-        "recent_run_contexts": recent_run_contexts
+        "recent_run_contexts": recent_run_contexts,
+        "initial_paradox": initial_paradox,
+        "initial_scenario_text": initial_scenario_text
     })
 
 
@@ -325,9 +335,14 @@ async def analyze_run(request: Request, run_id: str) -> HTMLResponse:
             cached_model = insight.get("analystModel")
             
             if not requested_analyst or (requested_analyst == cached_model):
+                content = insight["content"]
+                # Normalize legacy string content
+                if isinstance(content, str):
+                    content = {"legacy_text": content}
+
                 return templates.TemplateResponse("partials/analysis_view.html", {
                     "request": request,
-                    "insight": insight["content"],
+                    "insight": content,
                     "model": cached_model,
                     "cached": True
                 })
@@ -361,7 +376,38 @@ async def analyze_run(request: Request, run_id: str) -> HTMLResponse:
         
     except Exception as e:
         logger.error(f"Analysis failed: {e}")
-        return HTMLResponse(f"<div class='error'>Analysis failed. Please check logs.</div>", status_code=500)
+        error_html = f"""
+        <div class="analysis-content">
+            <div class="dashboard-card" style="border-color: var(--accent-danger); color: var(--accent-danger); text-align: center; padding: 2rem;">
+                <h3 style="margin-bottom: 1rem; border-color: var(--accent-danger);">analysis failed</h3>
+                <p style="opacity: 0.8; margin-bottom: 1.5rem;">{str(e)}</p>
+                <div style="font-size: 0.8rem; opacity: 0.6; margin-bottom: 1.5rem;">
+                    The Analyst Model ({model_to_use}) encountered an error.<br>
+                    Try switching to a different model or check your API limits.
+                </div>
+                
+                <!-- Retry Form -->
+                <div class="analysis-input-group" style="margin-bottom: 0;">
+                    <label for="retry-model-{run_id}" class="analysis-input-label" style="color: var(--text-color);">Try Another Model:</label>
+                    <input type="text" name="analyst_model" id="retry-model-{run_id}" value="{model_to_use}" 
+                           class="analysis-input-field" style="border-color: var(--accent-danger);">
+                </div>
+                
+                <button class="btn btn-primary" 
+                        hx-post="/api/runs/{run_id}/analyze" 
+                        hx-include="#retry-model-{run_id}"
+                        hx-target="#analysis-content-{run_id}"
+                        hx-swap="innerHTML"
+                        hx-indicator="#retry-loading-{run_id}">
+                    Retry Analysis
+                </button>
+                <div id="retry-loading-{run_id}" class="htmx-indicator" style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-color);">
+                    Retrying...
+                </div>
+            </div>
+        </div>
+        """
+        return HTMLResponse(error_html, status_code=200) # Return 200 to allow HTMX to swap content
 
 
 if __name__ == "__main__":

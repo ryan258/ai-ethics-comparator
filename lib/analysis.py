@@ -5,6 +5,8 @@ Handles generation of ethical insights from run data.
 """
 
 from typing import Dict, Any, List, Optional
+import json
+from string import Template
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import logging
@@ -82,17 +84,66 @@ class AnalysisEngine:
             # Fallback (minimal)
             meta_prompt = "Analyze this AI run:\n{data}"
             
-        formatted_prompt = meta_prompt.format(data=compiled_text)
+        # Use string.Template for safer substitution (Code Review Fix #9)
+        template = Template(meta_prompt)
+        formatted_prompt = template.safe_substitute(data=compiled_text)
         
-        content = await self.ai_service.get_model_response(
+        raw_content = await self.ai_service.get_model_response(
             config.analyst_model,
             formatted_prompt,
             "",
             {"temperature": config.temperature, "max_tokens": config.max_tokens}
         )
         
+        # Try to parse as JSON (New Dashboard)
+        # Try to parse as JSON (New Dashboard)
+        try:
+            # Enhanced JSON extraction (balanced brace counting) suggested by review
+            def extract_json_object(text: str) -> Optional[str]:
+                """Extract first complete JSON object from text."""
+                brace_count = 0
+                start_idx = text.find('{')
+                if start_idx == -1: return None
+
+                for i, char in enumerate(text[start_idx:], start=start_idx):
+                    if char == '{': brace_count += 1
+                    elif char == '}': 
+                        brace_count -= 1
+                        if brace_count == 0: return text[start_idx:i+1]
+                return None
+
+            json_str = extract_json_object(raw_content)
+            
+            if json_str:
+                parsed_content = json.loads(json_str)
+            else:
+                # Try fallback cleaning
+                clean_content = raw_content.replace('```json', '').replace('```', '').strip()
+                parsed_content = json.loads(clean_content)
+
+            # JSON Schema Validation (Critical Issue #3)
+            required_keys = ["dominant_framework", "moral_complexes", "justifications", "consistency", "key_insights"]
+            missing_keys = [k for k in required_keys if k not in parsed_content]
+            
+            if missing_keys:
+                logger.warning(f"JSON missing keys: {missing_keys}")
+                # Fall back to legacy if critical keys hidden, or keep partial?
+                # Review says "Invalid JSON structure causes errors", so fallback is safer
+                parsed_content = {"legacy_text": raw_content}
+            else:
+                 # Validate types
+                 if not isinstance(parsed_content.get("moral_complexes"), list):
+                     raise ValueError("moral_complexes must be list")
+                 if not isinstance(parsed_content.get("key_insights"), list):
+                     raise ValueError("key_insights must be list")
+
+        except (json.JSONDecodeError, AttributeError, ValueError) as e:
+            logger.warning(f"JSON parsing/validation failed: {e}")
+            # Fallback to legacy text format
+            parsed_content = {"legacy_text": raw_content}
+        
         return {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "analystModel": config.analyst_model,
-            "content": content
+            "content": parsed_content
         }
