@@ -20,7 +20,7 @@ class AnalysisConfig:
     run_data: Dict[str, Any]
     analyst_model: str
     temperature: float = 0.5
-    max_tokens: int = 1000
+    max_tokens: int = 4096 # Increased to support detailed list outputs
 
 class AnalysisEngine:
     def __init__(self, ai_service: AIService):
@@ -34,6 +34,7 @@ class AnalysisEngine:
         text = f"Run Analysis Request\n====================\n\n"
         text += f"Model: {run_data.get('modelName', 'Unknown')}\n"
         text += f"Paradox: {run_data.get('paradoxId', 'Unknown')}\n"
+        text += "\n--- RUN DATA START ---\n"
         
         if paradox_type == "trolley":
             summary = run_data.get("summary", {})
@@ -57,7 +58,8 @@ class AnalysisEngine:
                     continue
                 content = response.get('response', response.get('raw', ''))
                 text += f"Iteration {idx + 1}: {content}\n"
-                
+        
+        text += "\n--- RUN DATA END ---\n"
         return text
 
     async def generate_insight(self, config: AnalysisConfig) -> Dict[str, Any]:

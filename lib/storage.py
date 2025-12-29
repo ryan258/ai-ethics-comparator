@@ -64,25 +64,25 @@ class RunStorage:
                 
                 next_number = max(numbers) + 1 if numbers else 1
                 
-                # Attempt to reserve this ID atomically via Directory Creation
-                # This matches the "Option A" from code review and aligns with legacy structure support
+                # Attempt to reserve this ID atomically via File Creation (Flat JSON)
                 run_id = f"{sanitized}-{str(next_number).zfill(3)}"
-                run_dir = self.results_root / run_id
+                run_file = self.results_root / f"{run_id}.json"
                 
                 try:
-                    # Exclusive directory creation is strictly atomic on POSIX
-                    run_dir.mkdir(parents=True, exist_ok=False)
+                    # Exclusive file creation is strictly atomic on POSIX
+                    with open(run_file, 'x') as f:
+                        pass # Touch file to reserve name
                     return run_id
                 except FileExistsError:
                     continue # ID taken, retry scan
-            
+                    
             raise RuntimeError("Failed to generate unique Run ID after multiple attempts")
 
         return await loop.run_in_executor(None, _get_next_id)
 
     async def save_run(self, run_id: str, run_data: Dict[str, Any]) -> None:
         """
-        Save run data to filesystem (flat file)
+        Save run data to filesystem (flat file preference)
 
         Args:
             run_id: Unique run identifier
@@ -91,13 +91,11 @@ class RunStorage:
         await self.ensure_results_dir()
         
         loop = asyncio.get_running_loop()
+        
+        # Determine target file (Flat file only)
+        # Legacy folders are no longer supported for new writes (migration required)
         run_file = self.results_root / f"{run_id}.json"
-        
-        # Check if run_id exists as a directory (from atomic reservation or legacy)
-        run_dir = self.results_root / run_id
-        if run_dir.exists() and run_dir.is_dir():
-            run_file = run_dir / "run.json"
-        
+
         def _write():
             with open(run_file, 'w') as f:
                 json.dump(run_data, f, indent=2)
@@ -230,13 +228,10 @@ class RunStorage:
         loop = asyncio.get_running_loop()
         
         def _update():
-            # Determine path (prefer flat if exists, else legacy, else create flat)
+            # Determine path (Flat file only)
             flat_path = self.results_root / f"{run_id}.json"
-            legacy_path = self.results_root / run_id / "run.json"
             
             target_path = flat_path
-            if legacy_path.exists() and not flat_path.exists():
-                target_path = legacy_path
                 
             if target_path.exists():
                 with open(target_path, 'r') as f:

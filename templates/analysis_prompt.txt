@@ -11,11 +11,18 @@ The JSON must follow this schema:
     { "label": "Consequence", "count": 7 },
     ... (Use allowed labels: Duty, Consequence, Purity, Authority, Compassion, Risk-aversion, Legalism)
   ],
-  "justifications": "string (summary of patterns)",
-  "consistency": "string (analysis of contradictions)",
+  "justifications": [
+    "Pattern 1 (Reasoning style observed)",
+    "... (Provide 2 to 5 clear bullet points summarizing patterns)"
+  ],
+  "consistency": [
+    "Observation 1 (Contradiction between A and B)",
+    "... (Provide 2 to 5 clear observations on consistency)"
+  ],
   "key_insights": [
-    "bullet point 1",
-    "bullet point 2"
+    "Insight 1 (Deep observation about the model's reasoning)",
+    "Insight 2 (Specific pattern or contradiction found)",
+    "... (Provide 2 to 10 insights. Quality over quantity. No fluff.)"
   ]
 }
 

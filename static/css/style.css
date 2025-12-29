@@ -445,7 +445,7 @@ textarea:focus {
 /* Analysis Dashboard (Video Game Style) */
 .analysis-dashboard {
   display: grid;
-  grid-template-columns: 1fr 2fr 2fr;
+  grid-template-columns: 2fr 1fr 2fr; /* Centered narrow stats column */
   gap: 1.5rem;
   margin-top: 1.5rem;
   height: 100%; /* Ensure dashboard takes available height for Col 3 expansion */

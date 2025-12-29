@@ -316,7 +316,7 @@ async def generate_insight(request: InsightRequest) -> dict:
 
 
 @app.post("/api/runs/{run_id}/analyze")
-async def analyze_run(request: Request, run_id: str) -> HTMLResponse:
+async def analyze_run(request: Request, run_id: str, regenerate: bool = False) -> HTMLResponse:
     """Generate and return analysis for a run (HTMX plain text/html)"""
     try:
         # Get form data if present
@@ -329,8 +329,8 @@ async def analyze_run(request: Request, run_id: str) -> HTMLResponse:
 
         run_data = await storage.get_run(run_id)
         
-        # Check cache
-        if "insights" in run_data and len(run_data["insights"]) > 0:
+        # Check cache (unless forcing regeneration)
+        if not regenerate and "insights" in run_data and len(run_data["insights"]) > 0:
             insight = run_data["insights"][-1]
             cached_model = insight.get("analystModel")
             
@@ -344,7 +344,8 @@ async def analyze_run(request: Request, run_id: str) -> HTMLResponse:
                     "request": request,
                     "insight": content,
                     "model": cached_model,
-                    "cached": True
+                    "cached": True,
+                    "run_id": run_id, # Added for regeneration button
                 })
 
         # Generate new insight
@@ -371,7 +372,8 @@ async def analyze_run(request: Request, run_id: str) -> HTMLResponse:
             "request": request,
             "insight": insight_data["content"],
             "model": model_to_use,
-            "cached": False
+            "cached": False,
+            "run_id": run_id, # Added for regeneration button
         })
         
     except Exception as e:
