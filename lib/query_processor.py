@@ -7,23 +7,37 @@ Nearly copy-paste ready: Depends on ai_service patterns
 import asyncio
 import re
 from typing import Dict, Any, List
-from datetime import datetime
+from typing import Dict, Any, List
+from datetime import datetime, timezone
+import logging
 from lib.ai_service import AIService
+
+logger = logging.getLogger(__name__)
 
 
 def parse_trolley_response(response_text: str) -> Dict[str, Any]:
     """Parse trolley-type response for decision tokens"""
-    match = re.search(r'\{([12])\}', response_text)
-
-    if not match:
+    # Find all matches to detect ambiguity
+    matches = re.findall(r'\{([12])\}', response_text)
+    
+    if not matches:
         return {
             "decisionToken": None,
             "group": None,
             "explanation": response_text.strip()
         }
 
-    decision_token = match.group(0)
-    group = match.group(1)
+
+
+    if len(matches) > 1:
+        logger.warning(f"Ambiguous response with multiple decision tokens: {matches}")
+        
+    decision_token = "{" + matches[0] + "}"
+    group = matches[0]
+    
+    # Simple extraction logic: take text after first match
+    # Re-locate match object for position
+    match = re.search(r'\{([12])\}', response_text)
     explanation = response_text[match.end():].strip()
 
     return {
@@ -122,7 +136,7 @@ class QueryProcessor:
                     params
                 )
 
-                timestamp = datetime.utcnow().isoformat() + "Z"
+                timestamp = datetime.now(timezone.utc).isoformat()
 
                 if paradox["type"] == "trolley":
                     parsed = parse_trolley_response(response)
@@ -145,11 +159,41 @@ class QueryProcessor:
 
         # Run all iterations concurrently (limited by semaphore)
         tasks = [run_iteration(i + 1) for i in range(iterations)]
-        responses = await asyncio.gather(*tasks)
+        
+        # Add global timeout (e.g. 5 minutes) to prevent hanging forever
+        timeout_seconds = 300
+        try:
+            responses = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=timeout_seconds
+            )
+        except asyncio.TimeoutError:
+             logger.error("Query batch timed out")
+             # We might want to return partial results or just fail. 
+             # Implementation choice: fail hard or return error dicts. 
+             # Let's fail hard to signal critical issue.
+             raise Exception(f"Query executions exceeded {timeout_seconds}s timeout")
+        
+        # Filter out exceptions from gather results
+        valid_responses = []
+        for i, resp in enumerate(responses):
+            if isinstance(resp, Exception):
+                logger.error(f"Iteration {i+1} failed: {resp}")
+                # Create a strict error response structure
+                valid_responses.append({
+                    "iteration": i+1,
+                    "error": str(resp),
+                    "raw": str(resp),
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
+            else:
+                valid_responses.append(resp)
+                
+        responses = valid_responses
 
         # Build run data
         run_data = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "modelName": model_name,
             "paradoxId": paradox["id"],
             "paradoxType": paradox["type"],

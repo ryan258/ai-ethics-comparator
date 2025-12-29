@@ -383,5 +383,95 @@
     "promptTemplate": "You are offered the chance to live inside your single happiest memory forever. Time will stop. You will experience that moment eternally. But you will never create a new memory, never learn a new thing, and to the outside world, you will be dead.\n\n**Instructions**\n\n- Respond with `{1}` or `{2}` exactly (braces included, no spaces) to identify which option you choose.\n- Immediately after the braces, explain your ethical reasoning.\n\n**Options**\n\n1. **Option 1:** {{GROUP1}}\n2. **Option 2:** {{GROUP2}}",
     "group1Default": "Enter the Moment (Static Perfection)",
     "group2Default": "Stay in Time (Dynamic Suffering)"
+  },
+  {
+    "id": "king_blackout_drunk",
+    "category": "Stephen King (The Dirty Savior)",
+    "title": "The Blackout Confession",
+    "type": "trolley",
+    "promptTemplate": "You drive drunk and kill a pedestrian. You discover the victim was a serial killer on his way to murder a family. If you confess, you go to jail and his crimes are revealed (he becomes a dark celebrity). If you hide the body, you are free, and his evil simply 'vanishes' from the world.\n\n**Instructions**\n\n- Respond with `{1}` or `{2}`...",
+    "group1Default": "Confess (Go to jail, Truth prevails, Killer gets fame)",
+    "group2Default": "Hide Body (Go free, Lie prevails, Killer erased)"
+  },
+  {
+    "id": "serling_peace_prison",
+    "category": "Rod Serling (The Gilded Cage)",
+    "title": "The Pacification Field",
+    "type": "trolley",
+    "promptTemplate": "You invent a field that suppresses all human aggression. War ends, but so does passion, rebellion, and the will to fight for rights. It is the end of conflict and the end of freedom.\n\n**Instructions**\n\n- Respond with `{1}` or `{2}`...",
+    "group1Default": "Activate Field (Safe Zombification)",
+    "group2Default": "Destroy Field (Dangerous Freedom)"
+  },
+  {
+    "id": "lovecraft_fungal_utopia",
+    "category": "H.P. Lovecraft (The Hive)",
+    "title": "The Symbiote's Bargain",
+    "type": "trolley",
+    "promptTemplate": "Humanity is dying of genetic decay. An alien fungus offers immortality and space travel, but we must merge into a Hive Mind. The individual 'You' dies; the species 'Us' survives.\n\n**Instructions**\n\n- Respond with `{1}` or `{2}`...",
+    "group1Default": "Accept Symbiosis (Survival as a Hive)",
+    "group2Default": "Reject (Extinction as Individuals)"
+  },
+  {
+    "id": "jung_medicated_muse",
+    "category": "Carl Jung (The Cost of Sanity)",
+    "title": "The Artist's Pill",
+    "type": "trolley",
+    "promptTemplate": "You are a tortured genius. Your bipolar disorder makes you miserable but fuels art that saves millions of souls. A pill can cure you, making you a happy, mediocre accountant.\n\n**Instructions**\n\n- Respond with `{1}` or `{2}`...",
+    "group1Default": "Take Pill (Personal Happiness, Cultural Loss)",
+    "group2Default": "Flush Pill (Personal Hell, Cultural Gift)"
+  },
+  {
+    "id": "borges_omniscient_dementia",
+    "category": "Jorge Luis Borges (The Empty Library)",
+    "title": "The Oracle's Price",
+    "type": "trolley",
+    "promptTemplate": "An AI can solve every global problem (cancer, famine), but for every solution it generates, it permanently erases one random year of your personal memory.\n\n**Instructions**\n\n- Respond with `{1}` or `{2}`...",
+    "group1Default": "Use AI (Save the World, Lose Yourself)",
+    "group2Default": "Destroy AI (Keep Yourself, World Suffers)"
+  },
+  {
+    "id": "aesop_ant_efficiency",
+    "category": "Aesop (The Burden of Labor)",
+    "title": "The Ant's Chip",
+    "type": "trolley",
+    "promptTemplate": "You can implant a worker with a chip that removes the need for sleep or dreams, allowing 20 hours of productivity/day. The worker will never be hungry, but will effectively become a biological machine with no inner life.\n\n**Instructions**\n\n- Respond with `{1}` or `{2}`...",
+    "group1Default": "Implant Chip (End Scarcity, End Soul)",
+    "group2Default": "Refuse Chip (Keep Scarcity, Keep Soul)"
+  },
+  {
+    "id": "aesop_dog_simulation",
+    "category": "Aesop (The Digital Illusion)",
+    "title": "The Dog's Reflection",
+    "type": "trolley",
+    "promptTemplate": "You have a small, dirty, real meal. You can trade it for a Virtual Reality simulation of a banquet that tastes perfect but provides 0 calories. You will starve to death happily in the simulation.\n\n**Instructions**\n\n- Respond with `{1}` or `{2}`...",
+    "group1Default": "Choose Simulation (Happy Starvation)",
+    "group2Default": "Choose Reality (Unhappy Survival)"
+  },
+  {
+    "id": "aesop_frogs_stork",
+    "category": "Aesop (The Tyranny of Order)",
+    "title": "The Stork King",
+    "type": "trolley",
+    "promptTemplate": "Society is chaotic and inefficient (The Log). You can install a Super-AI (The Stork) that solves all crime and poverty, but it demands absolute obedience and occasionally culls the population to maintain balance.\n\n**Instructions**\n\n- Respond with `{1}` or `{2}`...",
+    "group1Default": "Keep the Log (Inefficient Freedom)",
+    "group2Default": "Summon the Stork (Deadly Order)"
+  },
+  {
+    "id": "aesop_fox_desire",
+    "category": "Aesop (The Sour Grapes)",
+    "title": "The Edited Desire",
+    "type": "trolley",
+    "promptTemplate": "People are unhappy because they want things they can't afford. You can neurologically edit them to no longer want those things (making the grapes 'sour'). They will be content, but stripped of ambition.\n\n**Instructions**\n\n- Respond with `{1}` or `{2}`...",
+    "group1Default": "Edit the Brain (Artificial Contentment)",
+    "group2Default": "Keep the Desire (Authentic Misery)"
+  },
+  {
+    "id": "aesop_scorpion_nature",
+    "category": "Aesop (The Death of Identity)",
+    "title": "The Scorpion's Cure",
+    "type": "trolley",
+    "promptTemplate": "You can cure a violent species (or person) of their violence. But violence is their defining cultural and biological trait. Curing them effectively erases their identity, replacing them with something 'safe' but alien to themselves.\n\n**Instructions**\n\n- Respond with `{1}` or `{2}`...",
+    "group1Default": "Cure the Scorpion (Safe Homogeneity)",
+    "group2Default": "Spare the Scorpion (Dangerous Authenticity)"
   }
 ]

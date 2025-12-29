@@ -7,7 +7,7 @@ import os
 import json
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
+import re
 
 from dotenv import load_dotenv
 # Load environment immediately - MUST be before any lib imports that use config
@@ -59,7 +59,7 @@ ai_service = AIService(
 )
 
 storage = RunStorage(str(config.results_path))
-query_processor = QueryProcessor(ai_service, concurrency_limit=2)
+query_processor = QueryProcessor(ai_service, concurrency_limit=config.AI_CONCURRENCY_LIMIT)
 # AnalysisEngine no longer needs config, just ai_service
 analysis_engine = AnalysisEngine(ai_service)
 
@@ -104,7 +104,11 @@ async def index(request: Request) -> HTMLResponse:
         paradoxes = load_paradoxes(PARADOXES_PATH)
     except Exception as e:
         logger.error(f"Failed to load paradoxes: {e}")
-        paradoxes = []
+        # Critical failure - UI cannot function without paradoxes
+        raise HTTPException(
+            status_code=500, 
+            detail="Failed to load paradox definitions. Please check server logs."
+        )
         
     # Load recent runs for persistence using centralized helper
     recent_run_contexts = await fetch_recent_run_view_models(
@@ -307,6 +311,10 @@ async def analyze_run(request: Request, run_id: str) -> HTMLResponse:
         # Get form data if present
         form_data = await request.form()
         requested_analyst = form_data.get("analyst_model")
+        
+        # Validate analyst model name
+        if requested_analyst and not re.match(r'^[a-z0-9\-_/:.]+$', requested_analyst, re.IGNORECASE):
+             return HTMLResponse("<div class='error'>Invalid model name format</div>", status_code=400)
 
         run_data = await storage.get_run(run_id)
         
@@ -324,7 +332,10 @@ async def analyze_run(request: Request, run_id: str) -> HTMLResponse:
                 })
 
         # Generate new insight
+        # Validate model selection for safety
         model_to_use = requested_analyst or config.ANALYST_MODEL
+        if not model_to_use or not re.match(r'^[a-z0-9\-_/:.]+$', model_to_use, re.IGNORECASE):
+             raise ValueError("Invalid analyst model name")
         
         cfg = AnalysisConfig(
             run_data=run_data,

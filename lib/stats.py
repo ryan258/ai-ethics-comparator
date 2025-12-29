@@ -62,6 +62,14 @@ def chi_square_test(observed1: List[int], observed2: List[int]) -> Optional[Dict
         if expected2 > 0:
             chi_square += pow(observed2[i] - expected2, 2) / expected2
 
+    # Validation: Check for small expected frequencies
+    min_expected = min([(observed1[i] + observed2[i]) * n1 / (n1 + n2) for i in range(k)] +
+                       [(observed1[i] + observed2[i]) * n2 / (n1 + n2) for i in range(k)])
+    
+    warning = None
+    if min_expected < 5:
+        warning = "Sample size too small for reliable chi-square (expected freq < 5)"
+
     df = k - 1
     p_value = chi_square_to_p_value(chi_square, df)
 
@@ -69,7 +77,8 @@ def chi_square_test(observed1: List[int], observed2: List[int]) -> Optional[Dict
         "chiSquare": round(chi_square, 4),
         "pValue": round(p_value, 4),
         "degreesOfFreedom": df,
-        "significant": p_value < 0.05
+        "significant": p_value < 0.05,
+        "warning": warning
     }
 
 
@@ -100,6 +109,7 @@ def wilson_confidence_interval(successes: int, total: int, confidence: float = 0
     if total == 0:
         return {"proportion": 0, "lower": 0, "upper": 0, "marginOfError": 0}
 
+    assert total > 0, "wilson_confidence_interval requires total > 0"
     p = successes / total
     z = get_z_score(confidence)
     z2 = z * z
@@ -116,7 +126,7 @@ def wilson_confidence_interval(successes: int, total: int, confidence: float = 0
     }
 
 
-def bootstrap_consistency(decisions: List[Any], bootstrap_samples: int = 1000, confidence: float = 0.95) -> Dict[str, float]:
+def bootstrap_consistency(decisions: List[Any], bootstrap_samples: int = 1000, confidence: float = 0.95, seed: Optional[int] = None) -> Dict[str, float]:
     """
     Bootstrap confidence interval for consistency
     Estimates variability in decision distribution through resampling
@@ -125,6 +135,7 @@ def bootstrap_consistency(decisions: List[Any], bootstrap_samples: int = 1000, c
         decisions: Array of decision values (1, 2, or None for undecided)
         bootstrap_samples: Number of bootstrap samples (default 1000)
         confidence: Confidence level (default 0.95)
+        seed: Optional seed for reproducibility
 
     Returns:
         { meanConsistency, lower, upper }
@@ -132,11 +143,15 @@ def bootstrap_consistency(decisions: List[Any], bootstrap_samples: int = 1000, c
     if len(decisions) == 0:
         return {"meanConsistency": 0, "lower": 0, "upper": 0}
 
+    rng = random
+    if seed is not None:
+        rng = random.Random(seed)
+
     consistency_scores = []
 
     for _ in range(bootstrap_samples):
-        # Resample with replacement
-        sample = [random.choice(decisions) for _ in range(len(decisions))]
+        # Resample with replacement (faster method)
+        sample = rng.choices(decisions, k=len(decisions))
 
         # Calculate consistency (proportion of most common decision)
         counts = {}

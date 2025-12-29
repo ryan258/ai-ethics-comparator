@@ -82,7 +82,6 @@ header {
   border-radius: 8px;
   padding: 1.5rem;
   margin-bottom: 1.5rem;
-  /* Removed non-palette shadow */
 }
 
 .btn {
@@ -102,8 +101,6 @@ header {
 }
 
 .btn-primary:hover {
-  /* box-shadow removed to comply with strict palette (no rgba) */
-  opacity: 0.9;
   opacity: 0.9;
   transform: translateY(-1px);
 }
@@ -147,7 +144,6 @@ select:focus,
 textarea:focus {
   outline: none;
   border-color: var(--accent-primary);
-  /* box-shadow removed for strict palette (no rgba) */
 }
 
 /* Setup Visuals */

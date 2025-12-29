@@ -21,6 +21,11 @@ class AppConfig(BaseModel):
     # App Identity
     APP_NAME: str = "AI Ethics Comparator"
     VERSION: str = "6.0.0"
+
+    # AI Service Config
+    AI_CONCURRENCY_LIMIT: int = 2
+    AI_MAX_RETRIES: int = 5
+    AI_RETRY_DELAY: int = 2
     
     # URLs
     APP_BASE_URL: str = os.getenv("APP_BASE_URL", "http://localhost:8000")

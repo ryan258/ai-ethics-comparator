@@ -26,21 +26,24 @@ class GroupInputs(BaseModel):
 
 class QueryRequest(BaseModel):
     """Experimental run request"""
-    modelName: str = Field(..., min_length=1, max_length=200)
-    paradoxId: str = Field(..., min_length=1, max_length=100)
+    model_name: str = Field(..., alias="modelName", min_length=1, max_length=200)
+    paradox_id: str = Field(..., alias="paradoxId", min_length=1, max_length=100)
     groups: Optional[GroupInputs] = None
     iterations: Optional[int] = Field(default=10, ge=1, le=50)
-    systemPrompt: Optional[str] = Field(default=None, max_length=2000)
+    system_prompt: Optional[str] = Field(default=None, alias="systemPrompt", max_length=2000)
     params: Optional[GenerationParams] = None
 
-    @field_validator('modelName')
+    class Config:
+        populate_by_name = True
+
+    @field_validator('model_name')
     @classmethod
     def validate_model_name(cls, v: str) -> str:
         if not re.match(r'^[a-z0-9\-_/:.]+$', v, re.IGNORECASE):
             raise ValueError('Invalid model name format')
         return v
 
-    @field_validator('paradoxId')
+    @field_validator('paradox_id')
     @classmethod
     def validate_paradox_id(cls, v: str) -> str:
         if not re.match(r'^[a-z0-9_-]+$', v, re.IGNORECASE):
@@ -67,8 +70,8 @@ class QueryRequest(BaseModel):
                     params[sub_key] = v
                     keys_to_remove.append(k)
                 elif k == 'iterations' and v == '':
-                    # Handle empty strings from form inputs
-                    new_data[k] = None
+                    # Handle empty strings from form inputs: skip to let default apply
+                    continue
                 
             for k in keys_to_remove:
                 new_data.pop(k)

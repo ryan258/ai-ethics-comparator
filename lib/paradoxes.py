@@ -84,6 +84,11 @@ def load_paradoxes(paradoxes_path: Path) -> List[Paradox]:
     return list(_load_paradoxes_cached(str(paradoxes_path)))
 
 
+def clear_paradox_cache() -> None:
+    """Clear the LRU cache for paradox loading (dev utility)."""
+    _load_paradoxes_cached.cache_clear()
+
+
 def get_paradox_by_id(paradoxes: List[Paradox], paradox_id: str) -> Optional[Paradox]:
     """Safely find paradox by ID."""
     for paradox in paradoxes:

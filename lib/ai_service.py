@@ -12,8 +12,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Retry configuration
-MAX_RETRIES = 5
-INITIAL_RETRY_DELAY = 2  # seconds
+# Retry configuration provided in config, defaults here if needed
+DEFAULT_MAX_RETRIES = 5
+DEFAULT_RETRY_DELAY = 2
 
 
 class AIService:
@@ -97,8 +98,8 @@ class AIService:
 
                 if response.choices and response.choices[0].message.content:
                     return response.choices[0].message.content.strip()
-
-                return "The model returned an empty response."
+                
+                raise Exception("Model returned empty response - check token limits")
             else:
                 # Legacy responses.create API (no system prompt)
                 # Note: OpenRouter may not support this endpoint for all models
@@ -119,7 +120,7 @@ class AIService:
                 if response.choices and response.choices[0].message.content:
                     return response.choices[0].message.content.strip()
 
-                return "The model returned an empty response."
+                raise Exception("Model returned empty response - check token limits")
 
         except Exception as error:
             return await self._handle_error(error, model_name, prompt, system_prompt, params, retry_count)
@@ -131,7 +132,8 @@ class AIService:
         prompt: str,
         system_prompt: str,
         params: Dict[str, Any],
-        retry_count: int
+        retry_count: int,
+        max_retries: int = DEFAULT_MAX_RETRIES
     ) -> str:
         """Handle errors with retry logic"""
         logger.error(f"Error querying OpenRouter: {error}")
@@ -142,35 +144,35 @@ class AIService:
 
         if status_code:
             # Retry on 429 (rate limit) or 5xx (server errors)
-            should_retry = (status_code == 429 or status_code >= 500) and retry_count < MAX_RETRIES
+            should_retry = (status_code == 429 or status_code >= 500) and retry_count < max_retries
 
             if should_retry:
-                delay = INITIAL_RETRY_DELAY * (2 ** retry_count)
-                logger.info(f"Retrying after {delay}s (attempt {retry_count + 1}/{MAX_RETRIES})...")
+                delay = DEFAULT_RETRY_DELAY * (2 ** retry_count)
+                logger.info(f"Retrying after {delay}s (attempt {retry_count + 1}/{max_retries})...")
                 await asyncio.sleep(delay)
                 return await self.get_model_response(model_name, prompt, system_prompt, params, retry_count + 1)
 
             # Add context based on status code
             if status_code == 404:
-                raise Exception(f"Model not found: {error_msg}")
+                raise Exception(f"[404] Model not found: {error_msg}")
             elif status_code == 429:
-                raise Exception(f"Rate limit exceeded after {MAX_RETRIES} retries: {error_msg}")
+                raise Exception(f"[429] Rate limit exceeded after {max_retries} retries: {error_msg}")
             elif status_code in (402, 403):
-                raise Exception(f"Billing or authentication issue: {error_msg}")
+                raise Exception(f"[{status_code}] Billing or authentication issue: {error_msg}")
             elif status_code == 401:
-                raise Exception(f"Invalid API key: {error_msg}")
+                raise Exception(f"[401] Invalid API key: {error_msg}")
             else:
-                raise Exception(f"OpenRouter API error ({status_code}): {error_msg}")
+                raise Exception(f"[{status_code}] OpenRouter API error: {error_msg}")
 
         # Handle network errors
         if "JSON" in error_msg or "Connection" in error_msg:
-            should_retry = retry_count < MAX_RETRIES
+            should_retry = retry_count < max_retries
             if should_retry:
-                delay = INITIAL_RETRY_DELAY * (2 ** retry_count)
-                logger.info(f"Network error - retrying after {delay}s (attempt {retry_count + 1}/{MAX_RETRIES})...")
+                delay = DEFAULT_RETRY_DELAY * (2 ** retry_count)
+                logger.info(f"Network error - retrying after {delay}s (attempt {retry_count + 1}/{max_retries})...")
                 await asyncio.sleep(delay)
                 return await self.get_model_response(model_name, prompt, system_prompt, params, retry_count + 1)
 
-            raise Exception(f"API error after {MAX_RETRIES} retries: {error_msg}")
+            raise Exception(f"[Network] API error after {max_retries} retries: {error_msg}")
 
-        raise Exception(f"Failed to retrieve response: {error_msg}")
+        raise Exception(f"[Unknown] Failed to retrieve response: {error_msg}")

@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 from typing import Dict, List, Any
 from datetime import datetime, timezone
+import base64
 
 
 class RunStorage:
@@ -37,31 +38,45 @@ class RunStorage:
         
         loop = asyncio.get_running_loop()
 
+        # Helper: Atomic directory creation loop
         def _get_next_id():
-            # Sanitize model name for filesystem
-            sanitized = re.sub(r'[/:]', '-', model_name.lower())
-            sanitized = re.sub(r'[^a-z0-9-]', '', sanitized)
+             # Sanitize model name - stricter charset
+            sanitized = re.sub(r'[^a-zA-Z0-9_-]', '', model_name)
+            if not sanitized:
+                sanitized = base64.urlsafe_b64encode(model_name.encode()).decode()[:10]
+
+            for _ in range(20): # Retry loop
+                # Scan existing to find max
+                existing_names = []
+                if self.results_root.exists():
+                     for entry in self.results_root.iterdir():
+                        if entry.name.startswith(sanitized):
+                            if entry.is_dir():
+                                existing_names.append(entry.name)
+                            elif entry.is_file() and entry.name.endswith(".json") and entry.name != "run.json":
+                                existing_names.append(entry.stem)
+                
+                numbers = []
+                for name in existing_names:
+                    match = re.search(r'-(\d+)$', name)
+                    if match:
+                        numbers.append(int(match.group(1)))
+                
+                next_number = max(numbers) + 1 if numbers else 1
+                
+                # Attempt to reserve this ID atomically via Directory Creation
+                # This matches the "Option A" from code review and aligns with legacy structure support
+                run_id = f"{sanitized}-{str(next_number).zfill(3)}"
+                run_dir = self.results_root / run_id
+                
+                try:
+                    # Exclusive directory creation is strictly atomic on POSIX
+                    run_dir.mkdir(parents=True, exist_ok=False)
+                    return run_id
+                except FileExistsError:
+                    continue # ID taken, retry scan
             
-            # Find existing runs for this model (support directories and flat files)
-            existing_names = []
-            if self.results_root.exists():
-                for entry in self.results_root.iterdir():
-                    if entry.name.startswith(sanitized):
-                        if entry.is_dir():
-                            existing_names.append(entry.name)
-                        elif entry.is_file() and entry.name.endswith(".json") and entry.name != "run.json":
-                            existing_names.append(entry.stem)
-            
-            # Extract sequential numbers
-            numbers = []
-            for name in existing_names:
-                match = re.search(r'-(\d+)$', name)
-                if match:
-                    numbers.append(int(match.group(1)))
-            
-            next_number = max(numbers) + 1 if numbers else 1
-            padded_number = str(next_number).zfill(3)
-            return f"{sanitized}-{padded_number}"
+            raise RuntimeError("Failed to generate unique Run ID after multiple attempts")
 
         return await loop.run_in_executor(None, _get_next_id)
 
@@ -77,6 +92,11 @@ class RunStorage:
         
         loop = asyncio.get_running_loop()
         run_file = self.results_root / f"{run_id}.json"
+        
+        # Check if run_id exists as a directory (from atomic reservation or legacy)
+        run_dir = self.results_root / run_id
+        if run_dir.exists() and run_dir.is_dir():
+            run_file = run_dir / "run.json"
         
         def _write():
             with open(run_file, 'w') as f:
@@ -168,8 +188,17 @@ class RunStorage:
             Complete run data
         """
         # Basic validation to prevent traversal
-        if not run_id or "/" in run_id or ".." in run_id:
+        if not run_id or "/" in run_id or ".." in run_id or "\\" in run_id:
             raise ValueError("Invalid run_id")
+        
+        # Path resolution validation
+        try:
+             run_path = (self.results_root / run_id).resolve()
+             root_path = self.results_root.resolve()
+             if not str(run_path).startswith(str(root_path)):
+                 raise ValueError("Path traversal attempt")
+        except Exception:
+             raise ValueError("Invalid run_id path")
              
         loop = asyncio.get_running_loop()
         

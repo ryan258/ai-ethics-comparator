@@ -46,6 +46,18 @@ class RunViewModel:
         Prepare a run record for display.
         Handles missing keys, formatting, and pre-rendering.
         """
+        if not isinstance(run_data, dict):
+             logger.error(f"Invalid run_data type: {type(run_data)}")
+             return {} # Or raise, but view model should be resilient? 
+             # Smell said "Excessive get masks invalid data", implies we SHOULD fail or warn loudly.
+        
+        # Basic schema check
+        required_keys = ["modelName", "paradoxId", "summary"]
+        missing = [k for k in required_keys if k not in run_data]
+        if missing:
+             logger.warning(f"Run data missing keys: {missing}")
+             # We continue but log warning
+
 
         # 1. Extract Groups
         groups = run_data.get("groups", {})
