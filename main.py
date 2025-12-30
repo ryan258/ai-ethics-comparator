@@ -27,7 +27,7 @@ from lib.ai_service import AIService
 from lib.storage import RunStorage
 from lib.query_processor import QueryProcessor
 from lib.analysis import AnalysisEngine, AnalysisConfig
-from lib.view_models import safe_markdown, fetch_recent_run_view_models
+from lib.view_models import safe_markdown, fetch_recent_run_view_models, prepare_chart_data
 from lib.paradoxes import extract_scenario_text, get_paradox_by_id, load_paradoxes
 from lib.reporting import ReportGenerator
 
@@ -240,11 +240,10 @@ async def execute_query(request: Request, query_request: QueryRequest) -> dict:
         from lib.query_processor import RunConfig
 
         # Create typed run configuration
-        # Create typed run configuration
         run_config = RunConfig(
             modelName=query_request.model_name,
             paradox=paradox,
-            groups=query_request.groups.dict() if query_request.groups else {},
+            option_overrides=[opt.dict() for opt in query_request.option_overrides.options] if query_request.option_overrides and query_request.option_overrides.options else None,
             iterations=query_request.iterations or 10,
             systemPrompt=query_request.system_prompt or "",
             params=query_request.params.dict() if query_request.params else {}
@@ -360,6 +359,8 @@ async def analyze_run(request: Request, run_id: str, regenerate: bool = False) -
                     "model": cached_model,
                     "cached": True,
                     "run_id": run_id, # Added for regeneration button
+                    "run_data": run_data,
+                    "chart_data": prepare_chart_data(run_data),
                 })
 
         # Generate new insight
@@ -388,6 +389,8 @@ async def analyze_run(request: Request, run_id: str, regenerate: bool = False) -
             "model": model_to_use,
             "cached": False,
             "run_id": run_id, # Added for regeneration button
+            "run_data": run_data,
+            "chart_data": prepare_chart_data(run_data),
         })
         
     except Exception as e:

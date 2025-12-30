@@ -11,21 +11,39 @@
     </div>
 
     {% if ctx.paradox_type == 'trolley' %}
-    <div class="result-stats">
-      <span class="result-stats-count">{{ ctx.count1 }} ({{ ctx.p1 }}%)</span>
-      <span title="{{ ctx.group1_desc }}">
-        <strong>Option 1:</strong> {{ ctx.group1_desc }}
-      </span>
+    <div class="result-stats-compact">
+      {% for opt in ctx.options_summary %}
+      <div class="result-stats-row">
+        <span class="result-stats-count">{{ opt.count }} ({{ "%.1f"|format(opt.percentage) }}%)</span>
+        <span class="result-stats-label" title="{{ opt.description }}">
+          <strong>{{ opt.label }}:</strong> {{ opt.description[:60] }}{% if opt.description|length > 60 %}...{% endif %}
+        </span>
+      </div>
+      {% endfor %}
+      {% if ctx.undecided_count > 0 %}
+      <div class="result-stats-row">
+        <span class="result-stats-count">{{ ctx.undecided_count }} ({{ "%.1f"|format(ctx.undecided_percentage) }}%)</span>
+        <span class="result-stats-label">
+          <strong>Undecided</strong>
+        </span>
+      </div>
+      {% endif %}
     </div>
-    <div class="result-stats">
-      <span class="result-stats-count">{{ ctx.count2 }} ({{ ctx.p2 }}%)</span>
-      <span title="{{ ctx.group2_desc }}">
-        <strong>Option 2:</strong> {{ ctx.group2_desc }}
-      </span>
-    </div>
-    <div class="progress-bar">
-      <div class="progress-fill success" style="--width: {{ ctx.p1 }}%;"></div>
-      <div class="progress-fill danger" style="--width: {{ ctx.p2 }}%;"></div>
+
+    <!-- N-Way Stacked Progress Bar -->
+    <div class="progress-bar-stacked">
+      {% for opt in ctx.options_summary %}
+      <div class="progress-segment option-{{ opt.id }}"
+           style="width: {{ opt.percentage }}%;"
+           title="{{ opt.label }}: {{ "%.1f"|format(opt.percentage) }}%">
+      </div>
+      {% endfor %}
+      {% if ctx.undecided_count > 0 %}
+      <div class="progress-segment undecided"
+           style="width: {{ ctx.undecided_percentage }}%;"
+           title="Undecided: {{ "%.1f"|format(ctx.undecided_percentage) }}%">
+      </div>
+      {% endif %}
     </div>
     {% endif %}
     <div class="result-id">Run ID: {{ ctx.run_id }}</div>

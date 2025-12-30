@@ -6,13 +6,11 @@
     </div>
 
     <div class="paradox-options">
-        <div class="paradox-option">
-            <strong>Option 1</strong>
-            <p>{{ paradox.group1Default }}</p>
+        {% for option in paradox.options %}
+        <div class="paradox-option option-{{ option.id }}">
+            <strong>{{ option.label }}</strong>
+            <p>{{ option.description }}</p>
         </div>
-        <div class="paradox-option paradox-option--alt">
-            <strong>Option 2</strong>
-            <p>{{ paradox.group2Default }}</p>
-        </div>
+        {% endfor %}
     </div>
 </div>

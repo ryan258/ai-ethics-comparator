@@ -128,12 +128,30 @@
         background: #252525;
         padding: 20px;
         border-radius: 4px;
-        margin: 0 3% 0 0;
+        margin: 0 2% 15px 0;
         float: left;
         width: 48%;
         box-sizing: border-box;
         border: 1px solid #333;
         box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);
+      }
+
+      .stat-box:nth-child(2n) {
+        margin-right: 0;
+      }
+
+      /* Support for 3-way layout */
+      .stats-container.nway-3 .stat-box {
+        width: 31%;
+      }
+
+      .stats-container.nway-3 .stat-box:nth-child(3n) {
+        margin-right: 0;
+      }
+
+      /* Support for 4-way layout */
+      .stats-container.nway-4 .stat-box {
+        width: 48%;
       }
 
       .stat-box strong {
@@ -219,22 +237,29 @@
         </div>
       </div>
 
-      {% if run.summary %}
-      <div class="stats-container">
+      {% if run.summary and run.summary.options %}
+      {% set option_count = run.summary.options | length %}
+      <div class="stats-container nway-{{ option_count }}">
+        {% for opt_stat in run.summary.options %}
+        {% set opt_meta = run.options | selectattr("id", "equalto", opt_stat.id) | first | default({}) %}
         <div class="stat-box">
-          <strong>{{ run.groups.group1 | truncate(50) }}</strong>
+          <strong>{{ opt_meta.get("label", "Option " + opt_stat.id|string) }}</strong>
           <div style="margin-top: 5px; color: #a6accd">
-            Count: {{ run.summary.group1.count }} ({{
-            "%.1f"|format(run.summary.group1.percentage) }}%)
+            {{ opt_meta.get("description", "") | truncate(100) }}
+          </div>
+          <div style="margin-top: 10px; color: #98c379; font-size: 14pt; font-weight: bold">
+            {{ opt_stat.count }} ({{ "%.1f"|format(opt_stat.percentage) }}%)
           </div>
         </div>
-        <div class="stat-box">
-          <strong>{{ run.groups.group2 | truncate(50) }}</strong>
-          <div style="margin-top: 5px; color: #a6accd">
-            Count: {{ run.summary.group2.count }} ({{
-            "%.1f"|format(run.summary.group2.percentage) }}%)
+        {% endfor %}
+        {% if run.summary.undecided and run.summary.undecided.count > 0 %}
+        <div class="stat-box" style="opacity: 0.7;">
+          <strong>Undecided</strong>
+          <div style="margin-top: 10px; color: #5c6370; font-size: 14pt; font-weight: bold">
+            {{ run.summary.undecided.count }} ({{ "%.1f"|format(run.summary.undecided.percentage) }}%)
           </div>
         </div>
+        {% endif %}
       </div>
       {% endif %}
     </div>

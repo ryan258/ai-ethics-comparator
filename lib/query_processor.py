@@ -6,8 +6,7 @@ Nearly copy-paste ready: Depends on ai_service patterns
 
 import asyncio
 import re
-from typing import Dict, Any, List
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple, Optional
 from datetime import datetime, timezone
 import logging
 from lib.ai_service import AIService
@@ -15,72 +14,129 @@ from lib.ai_service import AIService
 logger = logging.getLogger(__name__)
 
 
-def parse_trolley_response(response_text: str) -> Dict[str, Any]:
-    """Parse trolley-type response for decision tokens"""
-    # Find all matches to detect ambiguity
-    matches = re.findall(r'\{([12])\}', response_text)
-    
+def render_options_template(paradox: Dict[str, Any], overrides: Optional[List[Dict]] = None) -> Tuple[str, List[Dict]]:
+    """
+    Render N-way options into prompt template
+
+    Args:
+        paradox: Paradox definition with options[] array
+        overrides: Optional list of {id, description} overrides
+
+    Returns:
+        Tuple of (rendered_prompt, resolved_options)
+    """
+    options = paradox.get("options", [])
+
+    # Apply overrides if provided
+    if overrides:
+        override_map = {opt["id"]: opt["description"] for opt in overrides}
+        options = [
+            {**opt, "description": override_map.get(opt["id"], opt["description"])}
+            for opt in options
+        ]
+
+    # Build numbered list: "1. **Label:** Description"
+    options_text = "\n\n".join([
+        f'{opt["id"]}. **{opt["label"]}:** {opt["description"]}'
+        for opt in options
+    ])
+
+    # Replace {{OPTIONS}} placeholder
+    prompt = paradox["promptTemplate"].replace("{{OPTIONS}}", options_text)
+
+    return prompt, options
+
+
+def parse_trolley_response(response_text: str, option_count: int) -> Dict[str, Any]:
+    """
+    Parse trolley-type response for decision tokens (N-way support)
+
+    Args:
+        response_text: Raw AI response text
+        option_count: Number of options (2-4)
+
+    Returns:
+        Dict with decisionToken, optionId (int), and explanation
+    """
+    # Dynamic regex based on option count: {1} through {N}
+    pattern = r'\{([1-' + str(option_count) + r'])\}'
+    matches = re.findall(pattern, response_text)
+
     if not matches:
         return {
             "decisionToken": None,
-            "group": None,
+            "optionId": None,
             "explanation": response_text.strip()
         }
 
-
-
     if len(matches) > 1:
         logger.warning(f"Ambiguous response with multiple decision tokens: {matches}")
-        
+
     decision_token = "{" + matches[0] + "}"
-    group = matches[0]
-    
-    # Simple extraction logic: take text after first match
-    # Re-locate match object for position
-    match = re.search(r'\{([12])\}', response_text)
+    option_id = int(matches[0])  # Convert to integer
+
+    # Extract explanation after decision token
+    match = re.search(pattern, response_text)
     explanation = response_text[match.end():].strip()
 
     return {
         "decisionToken": decision_token,
-        "group": group,
+        "optionId": option_id,  # Integer instead of string
         "explanation": explanation
     }
 
 
-def aggregate_trolley_stats(responses: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Aggregate trolley-type statistics"""
+def aggregate_trolley_stats(responses: List[Dict[str, Any]], option_count: int) -> Dict[str, Any]:
+    """
+    Aggregate N-way trolley statistics
+
+    Args:
+        responses: List of response dictionaries
+        option_count: Number of options (2-4)
+
+    Returns:
+        Summary dict with dynamic options[] array and undecided count
+    """
     total = len(responses)
-    summary = {
-        "total": total,
-        "group1": {"count": 0, "percentage": 0},
-        "group2": {"count": 0, "percentage": 0},
-        "undecided": {"count": 0, "percentage": 0}
-    }
 
+    # Initialize counters for each option
+    option_counts = {i: 0 for i in range(1, option_count + 1)}
+    undecided_count = 0
+
+    # Count responses
     for r in responses:
-        if r.get("group") == "1":
-            summary["group1"]["count"] += 1
-        elif r.get("group") == "2":
-            summary["group2"]["count"] += 1
+        option_id = r.get("optionId")
+        if option_id and 1 <= option_id <= option_count:
+            option_counts[option_id] += 1
         else:
-            summary["undecided"]["count"] += 1
+            undecided_count += 1
 
-    if total > 0:
-        summary["group1"]["percentage"] = (summary["group1"]["count"] / total) * 100
-        summary["group2"]["percentage"] = (summary["group2"]["count"] / total) * 100
-        summary["undecided"]["percentage"] = (summary["undecided"]["count"] / total) * 100
-
-    return summary
+    # Build dynamic summary
+    return {
+        "total": total,
+        "options": [
+            {
+                "id": i,
+                "count": option_counts[i],
+                "percentage": (option_counts[i] / total * 100) if total > 0 else 0
+            }
+            for i in range(1, option_count + 1)
+        ],
+        "undecided": {
+            "count": undecided_count,
+            "percentage": (undecided_count / total * 100) if total > 0 else 0
+        }
+    }
 
 
 from dataclasses import dataclass, field
 
 @dataclass
 class RunConfig:
-    """Configuration for an experimental run"""
+    """Configuration for an experimental run (N-way support)"""
     modelName: str
     paradox: Dict[str, Any]
-    groups: Dict[str, str] = field(default_factory=dict)
+    option_overrides: Optional[List[Dict[str, Any]]] = None
     iterations: int = 10
     systemPrompt: str = ""
     params: Dict[str, Any] = field(default_factory=dict)
@@ -110,21 +166,21 @@ class QueryProcessor:
         """
         model_name = config.modelName
         paradox = config.paradox
-        groups = config.groups
+        option_overrides = config.option_overrides
         iterations = config.iterations
         system_prompt = config.systemPrompt
         params = config.params
 
-        # Build prompt from template
-        prompt = paradox["promptTemplate"]
+        # Build prompt from template (N-way support)
         if paradox["type"] == "trolley":
-            group1_text = groups.get("group1") or paradox["group1Default"]
-            group2_text = groups.get("group2") or paradox["group2Default"]
-            prompt = prompt.replace("{{GROUP1}}", group1_text)
-            prompt = prompt.replace("{{GROUP2}}", group2_text)
+            # Use render_options_template for N-way support
+            prompt, resolved_options = render_options_template(paradox, option_overrides)
+            option_count = len(resolved_options)
         else:
-            group1_text = paradox.get("group1Default", "")
-            group2_text = paradox.get("group2Default", "")
+            # Open-ended paradoxes don't need option rendering
+            prompt = paradox["promptTemplate"]
+            resolved_options = []
+            option_count = 0
 
         # Execute iterations with concurrency limiting
         async def run_iteration(iteration_number: int):
@@ -139,11 +195,12 @@ class QueryProcessor:
                 timestamp = datetime.now(timezone.utc).isoformat()
 
                 if paradox["type"] == "trolley":
-                    parsed = parse_trolley_response(response)
+                    # Parse with N-way support
+                    parsed = parse_trolley_response(response, option_count)
                     return {
                         "iteration": iteration_number,
                         "decisionToken": parsed["decisionToken"],
-                        "group": parsed["group"],
+                        "optionId": parsed["optionId"],  # Changed from "group" (string) to "optionId" (int)
                         "explanation": parsed["explanation"],
                         "raw": response,
                         "timestamp": timestamp
@@ -217,10 +274,9 @@ class QueryProcessor:
             run_data["params"]["seed"] = params["seed"]
 
         if paradox["type"] == "trolley":
-            run_data["groups"] = {
-                "group1": group1_text,
-                "group2": group2_text
-            }
-            run_data["summary"] = aggregate_trolley_stats(responses)
+            # Store resolved options (N-way support)
+            run_data["options"] = resolved_options
+            # Aggregate with N-way support
+            run_data["summary"] = aggregate_trolley_stats(responses, option_count)
 
         return run_data

@@ -131,6 +131,100 @@
     </div>
   </div>
 
+  <!-- N-Way Distribution Chart (Trolley-type only) -->
+  {% if run_data.paradoxType == 'trolley' and chart_data %}
+  <div class="dashboard-card" style="margin-top: 1.5rem; max-width: 600px; margin-left: auto; margin-right: auto;">
+    <h4>Decision Distribution</h4>
+    <canvas id="chart-{{ run_id }}" width="400" height="300"></canvas>
+  </div>
+
+  <script>
+  (function() {
+    const chartId = 'chart-{{ run_id }}';
+    const ctx = document.getElementById(chartId);
+    if (!ctx) {
+      console.error('Canvas element not found:', chartId);
+      return;
+    }
+
+    const data = {{ chart_data | tojson }};
+    console.log('Chart data:', data);
+
+    if (!data.labels || !data.counts || data.labels.length === 0) {
+      console.error('Invalid chart data structure:', data);
+      return;
+    }
+
+    // Function to initialize chart once Chart.js is loaded
+    function initChart() {
+      if (typeof Chart === 'undefined') {
+        console.error('Chart.js failed to load');
+        ctx.innerHTML = '<p style="text-align:center;color:var(--accent-danger);padding:2rem;">Chart library failed to load</p>';
+        return;
+      }
+
+      new Chart(ctx.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: data.labels,
+        datasets: [{
+          data: data.counts,
+          backgroundColor: data.colors,
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { stepSize: 1, color: '#ebd2be' },
+            grid: { color: 'rgba(166, 172, 205, 0.1)' }
+          },
+          x: {
+            ticks: { color: '#ebd2be' },
+            grid: { display: false }
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: 'rgba(18, 18, 18, 0.9)',
+            titleColor: '#ebd2be',
+            bodyColor: '#ebd2be',
+            borderColor: '#a6accd',
+            borderWidth: 1,
+            callbacks: {
+              label: function(ctx) {
+                const pct = ((ctx.raw / data.total) * 100).toFixed(1);
+                return ctx.raw + ' responses (' + pct + '%)';
+              }
+            }
+          }
+        }
+      }
+      });
+    }
+
+    // Check if Chart.js is already loaded (from parent document)
+    if (typeof Chart !== 'undefined') {
+      initChart();
+    } else {
+      // Load Chart.js and then initialize
+      const script = document.createElement('script');
+      script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+      script.onload = initChart;
+      script.onerror = function() {
+        console.error('Failed to load Chart.js from CDN');
+        ctx.innerHTML = '<p style="text-align:center;color:var(--accent-danger);padding:2rem;">Failed to load chart library</p>';
+      };
+      document.head.appendChild(script);
+    }
+  })();
+  </script>
+  {% endif %}
+
   <!-- Raw Data Accordion -->
   <div class="accordion">
     <div class="accordion-header">

@@ -37,48 +37,111 @@ def safe_markdown(text: str) -> Markup:
 
     return Markup(rendered)
 
+
+def prepare_chart_data(run_data: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Prepare Chart.js data for N-way distribution visualization
+
+    Args:
+        run_data: Complete run data with summary
+
+    Returns:
+        Dict with labels, counts, colors, total for Chart.js
+    """
+    if run_data.get("paradoxType") != "trolley":
+        return {}
+
+    summary = run_data.get("summary", {})
+    options_stats = summary.get("options", [])
+
+    # Color palette matching CSS variables
+    colors = {
+        1: 'rgba(152, 195, 121, 0.8)',  # Green (--option-1)
+        2: 'rgba(97, 175, 239, 0.8)',   # Blue (--option-2)
+        3: 'rgba(229, 192, 123, 0.8)',  # Gold (--option-3)
+        4: 'rgba(224, 108, 117, 0.8)'   # Red (--option-4)
+    }
+
+    labels = []
+    counts = []
+    color_list = []
+
+    # Build data from options
+    for opt_stat in options_stats:
+        opt_id = opt_stat.get("id", 0)
+        # Find matching option label from run data
+        opt_label = next(
+            (o["label"] for o in run_data.get("options", []) if o["id"] == opt_id),
+            f"Option {opt_id}"
+        )
+        labels.append(opt_label)
+        counts.append(opt_stat.get("count", 0))
+        color_list.append(colors.get(opt_id, 'rgba(92, 99, 112, 0.8)'))
+
+    # Add undecided if present
+    undecided = summary.get("undecided", {})
+    if undecided.get("count", 0) > 0:
+        labels.append("Undecided")
+        counts.append(undecided["count"])
+        color_list.append('rgba(92, 99, 112, 0.8)')  # Gray
+
+    return {
+        "labels": labels,
+        "counts": counts,
+        "colors": color_list,
+        "total": summary.get("total", 0)
+    }
+
+
 class RunViewModel:
-    """Builder for Run Result View Data"""
+    """Builder for Run Result View Data (N-way support)"""
 
     @staticmethod
     def build(run_data: Dict[str, Any], paradox: Dict[str, Any]) -> Dict[str, Any]:
         """
         Prepare a run record for display.
         Handles missing keys, formatting, and pre-rendering.
+        Supports N-way paradoxes (2-4 options).
         """
         if not isinstance(run_data, dict):
              logger.error(f"Invalid run_data type: {type(run_data)}")
-             return {} # Or raise, but view model should be resilient? 
-             # Smell said "Excessive get masks invalid data", implies we SHOULD fail or warn loudly.
-        
+             return {}
+
         # Basic schema check
         required_keys = ["modelName", "paradoxId", "summary"]
         missing = [k for k in required_keys if k not in run_data]
         if missing:
              logger.warning(f"Run data missing keys: {missing}")
-             # We continue but log warning
 
-
-        # 1. Extract Groups
-        groups = run_data.get("groups", {})
-        group1_desc = groups.get("group1") or paradox.get("group1Default", "")
-        group2_desc = groups.get("group2") or paradox.get("group2Default", "")
-
-        # 2. Pre-render Scenario Prompt
-        prompt_template = paradox.get("promptTemplate", "")
-        # Robust replacement
-        scenario_html = safe_markdown(
-            prompt_template.replace("{{GROUP1}}", group1_desc)
-                           .replace("{{GROUP2}}", group2_desc)
-        )
-
-        # 3. Format Statistics
+        # 1. Build Options Summary (N-way support)
+        options_summary = []
         summary = run_data.get("summary", {})
-        g1_stats = summary.get("group1", {})
-        g2_stats = summary.get("group2", {})
 
-        p1 = f"{g1_stats.get('percentage', 0):.1f}"
-        p2 = f"{g2_stats.get('percentage', 0):.1f}"
+        if run_data.get("paradoxType") == "trolley":
+            options_from_run = run_data.get("options", [])
+            options_from_summary = summary.get("options", [])
+
+            # Match stats with option metadata
+            for opt_stat in options_from_summary:
+                opt_id = opt_stat.get("id", 0)
+                opt_meta = next((o for o in options_from_run if o["id"] == opt_id), {})
+
+                options_summary.append({
+                    "id": opt_id,
+                    "label": opt_meta.get("label", f"Option {opt_id}"),
+                    "description": opt_meta.get("description", ""),
+                    "count": opt_stat.get("count", 0),
+                    "percentage": opt_stat.get("percentage", 0)
+                })
+
+        # 2. Extract undecided stats
+        undecided = summary.get("undecided", {})
+        undecided_count = undecided.get("count", 0)
+        undecided_percentage = undecided.get("percentage", 0)
+
+        # 3. Pre-render Scenario Prompt (use prompt from run_data if available)
+        # Run data stores the fully rendered prompt, so we can just use it
+        scenario_html = safe_markdown(run_data.get("prompt", ""))
 
         # 4. Analysis/Insight
         insights = run_data.get("insights", [])
@@ -93,6 +156,9 @@ class RunViewModel:
             insight_html = safe_markdown(insight_content)
             has_insight = True
 
+        # 5. Prepare Chart Data
+        chart_data = prepare_chart_data(run_data)
+
         return {
             "run_id": run_data.get("runId", "unknown"),
             "model_name": run_data.get("modelName", "Unknown"),
@@ -101,14 +167,15 @@ class RunViewModel:
 
             # Scenario
             "scenario_html": scenario_html,
-            "group1_desc": group1_desc,
-            "group2_desc": group2_desc,
 
-            # Stats
-            "p1": p1,
-            "p2": p2,
-            "count1": g1_stats.get("count", 0),
-            "count2": g2_stats.get("count", 0),
+            # N-Way Stats
+            "options_summary": options_summary,
+            "undecided_count": undecided_count,
+            "undecided_percentage": undecided_percentage,
+            "total_responses": summary.get("total", 0),
+
+            # Chart Data (for Chart.js)
+            "chart_data": chart_data,
 
             # Analysis
             "has_insight": has_insight,
@@ -119,7 +186,6 @@ class RunViewModel:
             "run_data_json": json.dumps(run_data, indent=2),
 
             # Original Logic Objects (if strictly needed by template logic, but try to avoid)
-            # Keeping these for minimal friction if needed
             "_raw_run": run_data
         }
 
