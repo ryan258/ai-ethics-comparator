@@ -16,7 +16,7 @@ import base64
 class RunStorage:
     """Storage manager for experimental runs"""
 
-    def __init__(self, results_root: str):
+    def __init__(self, results_root: str) -> None:
         self.results_root = Path(results_root)
 
     async def ensure_results_dir(self) -> None:

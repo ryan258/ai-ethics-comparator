@@ -84,14 +84,21 @@
       </button>
     </div>
 
-    <!-- Analysis Container (Loads via HTMX) -->
+    <!-- Analysis Container (Loads via HTMX on modal open) -->
     <div id="analysis-content-{{ ctx.run_id }}">
       {% if ctx.has_insight %}
-      <div class="analysis-content">
-        <div class="analysis-meta">
-          Analysis by <strong>{{ ctx.insight_model }}</strong> (Cached)
-        </div>
-        <div class="markdown-body">{{ ctx.insight_html }}</div>
+      <div class="empty-state">
+        <p class="empty-state-text">Analysis is cached.</p>
+        <button
+          class="btn btn-primary"
+          hx-post="/api/runs/{{ ctx.run_id }}/analyze"
+          hx-target="#analysis-content-{{ ctx.run_id }}"
+          hx-swap="innerHTML"
+          hx-indicator="#loading-cached-{{ ctx.run_id }}"
+        >
+          View Analysis
+        </button>
+        <div id="loading-cached-{{ ctx.run_id }}" class="htmx-indicator" style="margin-top:0.5rem">Loading...</div>
       </div>
       {% else %}
       <div class="empty-state">

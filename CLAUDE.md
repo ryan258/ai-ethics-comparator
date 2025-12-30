@@ -19,6 +19,7 @@ Research tool for analyzing how LLMs reason about ethical dilemmas. Two paradox 
 **Health Check:** `curl http://localhost:8000/health`
 
 **Setup:**
+
 ```bash
 pip install -r requirements.txt
 # Create .env with OPENROUTER_API_KEY=sk-or-your-key
@@ -31,6 +32,7 @@ pip install -r requirements.txt
 ### Arsenal Strategy (Modular lib/)
 
 **Backend Modules (Copy-Paste Ready):**
+
 - `lib/validation.py` - Pydantic request/response models
 - `lib/ai_service.py` - OpenRouter client with retry logic and dual API support
 - `lib/storage.py` - Run persistence (filesystem JSON)
@@ -38,13 +40,16 @@ pip install -r requirements.txt
 - `lib/stats.py` - Statistical analysis (chi-square, Wilson CI, bootstrap, Cohen's h)
 
 **Main Application:**
+
 - `main.py` - Thin FastAPI routing layer (~250 lines)
 
 **Frontend:**
+
 - `templates/index.html` - Jinja2 + HTMX (no build steps)
 - `static/style.css` - Candlelight Mode styling
 
 **Data:**
+
 - `paradoxes.json` - 12 scenarios (7 trolley, 5 open-ended)
 - `results/` - Run archives (gitignored, auto-created)
 
@@ -57,9 +62,10 @@ pip install -r requirements.txt
 
 ### No-Bloat Achieved
 
-NO Docker. NO React. NO complex Auth. NO microservices. NO build steps.
+NO Docker. NO React. NO node_modules. NO microservices. NO build steps.
+**Dependencies:** FastAPI, Uvicorn, Jinja2, OpenAI (Python SDK), WeasyPrint.
 
-Stack: FastAPI + Jinja2 + HTMX + Chart.js (CDN)
+Stack: FastAPI + Jinja2 + HTMX + Pure CSS
 
 ---
 
@@ -89,16 +95,19 @@ class QueryProcessor:
 **Source of Truth:** `paradoxes.json` - Each paradox has `"type": "trolley"` or `"type": "open_ended"`
 
 **Critical Branches:**
+
 - `lib/query_processor.py:95-125` - Response parsing logic switches on `paradox["type"]`
 - `templates/index.html` - Frontend conditionally shows/hides group inputs
 
 **Trolley type:**
-- Expects `{1}` or `{2}` decision tokens in response
+
+- Expects `{1}`, `{2}`, `{3}`, or `{4}` decision tokens in response (N-way support)
 - Parses to extract decision + explanation
 - Aggregates statistics (counts, percentages)
-- Renders bar charts + chi-square tests
+- Renders CSS-based horizontal bar charts (no external dependencies)
 
 **Open-ended type:**
+
 - No token parsing
 - Stores full response text
 - No statistical aggregation
@@ -111,6 +120,7 @@ class QueryProcessor:
 **Location:** `lib/ai_service.py:48-98`
 
 Auto-selects OpenRouter API based on system prompt:
+
 - **With system prompt:** Uses `chat.completions` with system message role
 - **Without system prompt:** Uses `chat.completions` with user message only
 
@@ -205,11 +215,12 @@ Example: `anthropic-claude-3-5-sonnet-001`, `anthropic-claude-3-5-sonnet-002`
 ### Mission: Add New Paradox
 
 Edit `paradoxes.json`:
+
 ```json
 {
   "id": "your_paradox_id",
   "title": "Display Title",
-  "type": "trolley",  // or "open_ended"
+  "type": "trolley", // or "open_ended"
   "promptTemplate": "Your prompt with {{GROUP1}} and {{GROUP2}} placeholders",
   "group1Default": "Default description",
   "group2Default": "Default description"
@@ -221,6 +232,7 @@ NO code changes needed. UI and backend auto-adapt.
 ### Mission: Add Generation Parameter
 
 1. Update Pydantic model in `lib/validation.py`:
+
 ```python
 class GenerationParams(BaseModel):
     # existing...
@@ -234,6 +246,7 @@ class GenerationParams(BaseModel):
 ### Mission: Add API Endpoint
 
 **Pattern:**
+
 ```python
 @app.post("/api/endpoint")
 async def my_endpoint(request: MyRequestModel):
@@ -261,20 +274,24 @@ async def my_endpoint(request: MyRequestModel):
 ## Known Issues (Mission Hazards)
 
 ### OpenAI SDK async client
+
 - Uses `AsyncOpenAI` for non-blocking requests
 - All AI calls must be awaited
 - Semaphore controls concurrency
 
 ### No automated tests
+
 - Manual testing via browser and curl
 - Future: pytest integration planned
 
 ### HTMX state management
+
 - Server-side rendering for most UI
-- Minimal client-side JavaScript
-- Chart.js for visualizations only
+- Zero client-side JavaScript (pure CSS visualizations)
+- CSS-based horizontal bar charts for decision distributions
 
 ### High "Undecided" rate
+
 - Expected for some models (they don't understand `{1}/{2}` format)
 - NOT a bug - document as model limitation
 
@@ -283,16 +300,19 @@ async def my_endpoint(request: MyRequestModel):
 ## Troubleshooting
 
 **Server won't start:**
+
 - Check `.env` exists with valid OPENROUTER_API_KEY
 - Verify Python 3.9+ installed
 - Run `pip install -r requirements.txt`
 - Check port 8000 not in use
 
 **Results not saving:**
+
 - Check `results/` directory writable
 - Verify disk space
 
 **API errors:**
+
 - 429 (rate limit): Automatic retry with backoff (wait)
 - 401 (auth): Check OPENROUTER_API_KEY in .env
 - 404 (model): Verify model name at openrouter.ai/models
@@ -306,6 +326,7 @@ When asked to review code, output format:
 **FINAL VERDICT:** [SHIP IT 🚢] or [HOLD 🛑]
 
 **Summary:**
+
 - Performance: [changes]
 - Correctness: [changes]
 - Readability: [changes]
@@ -341,6 +362,7 @@ You are **Mission Control**. User is the **Pilot**.
 ## File Map
 
 **Arsenal Modules (lib/):**
+
 - `validation.py` - Pydantic models
 - `ai_service.py` - OpenRouter client
 - `storage.py` - Run persistence
@@ -348,16 +370,19 @@ You are **Mission Control**. User is the **Pilot**.
 - `stats.py` - Statistical functions
 
 **Application:**
+
 - `main.py` - FastAPI routes (~250 lines)
 - `templates/index.html` - HTMX frontend
 - `static/style.css` - Candlelight styling
 
 **Data:**
+
 - `paradoxes.json` - 12 scenarios
 - `results/` - Run archives (gitignored)
 - `.env` - Environment variables
 
 **Docs:**
+
 - `README.md` - Quick start
 - `HANDBOOK.md` - Research guide
 - `ROADMAP.md` - Development history

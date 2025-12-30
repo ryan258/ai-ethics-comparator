@@ -15,11 +15,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, Response
 import io
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.middleware.cors import CORSMiddleware
+from typing import Callable, Awaitable
 
 # Arsenal modules
 from lib.validation import QueryRequest, InsightRequest
@@ -27,7 +28,7 @@ from lib.ai_service import AIService
 from lib.storage import RunStorage
 from lib.query_processor import QueryProcessor
 from lib.analysis import AnalysisEngine, AnalysisConfig
-from lib.view_models import safe_markdown, fetch_recent_run_view_models, prepare_chart_data
+from lib.view_models import safe_markdown, fetch_recent_run_view_models
 from lib.paradoxes import extract_scenario_text, get_paradox_by_id, load_paradoxes
 from lib.reporting import ReportGenerator
 
@@ -95,8 +96,8 @@ app.add_middleware(
 
 # Middleware to add version header
 @app.middleware("http")
-async def add_version_header(request: Request, call_next):
-    response = await call_next(request)
+async def add_version_header(request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
+    response: Response = await call_next(request)
     response.headers["X-App-Version"] = config.VERSION
     return response
 
@@ -331,11 +332,12 @@ async def generate_insight(request: InsightRequest) -> dict:
 @app.post("/api/runs/{run_id}/analyze")
 async def analyze_run(request: Request, run_id: str, regenerate: bool = False) -> HTMLResponse:
     """Generate and return analysis for a run (HTMX plain text/html)"""
+    model_to_use = config.ANALYST_MODEL  # Initialize early for error handler
     try:
         # Get form data if present
         form_data = await request.form()
         requested_analyst = form_data.get("analyst_model")
-        
+
         # Validate analyst model name
         if requested_analyst and not re.match(r'^[a-z0-9\-_/:.]+$', requested_analyst, re.IGNORECASE):
              return HTMLResponse("<div class='error'>Invalid model name format</div>", status_code=400)
@@ -358,9 +360,8 @@ async def analyze_run(request: Request, run_id: str, regenerate: bool = False) -
                     "insight": content,
                     "model": cached_model,
                     "cached": True,
-                    "run_id": run_id, # Added for regeneration button
+                    "run_id": run_id,
                     "run_data": run_data,
-                    "chart_data": prepare_chart_data(run_data),
                 })
 
         # Generate new insight
@@ -388,9 +389,8 @@ async def analyze_run(request: Request, run_id: str, regenerate: bool = False) -
             "insight": insight_data["content"],
             "model": model_to_use,
             "cached": False,
-            "run_id": run_id, # Added for regeneration button
+            "run_id": run_id,
             "run_data": run_data,
-            "chart_data": prepare_chart_data(run_data),
         })
         
     except Exception as e:

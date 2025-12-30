@@ -33,8 +33,8 @@
 
       .meta-table td {
         padding: 8px 0;
-        border-bottom: 1px solid #2a2a2a;
-        color: #e0e0e0;
+        border-bottom: 1px solid #a6accd;
+        color: #ebd2be;
       }
 
       .meta-table tr:last-child td {
@@ -56,11 +56,10 @@
         border-bottom: 3px solid #a6accd; /* Lavender */
         padding-bottom: 15px;
         margin-bottom: 35px;
-        color: #fff;
+        color: #ebd2be;
         text-transform: uppercase;
         letter-spacing: 3px;
         font-weight: 700;
-        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
       }
 
       h2 {
@@ -68,7 +67,7 @@
         color: #a6accd; /* Lavender */
         margin-top: 0;
         margin-bottom: 20px;
-        border-bottom: 1px solid #333;
+        border-bottom: 1px solid #a6accd;
         padding-bottom: 10px;
         text-transform: uppercase;
         letter-spacing: 1.5px;
@@ -87,7 +86,7 @@
 
       h4 {
         font-size: 11pt;
-        color: #fff;
+        color: #ebd2be;
         margin-top: 15px;
         margin-bottom: 8px;
         font-weight: bold;
@@ -98,13 +97,12 @@
 
       /* components */
       .result-summary {
-        background: #1a1a1a;
+        background: #121212;
         padding: 30px;
         border-radius: 4px; /* Sharper corners */
         margin-bottom: 30px;
-        border: 1px solid #333;
+        border: 1px solid #a6accd;
         border-left: 6px solid #98c379;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
       }
 
       .scenario-text {
@@ -116,7 +114,7 @@
         background: #121212;
         padding: 15px;
         border-radius: 4px;
-        border: 1px solid #2a2a2a;
+        border: 1px solid #a6accd;
       }
 
       .stats-container {
@@ -125,15 +123,14 @@
       }
 
       .stat-box {
-        background: #252525;
+        background: #121212;
         padding: 20px;
         border-radius: 4px;
         margin: 0 2% 15px 0;
         float: left;
         width: 48%;
         box-sizing: border-box;
-        border: 1px solid #333;
-        box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.2);
+        border: 1px solid #a6accd;
       }
 
       .stat-box:nth-child(2n) {
@@ -155,27 +152,26 @@
       }
 
       .stat-box strong {
-        color: #fff;
+        color: #ebd2be;
         display: block;
         margin-bottom: 8px;
         font-size: 11pt;
-        border-bottom: 1px solid #444;
+        border-bottom: 1px solid #a6accd;
         padding-bottom: 5px;
       }
 
       .insight-card {
-        background: #1a1a1a;
-        border: 1px solid #333;
+        background: #121212;
+        border: 1px solid #a6accd;
         padding: 25px;
         margin-bottom: 25px;
         border-radius: 4px;
         page-break-inside: avoid;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
       }
 
       /* Analysis section headers should look like cards headers */
       .insight-card h3 {
-        border-bottom: 1px solid #333;
+        border-bottom: 1px solid #a6accd;
         padding-bottom: 10px;
         margin-bottom: 15px;
       }
@@ -199,9 +195,9 @@
         right: 0;
         text-align: center;
         font-size: 8pt;
-        color: #666;
+        color: #a6accd;
         padding: 10px;
-        border-top: 1px solid #333;
+        border-top: 1px solid #a6accd;
         background-color: #121212;
       }
     </style>
@@ -255,7 +251,7 @@
         {% if run.summary.undecided and run.summary.undecided.count > 0 %}
         <div class="stat-box" style="opacity: 0.7;">
           <strong>Undecided</strong>
-          <div style="margin-top: 10px; color: #5c6370; font-size: 14pt; font-weight: bold">
+          <div style="margin-top: 10px; color: #a6accd; font-size: 14pt; font-weight: bold">
             {{ run.summary.undecided.count }} ({{ "%.1f"|format(run.summary.undecided.percentage) }}%)
           </div>
         </div>

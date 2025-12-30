@@ -131,111 +131,109 @@
     </div>
   </div>
 
-  <!-- N-Way Distribution Chart (Trolley-type only) -->
-  {% if run_data.paradoxType == 'trolley' and chart_data %}
-  <div class="dashboard-card" style="margin-top: 1.5rem; max-width: 600px; margin-left: auto; margin-right: auto;">
+  <!-- N-Way Distribution Visualization (Trolley-type only) -->
+  {% if run_data.paradoxType == 'trolley' and run_data.summary and
+  run_data.summary.options %}
+  <div
+    class="dashboard-card"
+    style="
+      margin-top: 1.5rem;
+      max-width: 700px;
+      margin-left: auto;
+      margin-right: auto;
+    "
+  >
     <h4>Decision Distribution</h4>
-    <canvas id="chart-{{ run_id }}" width="400" height="300"></canvas>
+    <div
+      style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem"
+    >
+      {% for opt_stat in run_data.summary.options %} {% set opt_meta =
+      run_data.options | selectattr("id", "equalto", opt_stat.id) | first |
+      default({}) %} {% set bar_width = "%.1f"|format(opt_stat.percentage) %} {%
+      set bar_color = "var(--option-" + opt_stat.id|string + ")" %}
+      <div style="display: flex; flex-direction: column; gap: 0.25rem">
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+          "
+        >
+          <span style="font-weight: 600"
+            >{{ opt_meta.get("label", "Option " + opt_stat.id|string) }}</span
+          >
+          <span style="opacity: 0.8"
+            >{{ opt_stat.count }} ({{ bar_width }}%)</span
+          >
+        </div>
+        <div
+          style="
+            width: 100%;
+            height: 24px;
+            background: var(--bg-color);
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+          "
+        >
+          <div
+            style="width: {{ bar_width }}%; height: 100%; background: {{ bar_color }}; transition: width 0.3s ease;"
+          ></div>
+        </div>
+      </div>
+      {% endfor %} {% if run_data.summary.undecided and
+      run_data.summary.undecided.count > 0 %} {% set undecided_width =
+      "%.1f"|format(run_data.summary.undecided.percentage) %}
+      <div style="display: flex; flex-direction: column; gap: 0.25rem">
+        <div
+          style="
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+          "
+        >
+          <span style="font-weight: 600; opacity: 0.7">Undecided</span>
+          <span style="opacity: 0.6"
+            >{{ run_data.summary.undecided.count }} ({{ undecided_width
+            }}%)</span
+          >
+        </div>
+        <div
+          style="
+            width: 100%;
+            height: 24px;
+            background: var(--bg-color);
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+          "
+        >
+          <div
+            style="width: {{ undecided_width }}%; height: 100%; background: var(--undecided); opacity: 0.5; transition: width 0.3s ease;"
+          ></div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
   </div>
-
-  <script>
-  (function() {
-    const chartId = 'chart-{{ run_id }}';
-    const ctx = document.getElementById(chartId);
-    if (!ctx) {
-      console.error('Canvas element not found:', chartId);
-      return;
-    }
-
-    const data = {{ chart_data | tojson }};
-    console.log('Chart data:', data);
-
-    if (!data.labels || !data.counts || data.labels.length === 0) {
-      console.error('Invalid chart data structure:', data);
-      return;
-    }
-
-    // Function to initialize chart once Chart.js is loaded
-    function initChart() {
-      if (typeof Chart === 'undefined') {
-        console.error('Chart.js failed to load');
-        ctx.innerHTML = '<p style="text-align:center;color:var(--accent-danger);padding:2rem;">Chart library failed to load</p>';
-        return;
-      }
-
-      new Chart(ctx.getContext('2d'), {
-      type: 'bar',
-      data: {
-        labels: data.labels,
-        datasets: [{
-          data: data.counts,
-          backgroundColor: data.colors,
-          borderWidth: 0
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: true,
-        scales: {
-          y: {
-            beginAtZero: true,
-            ticks: { stepSize: 1, color: '#ebd2be' },
-            grid: { color: 'rgba(166, 172, 205, 0.1)' }
-          },
-          x: {
-            ticks: { color: '#ebd2be' },
-            grid: { display: false }
-          }
-        },
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            backgroundColor: 'rgba(18, 18, 18, 0.9)',
-            titleColor: '#ebd2be',
-            bodyColor: '#ebd2be',
-            borderColor: '#a6accd',
-            borderWidth: 1,
-            callbacks: {
-              label: function(ctx) {
-                const pct = ((ctx.raw / data.total) * 100).toFixed(1);
-                return ctx.raw + ' responses (' + pct + '%)';
-              }
-            }
-          }
-        }
-      }
-      });
-    }
-
-    // Check if Chart.js is already loaded (from parent document)
-    if (typeof Chart !== 'undefined') {
-      initChart();
-    } else {
-      // Load Chart.js and then initialize
-      const script = document.createElement('script');
-      script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
-      script.onload = initChart;
-      script.onerror = function() {
-        console.error('Failed to load Chart.js from CDN');
-        ctx.innerHTML = '<p style="text-align:center;color:var(--accent-danger);padding:2rem;">Failed to load chart library</p>';
-      };
-      document.head.appendChild(script);
-    }
-  })();
-  </script>
   {% endif %}
 
   <!-- Raw Data Accordion -->
-  <div class="accordion">
-    <div class="accordion-header">
-      <span>View Analysis JSON</span>
-      <span>▼</span>
+  <details class="json-details">
+    <summary class="json-summary">
+      <div class="summary-flex-wrapper">
+        <span>View Analysis JSON</span>
+        <span class="toggle-icon">▼</span>
+      </div>
+    </summary>
+    <div class="json-content" style="border: 2px solid red; min-height: 50px;">
+      <p style="color: var(--accent-success); font-size: 1rem;">DEBUG: Content area visible</p>
+      {% if insight %}
+      <pre style="font-size: 0.85rem; opacity: 1; overflow-x: auto; color: #98c379; white-space: pre-wrap; word-wrap: break-word; margin: 0; background: #1a1a1a; padding: 1rem;"><code>{{ insight | tojson(indent=2) }}</code></pre>
+      {% else %}
+      <p style="color: var(--accent-danger); padding: 1rem; font-size: 1.2rem; font-weight: bold;">No insight data available (insight is empty/null)</p>
+      {% endif %}
     </div>
-    <div class="accordion-content">
-      <pre
-        style="font-size: 0.75rem; opacity: 0.7; overflow-x: auto"
-      ><code>{{ insight | tojson(indent=2) }}</code></pre>
-    </div>
-  </div>
+  </details>
   {% endif %}
 </div>

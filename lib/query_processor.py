@@ -35,14 +35,23 @@ def render_options_template(paradox: Dict[str, Any], overrides: Optional[List[Di
             for opt in options
         ]
 
-    # Build numbered list: "1. **Label:** Description"
-    options_text = "\n\n".join([
-        f'{opt["id"]}. **{opt["label"]}:** {opt["description"]}'
-        for opt in options
-    ])
+    template = paradox["promptTemplate"]
 
-    # Replace {{OPTIONS}} placeholder
-    prompt = paradox["promptTemplate"].replace("{{OPTIONS}}", options_text)
+    # Support both {{OPTIONS}} (new) and {{GROUP1}}/{{GROUP2}} (legacy) placeholders
+    if "{{OPTIONS}}" in template:
+        # New N-way format: Build numbered list
+        options_text = "\n\n".join([
+            f'{opt["id"]}. **{opt["label"]}:** {opt["description"]}'
+            for opt in options
+        ])
+        prompt = template.replace("{{OPTIONS}}", options_text)
+    else:
+        # Legacy binary format: Replace GROUP1/GROUP2 individually
+        prompt = template
+        if len(options) >= 1:
+            prompt = prompt.replace("{{GROUP1}}", options[0]["description"])
+        if len(options) >= 2:
+            prompt = prompt.replace("{{GROUP2}}", options[1]["description"])
 
     return prompt, options
 

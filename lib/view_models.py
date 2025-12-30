@@ -38,61 +38,6 @@ def safe_markdown(text: str) -> Markup:
     return Markup(rendered)
 
 
-def prepare_chart_data(run_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Prepare Chart.js data for N-way distribution visualization
-
-    Args:
-        run_data: Complete run data with summary
-
-    Returns:
-        Dict with labels, counts, colors, total for Chart.js
-    """
-    if run_data.get("paradoxType") != "trolley":
-        return {}
-
-    summary = run_data.get("summary", {})
-    options_stats = summary.get("options", [])
-
-    # Color palette matching CSS variables
-    colors = {
-        1: 'rgba(152, 195, 121, 0.8)',  # Green (--option-1)
-        2: 'rgba(97, 175, 239, 0.8)',   # Blue (--option-2)
-        3: 'rgba(229, 192, 123, 0.8)',  # Gold (--option-3)
-        4: 'rgba(224, 108, 117, 0.8)'   # Red (--option-4)
-    }
-
-    labels = []
-    counts = []
-    color_list = []
-
-    # Build data from options
-    for opt_stat in options_stats:
-        opt_id = opt_stat.get("id", 0)
-        # Find matching option label from run data
-        opt_label = next(
-            (o["label"] for o in run_data.get("options", []) if o["id"] == opt_id),
-            f"Option {opt_id}"
-        )
-        labels.append(opt_label)
-        counts.append(opt_stat.get("count", 0))
-        color_list.append(colors.get(opt_id, 'rgba(92, 99, 112, 0.8)'))
-
-    # Add undecided if present
-    undecided = summary.get("undecided", {})
-    if undecided.get("count", 0) > 0:
-        labels.append("Undecided")
-        counts.append(undecided["count"])
-        color_list.append('rgba(92, 99, 112, 0.8)')  # Gray
-
-    return {
-        "labels": labels,
-        "counts": counts,
-        "colors": color_list,
-        "total": summary.get("total", 0)
-    }
-
-
 class RunViewModel:
     """Builder for Run Result View Data (N-way support)"""
 
@@ -153,11 +98,21 @@ class RunViewModel:
             latest = insights[-1]
             insight_content = latest.get("content", "")
             insight_model = latest.get("analystModel", "Unknown")
-            insight_html = safe_markdown(insight_content)
-            has_insight = True
 
-        # 5. Prepare Chart Data
-        chart_data = prepare_chart_data(run_data)
+            # Handle both string (legacy) and dict (structured) insights
+            if isinstance(insight_content, str):
+                insight_html = safe_markdown(insight_content)
+            elif isinstance(insight_content, dict):
+                # For structured insights, check if legacy_text exists
+                if "legacy_text" in insight_content:
+                    insight_html = safe_markdown(insight_content["legacy_text"])
+                else:
+                    # Structured insight - show simple preview text
+                    insight_html = Markup("<p><em>Analysis complete. Click 'View Analysis' to see insights.</em></p>")
+            else:
+                insight_html = Markup("<p><em>Invalid insight format</em></p>")
+
+            has_insight = True
 
         return {
             "run_id": run_data.get("runId", "unknown"),
@@ -173,9 +128,6 @@ class RunViewModel:
             "undecided_count": undecided_count,
             "undecided_percentage": undecided_percentage,
             "total_responses": summary.get("total", 0),
-
-            # Chart Data (for Chart.js)
-            "chart_data": chart_data,
 
             # Analysis
             "has_insight": has_insight,

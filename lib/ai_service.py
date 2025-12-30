@@ -26,7 +26,7 @@ class AIService:
         base_url: str,
         referer: str,
         app_name: str
-    ):
+    ) -> None:
         if not api_key:
             raise ValueError("API key is required")
 

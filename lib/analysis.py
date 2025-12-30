@@ -96,8 +96,7 @@ class AnalysisEngine:
             "",
             {"temperature": config.temperature, "max_tokens": config.max_tokens}
         )
-        
-        # Try to parse as JSON (New Dashboard)
+
         # Try to parse as JSON (New Dashboard)
         try:
             # Enhanced JSON extraction (balanced brace counting) suggested by review

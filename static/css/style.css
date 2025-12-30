@@ -15,12 +15,12 @@
   --border-color: var(--accent-primary);
   /* Use Lavender for borders */
 
-  /* N-Way Option Colors */
-  --option-1: #98c379;  /* Green */
-  --option-2: #61afef;  /* Blue */
-  --option-3: #e5c07b;  /* Gold */
-  --option-4: #e06c75;  /* Red */
-  --undecided: #5c6370; /* Gray */
+  /* N-Way Option Colors (mapped to strict Candlelight palette) */
+  --option-1: #98c379; /* Green (approved) */
+  --option-2: #a6accd; /* Lavender (approved) */
+  --option-3: #ebd2be; /* Beige (approved) */
+  --option-4: #e06c75; /* Red (approved) */
+  --undecided: #a6accd; /* Lavender (approved) */
 }
 
 * {
@@ -330,11 +330,21 @@ textarea:focus {
   transition: opacity 0.3s;
 }
 
-.progress-segment.option-1 { background: var(--option-1); }
-.progress-segment.option-2 { background: var(--option-2); }
-.progress-segment.option-3 { background: var(--option-3); }
-.progress-segment.option-4 { background: var(--option-4); }
-.progress-segment.undecided { background: var(--undecided); }
+.progress-segment.option-1 {
+  background: var(--option-1);
+}
+.progress-segment.option-2 {
+  background: var(--option-2);
+}
+.progress-segment.option-3 {
+  background: var(--option-3);
+}
+.progress-segment.option-4 {
+  background: var(--option-4);
+}
+.progress-segment.undecided {
+  background: var(--undecided);
+}
 
 .progress-segment:hover {
   opacity: 0.8;
@@ -360,7 +370,6 @@ textarea:focus {
   border: 1px solid var(--border-color);
   background: var(--bg-color);
   color: var(--text-color);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   /* Default display is none (hidden). Only flex when open. */
 }
 
@@ -575,7 +584,6 @@ textarea:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background: rgba(255, 255, 255, 0.03);
   padding: 0.5rem 0.75rem;
   border-radius: 4px;
   border-left: 2px solid var(--accent-primary);
@@ -598,7 +606,6 @@ textarea:focus {
   color: var(--accent-danger);
   text-align: center;
   margin: 1rem 0;
-  text-shadow: 0 0 10px rgba(224, 108, 117, 0.2);
 }
 
 /* Insights List */
@@ -624,35 +631,57 @@ textarea:focus {
   top: 0.3rem;
 }
 
-/* Accordion */
-.accordion {
+/* Native Details/Summary (Replaces JS Accordion) */
+.json-details {
   margin-top: 2rem;
   border: 1px solid var(--border-color);
   border-radius: 4px;
+  display: block !important;
+  position: relative;
+  z-index: 1;
 }
 
-.accordion-header {
-  background: rgba(255, 255, 255, 0.03);
+.json-summary {
   padding: 0.75rem 1rem;
-  cursor: pointer;
+  cursor: pointer !important;
+  font-size: 0.85rem;
+  opacity: 0.8;
+  list-style: none; /* Hide default arrow */
+  user-select: none;
+}
+
+.summary-flex-wrapper {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 0.85rem;
-  opacity: 0.8;
+  width: 100%;
 }
 
-.accordion-content {
+.json-summary::-webkit-details-marker {
+  display: none; /* Hide default arrow in Chrome/Safari */
+}
+
+.json-content {
   padding: 1rem;
-  display: none;
   border-top: 1px solid var(--border-color);
+  display: block !important;
+  color: var(--text-color);
+  background: var(--bg-color);
+  position: relative;
+  z-index: 2;
+  max-height: none !important;
+  overflow: visible !important;
 }
 
-.accordion.open .accordion-content {
-  display: block;
+.json-details[open] .toggle-icon {
+  transform: rotate(180deg);
 }
 
-/* Responsive */
+.toggle-icon {
+  transition: transform 0.2s ease;
+  font-size: 0.7rem;
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
   .analysis-dashboard {

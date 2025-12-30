@@ -29,20 +29,32 @@ class AppConfig(BaseModel):
     
     # Limits
     MAX_ITERATIONS: int = int(os.getenv("MAX_ITERATIONS", "20"))
-    
-    # URLs
-    APP_BASE_URL: str = os.getenv("APP_BASE_URL", "http://localhost:8000")
-    OPENROUTER_BASE_URL: str = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
-    
+
+    # URLs (required - no hardcoded defaults)
+    APP_BASE_URL: Optional[str] = Field(default_factory=lambda: os.getenv("APP_BASE_URL"))
+    OPENROUTER_BASE_URL: Optional[str] = Field(default_factory=lambda: os.getenv("OPENROUTER_BASE_URL"))
+
     # Secrets
     OPENROUTER_API_KEY: Optional[str] = Field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY"))
 
     def validate_secrets(self) -> None:
-        """Validate that required secrets are present."""
+        """Validate that required environment variables are present."""
         if not self.OPENROUTER_API_KEY:
-             raise ValueError(
+            raise ValueError(
                 "OPENROUTER_API_KEY not found in environment. "
                 "Please create a .env file with: OPENROUTER_API_KEY=sk-or-your-key"
+            )
+
+        if not self.APP_BASE_URL:
+            raise ValueError(
+                "APP_BASE_URL not found in environment. "
+                "Please add to .env: APP_BASE_URL=http://localhost:8000"
+            )
+
+        if not self.OPENROUTER_BASE_URL:
+            raise ValueError(
+                "OPENROUTER_BASE_URL not found in environment. "
+                "Please add to .env: OPENROUTER_BASE_URL=https://openrouter.ai/api/v1"
             )
     
     # Models (Loaded from env JSON or file)
@@ -51,7 +63,7 @@ class AppConfig(BaseModel):
     DEFAULT_MODEL: Optional[str] = Field(default_factory=lambda: os.getenv("DEFAULT_MODEL"))
 
     @property
-    def results_path(self):
+    def results_path(self) -> "Path":
         from pathlib import Path
         return Path(__file__).parent.parent / "results"
 
