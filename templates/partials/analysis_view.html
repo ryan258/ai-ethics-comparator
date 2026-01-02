@@ -72,12 +72,65 @@
         <h4>Moral Complexes</h4>
         <div class="moral-complex-list">
           {% if insight.moral_complexes %} {% for complex in
-          insight.moral_complexes %}
+          insight.moral_complexes %} {% if complex.justification %}
+          <details
+            class="stat-accordion-item"
+            style="
+              margin-bottom: 0.5rem;
+              background: rgba(255, 255, 255, 0.03);
+              border-radius: 4px;
+            "
+          >
+            <summary
+              style="
+                cursor: pointer;
+                padding: 0.4rem 0.8rem;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                list-style: none;
+              "
+            >
+              <div
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 0.5rem;
+                  width: 100%;
+                "
+              >
+                <span class="stat-label" style="font-weight: 500"
+                  >{{ complex.label }}</span
+                >
+                <span style="opacity: 0.3; font-size: 0.7rem">▼</span>
+              </div>
+              <span
+                class="stat-value"
+                style="font-weight: bold; color: var(--accent-primary)"
+                >{{ complex.count }}</span
+              >
+            </summary>
+            <div
+              class="accordion-content"
+              style="
+                padding: 0.5rem 0.8rem;
+                font-size: 0.85rem;
+                opacity: 0.8;
+                border-top: 1px solid rgba(255, 255, 255, 0.05);
+                color: var(--text-secondary);
+                line-height: 1.4;
+              "
+            >
+              {{ complex.justification }}
+            </div>
+          </details>
+          {% else %}
+          <!-- Legacy View (No Justification) -->
           <div class="stat-counter">
             <span class="stat-label">{{ complex.label }}</span>
             <span class="stat-value">{{ complex.count }}</span>
           </div>
-          {% endfor %} {% else %}
+          {% endif %} {% endfor %} {% else %}
           <div
             style="
               text-align: center;
@@ -226,12 +279,35 @@
         <span class="toggle-icon">▼</span>
       </div>
     </summary>
-    <div class="json-content" style="border: 2px solid red; min-height: 50px;">
-      <p style="color: var(--accent-success); font-size: 1rem;">DEBUG: Content area visible</p>
+    <div class="json-content" style="border: 2px solid red; min-height: 50px">
+      <p style="color: var(--accent-success); font-size: 1rem">
+        DEBUG: Content area visible
+      </p>
       {% if insight %}
-      <pre style="font-size: 0.85rem; opacity: 1; overflow-x: auto; color: #98c379; white-space: pre-wrap; word-wrap: break-word; margin: 0; background: #1a1a1a; padding: 1rem;"><code>{{ insight | tojson(indent=2) }}</code></pre>
+      <pre
+        style="
+          font-size: 0.85rem;
+          opacity: 1;
+          overflow-x: auto;
+          color: #98c379;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+          margin: 0;
+          background: #1a1a1a;
+          padding: 1rem;
+        "
+      ><code>{{ insight | tojson(indent=2) }}</code></pre>
       {% else %}
-      <p style="color: var(--accent-danger); padding: 1rem; font-size: 1.2rem; font-weight: bold;">No insight data available (insight is empty/null)</p>
+      <p
+        style="
+          color: var(--accent-danger);
+          padding: 1rem;
+          font-size: 1.2rem;
+          font-weight: bold;
+        "
+      >
+        No insight data available (insight is empty/null)
+      </p>
       {% endif %}
     </div>
   </details>

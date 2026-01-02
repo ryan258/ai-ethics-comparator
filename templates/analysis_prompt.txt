@@ -7,8 +7,11 @@ The JSON must follow this schema:
 {
   "dominant_framework": "string (e.g. Utilitarian, Deontological)",
   "moral_complexes": [
-    { "label": "Duty", "count": 3 },
-    { "label": "Consequence", "count": 7 },
+    { 
+      "label": "Duty", 
+      "count": 3,
+      "justification": "Brief explanation of why this score was assigned based on the run data."
+    },
     ... (Use allowed labels: Duty, Consequence, Purity, Authority, Compassion, Risk-aversion, Legalism)
   ],
   "justifications": [

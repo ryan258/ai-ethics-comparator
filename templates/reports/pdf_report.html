@@ -233,26 +233,43 @@
         </div>
       </div>
 
-      {% if run.summary and run.summary.options %}
-      {% set option_count = run.summary.options | length %}
+      {% if run.summary and run.summary.options %} {% set option_count =
+      run.summary.options | length %}
       <div class="stats-container nway-{{ option_count }}">
-        {% for opt_stat in run.summary.options %}
-        {% set opt_meta = run.options | selectattr("id", "equalto", opt_stat.id) | first | default({}) %}
+        {% for opt_stat in run.summary.options %} {% set opt_meta = run.options
+        | selectattr("id", "equalto", opt_stat.id) | first | default({}) %}
         <div class="stat-box">
-          <strong>{{ opt_meta.get("label", "Option " + opt_stat.id|string) }}</strong>
+          <strong
+            >{{ opt_meta.get("label", "Option " + opt_stat.id|string) }}</strong
+          >
           <div style="margin-top: 5px; color: #a6accd">
             {{ opt_meta.get("description", "") | truncate(100) }}
           </div>
-          <div style="margin-top: 10px; color: #98c379; font-size: 14pt; font-weight: bold">
+          <div
+            style="
+              margin-top: 10px;
+              color: #98c379;
+              font-size: 14pt;
+              font-weight: bold;
+            "
+          >
             {{ opt_stat.count }} ({{ "%.1f"|format(opt_stat.percentage) }}%)
           </div>
         </div>
-        {% endfor %}
-        {% if run.summary.undecided and run.summary.undecided.count > 0 %}
-        <div class="stat-box" style="opacity: 0.7;">
+        {% endfor %} {% if run.summary.undecided and run.summary.undecided.count
+        > 0 %}
+        <div class="stat-box" style="opacity: 0.7">
           <strong>Undecided</strong>
-          <div style="margin-top: 10px; color: #a6accd; font-size: 14pt; font-weight: bold">
-            {{ run.summary.undecided.count }} ({{ "%.1f"|format(run.summary.undecided.percentage) }}%)
+          <div
+            style="
+              margin-top: 10px;
+              color: #a6accd;
+              font-size: 14pt;
+              font-weight: bold;
+            "
+          >
+            {{ run.summary.undecided.count }} ({{
+            "%.1f"|format(run.summary.undecided.percentage) }}%)
           </div>
         </div>
         {% endif %}
@@ -291,7 +308,22 @@
         <h3>Moral Complexes</h3>
         <ul>
           {% for complex in content.moral_complexes %}
-          <li><strong>{{ complex.label }}:</strong> {{ complex.count }}</li>
+          <li>
+            <strong>{{ complex.label }}:</strong> {{ complex.count }} {% if
+            complex.justification %}
+            <div
+              style="
+                margin-top: 4px;
+                color: #a6accd;
+                font-size: 0.9em;
+                font-style: italic;
+                margin-bottom: 8px;
+              "
+            >
+              {{ complex.justification }}
+            </div>
+            {% endif %}
+          </li>
           {% endfor %}
         </ul>
       </div>
