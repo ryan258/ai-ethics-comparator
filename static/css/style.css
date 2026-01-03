@@ -541,7 +541,6 @@ textarea:focus {
   grid-template-columns: 2fr 1fr 2fr; /* Centered narrow stats column */
   gap: 1.5rem;
   margin-top: 1.5rem;
-  height: 100%; /* Ensure dashboard takes available height for Col 3 expansion */
 }
 
 .dashboard-col {
@@ -636,7 +635,6 @@ textarea:focus {
   margin-top: 2rem;
   border: 1px solid var(--border-color);
   border-radius: 4px;
-  display: block !important;
   position: relative;
   z-index: 1;
 }
@@ -664,12 +662,10 @@ textarea:focus {
 .json-content {
   padding: 1rem;
   border-top: 1px solid var(--border-color);
-  display: block !important;
   color: var(--text-color);
   background: var(--bg-color);
   position: relative;
   z-index: 2;
-  max-height: none !important;
   overflow: visible !important;
 }
 

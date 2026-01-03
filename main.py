@@ -221,6 +221,7 @@ async def get_run(run_id: str) -> dict:
 @app.post("/api/query")
 async def execute_query(request: Request, query_request: QueryRequest) -> dict:
     """Execute experimental run"""
+    """Execute experimental run"""
     try:
         # Load paradox
         paradoxes = load_paradoxes(PARADOXES_PATH)

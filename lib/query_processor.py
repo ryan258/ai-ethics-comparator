@@ -191,13 +191,16 @@ class QueryProcessor:
             resolved_options = []
             option_count = 0
 
+        if system_prompt:
+            prompt = f"PERSONA: {system_prompt}\n\n{prompt}"
+        
         # Execute iterations with concurrency limiting
         async def run_iteration(iteration_number: int):
             async with self.semaphore:
                 response = await self.ai_service.get_model_response(
                     model_name,
                     prompt,
-                    system_prompt,
+                    "", # Pass empty string to disable system prompt handling in AI service
                     params
                 )
 

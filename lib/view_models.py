@@ -130,6 +130,7 @@ class RunViewModel:
             "total_responses": summary.get("total", 0),
 
             # Analysis
+            "system_prompt": run_data.get("systemPrompt", ""),
             "has_insight": has_insight,
             "insight_html": insight_html,
             "insight_model": insight_model,

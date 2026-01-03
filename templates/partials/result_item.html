@@ -2,6 +2,11 @@
   <div class="result-header">
     <h3>{{ ctx.model_name }}</h3>
     <span class="result-subtitle">{{ ctx.paradox_title }}</span>
+    {% if ctx.system_prompt %}
+    <div style="font-size: 0.8rem; color: var(--accent-secondary); margin-top: 0.25rem; font-style: italic; opacity: 0.9;">
+        <span style="font-weight: bold; opacity: 0.7;">System Persona:</span> "{{ ctx.system_prompt }}"
+    </div>
+    {% endif %}
   </div>
 
   <div class="result-body">
