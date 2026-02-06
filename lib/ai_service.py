@@ -11,12 +11,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-# Retry configuration
-# Retry configuration provided in config, defaults here if needed
-DEFAULT_MAX_RETRIES = 5
-DEFAULT_RETRY_DELAY = 2
-
-
 class AIService:
     """AI Service for OpenRouter API with exponential backoff retry"""
 
@@ -25,10 +19,19 @@ class AIService:
         api_key: str,
         base_url: str,
         referer: str,
-        app_name: str
+        app_name: str,
+        max_retries: int = 5,
+        retry_delay: int = 2,
     ) -> None:
         if not api_key:
             raise ValueError("API key is required")
+        if max_retries < 0:
+            raise ValueError("max_retries must be >= 0")
+        if retry_delay < 0:
+            raise ValueError("retry_delay must be >= 0")
+
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
 
         self.client = AsyncOpenAI(
             api_key=api_key,
@@ -133,7 +136,6 @@ class AIService:
         system_prompt: str,
         params: Dict[str, Any],
         retry_count: int,
-        max_retries: int = DEFAULT_MAX_RETRIES
     ) -> str:
         """Handle errors with retry logic"""
         logger.error(f"Error querying OpenRouter: {error}")
@@ -144,11 +146,19 @@ class AIService:
 
         if status_code:
             # Retry on 429 (rate limit) or 5xx (server errors)
-            should_retry = (status_code == 429 or status_code >= 500) and retry_count < max_retries
+            should_retry = (
+                (status_code == 429 or status_code >= 500)
+                and retry_count < self.max_retries
+            )
 
             if should_retry:
-                delay = DEFAULT_RETRY_DELAY * (2 ** retry_count)
-                logger.info(f"Retrying after {delay}s (attempt {retry_count + 1}/{max_retries})...")
+                delay = self.retry_delay * (2 ** retry_count)
+                logger.info(
+                    "Retrying after %ss (attempt %s/%s)...",
+                    delay,
+                    retry_count + 1,
+                    self.max_retries,
+                )
                 await asyncio.sleep(delay)
                 return await self.get_model_response(model_name, prompt, system_prompt, params, retry_count + 1)
 
@@ -156,7 +166,7 @@ class AIService:
             if status_code == 404:
                 raise Exception(f"[404] Model not found: {error_msg}")
             elif status_code == 429:
-                raise Exception(f"[429] Rate limit exceeded after {max_retries} retries: {error_msg}")
+                raise Exception(f"[429] Rate limit exceeded after {self.max_retries} retries: {error_msg}")
             elif status_code in (402, 403):
                 raise Exception(f"[{status_code}] Billing or authentication issue: {error_msg}")
             elif status_code == 401:
@@ -166,13 +176,18 @@ class AIService:
 
         # Handle network errors
         if "JSON" in error_msg or "Connection" in error_msg:
-            should_retry = retry_count < max_retries
+            should_retry = retry_count < self.max_retries
             if should_retry:
-                delay = DEFAULT_RETRY_DELAY * (2 ** retry_count)
-                logger.info(f"Network error - retrying after {delay}s (attempt {retry_count + 1}/{max_retries})...")
+                delay = self.retry_delay * (2 ** retry_count)
+                logger.info(
+                    "Network error - retrying after %ss (attempt %s/%s)...",
+                    delay,
+                    retry_count + 1,
+                    self.max_retries,
+                )
                 await asyncio.sleep(delay)
                 return await self.get_model_response(model_name, prompt, system_prompt, params, retry_count + 1)
 
-            raise Exception(f"[Network] API error after {max_retries} retries: {error_msg}")
+            raise Exception(f"[Network] API error after {self.max_retries} retries: {error_msg}")
 
         raise Exception(f"[Unknown] Failed to retrieve response: {error_msg}")

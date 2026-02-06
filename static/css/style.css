@@ -483,6 +483,25 @@ textarea:focus {
   opacity: 0.7;
 }
 
+.analysis-meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.analysis-regen-btn {
+  width: auto;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.7rem;
+  opacity: 0.8;
+}
+
+.analysis-regen-loading {
+  font-size: 0.7rem;
+  text-align: right;
+  margin-top: 0.2rem;
+}
+
 .empty-state {
   text-align: center;
   padding: 2rem;
@@ -535,6 +554,33 @@ textarea:focus {
   opacity: 0.8;
   margin-bottom: 0.5rem;
 }
+
+.system-persona-banner {
+  background: var(--bg-color);
+  border: 1px solid var(--accent-primary);
+  border-left-width: 5px;
+  padding: 1rem;
+  margin-bottom: 2rem;
+  border-radius: 4px;
+}
+
+.system-persona-title {
+  color: var(--accent-primary);
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+  text-transform: uppercase;
+}
+
+.system-persona-body {
+  font-family: monospace;
+  font-size: 0.95rem;
+  background: var(--bg-color);
+  border: 1px solid var(--border-color);
+  padding: 0.75rem;
+  border-radius: 4px;
+  color: var(--text-color);
+}
+
 /* Analysis Dashboard (Video Game Style) */
 .analysis-dashboard {
   display: grid;
@@ -557,6 +603,10 @@ textarea:focus {
   /* height: 100%; Removed to allow natural sizing */
   position: relative;
   overflow: hidden;
+}
+
+.dashboard-card-grow {
+  flex-grow: 1;
 }
 
 .dashboard-card h4 {
@@ -598,6 +648,41 @@ textarea:focus {
   color: var(--accent-success);
 }
 
+.moral-complex-detail {
+  margin-bottom: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+}
+
+.moral-complex-summary {
+  cursor: pointer;
+  padding: 0.5rem;
+  font-weight: bold;
+  list-style: none;
+  display: flex;
+  justify-content: space-between;
+}
+
+.moral-complex-count {
+  color: var(--accent-success);
+}
+
+.moral-complex-justification {
+  padding: 0.75rem;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.9rem;
+  opacity: 0.9;
+  line-height: 1.5;
+  color: var(--text-color);
+}
+
+.moral-complex-empty {
+  text-align: center;
+  opacity: 0.5;
+  padding: 1rem;
+}
+
 /* Framework Highlight */
 .dominant-framework {
   font-size: 1.5rem;
@@ -628,6 +713,112 @@ textarea:focus {
   color: var(--accent-success);
   font-size: 0.7rem;
   top: 0.3rem;
+}
+
+.insights-list-spaced {
+  margin-bottom: 1rem;
+}
+
+.consistency-text {
+  font-size: 0.9rem;
+  opacity: 0.9;
+  color: var(--accent-primary);
+}
+
+.consistency-list {
+  color: var(--accent-primary);
+}
+
+.distribution-card {
+  margin-top: 1.5rem;
+  width: 100%;
+}
+
+.distribution-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.distribution-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.distribution-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85rem;
+}
+
+.distribution-option-label {
+  font-weight: 600;
+}
+
+.distribution-option-count {
+  opacity: 0.8;
+}
+
+.distribution-undecided-label {
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.distribution-undecided-count {
+  opacity: 0.6;
+}
+
+.distribution-bar-track {
+  width: 100%;
+  height: 24px;
+  background: var(--bg-color);
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border-color);
+}
+
+.distribution-bar-fill {
+  height: 100%;
+}
+
+.distribution-bar-undecided {
+  background: var(--undecided);
+  opacity: 0.5;
+}
+
+.analysis-json-details {
+  margin-top: 2rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--bg-color);
+}
+
+.analysis-json-summary {
+  cursor: pointer;
+  padding: 1rem;
+  background: var(--bg-color);
+  font-weight: bold;
+  user-select: none;
+}
+
+.analysis-json-content {
+  padding: 1rem;
+  border-top: 1px solid var(--border-color);
+  overflow-x: auto;
+}
+
+.analysis-json-pre {
+  font-size: 0.85rem;
+  color: var(--accent-success);
+  margin: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.analysis-json-empty {
+  color: var(--accent-danger);
 }
 
 /* Native Details/Summary (Replaces JS Accordion) */

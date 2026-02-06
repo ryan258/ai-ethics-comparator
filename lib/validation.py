@@ -35,7 +35,7 @@ class OptionInputs(BaseModel):
 
     @field_validator('options')
     @classmethod
-    def validate_sequential_ids(cls, v):
+    def validate_sequential_ids(cls, v: Optional[List[OptionInput]]) -> Optional[List[OptionInput]]:
         """Ensure option IDs are sequential starting from 1"""
         if v:
             ids = sorted([opt.id for opt in v])
@@ -125,4 +125,3 @@ class InsightRequest(BaseModel):
         if 'responses' not in v or len(v['responses']) < 1:
             raise ValueError('runData must contain at least one response')
         return v
-

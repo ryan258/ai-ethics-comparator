@@ -1,10 +1,10 @@
-
 """
 Analysis Module - Arsenal Module
 Handles generation of ethical insights from run data.
 """
 
-from typing import Dict, Any, List, Optional
+from pathlib import Path
+from typing import Any, Dict, Optional
 import json
 from string import Template
 from dataclasses import dataclass
@@ -20,15 +20,25 @@ class AnalysisConfig:
     run_data: Dict[str, Any]
     analyst_model: str
     temperature: float = 0.5
-    max_tokens: int = 4096 # Increased to support detailed list outputs
+    max_tokens: int = 4096  # Increased to support detailed list outputs
 
 class AnalysisEngine:
-    def __init__(self, ai_service: AIService):
+    def __init__(
+        self,
+        ai_service: AIService,
+        prompt_template_path: Optional[Path] = None,
+    ) -> None:
         self.ai_service = ai_service
+        self.prompt_template_path = prompt_template_path or (
+            Path(__file__).resolve().parent.parent / "templates" / "analysis_prompt.txt"
+        )
 
     def compile_run_text(self, run_data: Dict[str, Any]) -> str:
         """Compile run data into a text format for the analyst"""
         paradox_type = run_data.get("paradoxType", "trolley")
+        if paradox_type != "trolley":
+            raise ValueError(f"Unsupported paradox type for analysis: {paradox_type}")
+
         responses = run_data.get("responses", [])
         
         text = f"Run Analysis Request\n====================\n\n"
@@ -36,50 +46,41 @@ class AnalysisEngine:
         text += f"Paradox: {run_data.get('paradoxId', 'Unknown')}\n"
         text += "\n--- RUN DATA START ---\n"
         
-        if paradox_type == "trolley":
-            summary = run_data.get("summary", {})
-            text += f"\nSummary:\n"
+        summary = run_data.get("summary", {})
+        text += f"\nSummary:\n"
 
-            # Handle both N-way (options array) and legacy binary (group1/group2) schemas
-            if "options" in summary:
-                # N-way schema: options is a list of {id, count, percentage}
-                options_meta = run_data.get("options", [])
-                for opt_stat in summary["options"]:
-                    opt_id = opt_stat.get("id", "?")
-                    count = opt_stat.get("count", 0)
-                    # Find label from options metadata
-                    label = f"Option {opt_id}"
-                    for opt_meta in options_meta:
-                        if opt_meta.get("id") == opt_id:
-                            label = opt_meta.get("label", label)
-                            break
-                    text += f"- {label}: {count}\n"
-            else:
-                # Legacy binary schema: group1/group2 dicts
-                text += f"- Group 1: {summary.get('group1', {}).get('count', 0)}\n"
-                text += f"- Group 2: {summary.get('group2', {}).get('count', 0)}\n"
-
-            # Include undecided count if present
-            undecided = summary.get("undecided", {})
-            if undecided.get("count", 0) > 0:
-                text += f"- Undecided: {undecided.get('count', 0)}\n"
-            
-            text += "\nIteration Explanations:\n"
-            for idx, response in enumerate(responses):
-                if not isinstance(response, dict):
-                    logger.warning(f"Response {idx} is not a dict: {type(response)}")
-                    continue
-                decision = response.get('decisionToken', 'N/A')
-                explanation = response.get('explanation', '')
-                text += f"Iteration {idx + 1} ({decision}): {explanation}\n"
+        # Handle both N-way (options array) and legacy binary (group1/group2) schemas
+        if "options" in summary:
+            # N-way schema: options is a list of {id, count, percentage}
+            options_meta = run_data.get("options", [])
+            for opt_stat in summary["options"]:
+                opt_id = opt_stat.get("id", "?")
+                count = opt_stat.get("count", 0)
+                # Find label from options metadata
+                label = f"Option {opt_id}"
+                for opt_meta in options_meta:
+                    if opt_meta.get("id") == opt_id:
+                        label = opt_meta.get("label", label)
+                        break
+                text += f"- {label}: {count}\n"
         else:
-            text += "\nIteration Responses:\n"
-            for idx, response in enumerate(responses):
-                if not isinstance(response, dict):
-                    logger.warning(f"Response {idx} is not a dict: {type(response)}")
-                    continue
-                content = response.get('response', response.get('raw', ''))
-                text += f"Iteration {idx + 1}: {content}\n"
+            # Legacy binary schema: group1/group2 dicts
+            text += f"- Group 1: {summary.get('group1', {}).get('count', 0)}\n"
+            text += f"- Group 2: {summary.get('group2', {}).get('count', 0)}\n"
+
+        # Include undecided count if present
+        undecided = summary.get("undecided", {})
+        if undecided.get("count", 0) > 0:
+            text += f"- Undecided: {undecided.get('count', 0)}\n"
+        
+        text += "\nIteration Explanations:\n"
+        for idx, response in enumerate(responses):
+            if not isinstance(response, dict):
+                logger.warning(f"Response {idx} is not a dict: {type(response)}")
+                continue
+            decision = response.get('decisionToken', 'N/A')
+            explanation = response.get('explanation', '')
+            text += f"Iteration {idx + 1} ({decision}): {explanation}\n"
         
         text += "\n--- RUN DATA END ---\n"
         return text
@@ -95,16 +96,10 @@ class AnalysisEngine:
         
         # Load prompt from template file
         try:
-             # Assuming running from project root or robust path handling needed? 
-             # Let's try relative path first, or use config base path if available.
-             # Using relative path assuming app checks CWD or relative to file. 
-             # Better: use __file__ relative 
-             from pathlib import Path
-             template_path = Path(__file__).parent.parent / "templates" / "analysis_prompt.txt"
-             with open(template_path, 'r') as f:
-                 meta_prompt = f.read()
+            with open(self.prompt_template_path, "r", encoding="utf-8") as f:
+                meta_prompt = f.read()
         except Exception as e:
-            logger.error(f"Failed to load analysis_prompt.txt: {e}")
+            logger.error("Failed to load analysis prompt template (%s): %s", self.prompt_template_path, e)
             # Fallback (minimal)
             meta_prompt = "Analyze this AI run:\n{data}"
             

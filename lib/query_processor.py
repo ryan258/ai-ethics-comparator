@@ -14,7 +14,10 @@ from lib.ai_service import AIService
 logger = logging.getLogger(__name__)
 
 
-def render_options_template(paradox: Dict[str, Any], overrides: Optional[List[Dict]] = None) -> Tuple[str, List[Dict]]:
+def render_options_template(
+    paradox: Dict[str, Any],
+    overrides: Optional[List[Dict[str, Any]]] = None,
+) -> Tuple[str, List[Dict[str, Any]]]:
     """
     Render N-way options into prompt template
 
@@ -159,7 +162,7 @@ class QueryProcessor:
     Manages concurrent iteration execution with paradox-aware parsing
     """
 
-    def __init__(self, ai_service: AIService, concurrency_limit: int = 2):
+    def __init__(self, ai_service: AIService, concurrency_limit: int = 2) -> None:
         self.ai_service = ai_service
         self.semaphore = asyncio.Semaphore(concurrency_limit)
 
@@ -180,16 +183,13 @@ class QueryProcessor:
         system_prompt = config.systemPrompt
         params = config.params
 
-        # Build prompt from template (N-way support)
-        if paradox["type"] == "trolley":
-            # Use render_options_template for N-way support
-            prompt, resolved_options = render_options_template(paradox, option_overrides)
-            option_count = len(resolved_options)
-        else:
-            # Open-ended paradoxes don't need option rendering
-            prompt = paradox["promptTemplate"]
-            resolved_options = []
-            option_count = 0
+        paradox_type = paradox.get("type")
+        if paradox_type != "trolley":
+            raise ValueError(f"Unsupported paradox type: {paradox_type}")
+
+        # Use render_options_template for N-way support.
+        prompt, resolved_options = render_options_template(paradox, option_overrides)
+        option_count = len(resolved_options)
 
         if system_prompt:
             prompt = f"PERSONA: {system_prompt}\n\n{prompt}"
@@ -206,25 +206,16 @@ class QueryProcessor:
 
                 timestamp = datetime.now(timezone.utc).isoformat()
 
-                if paradox["type"] == "trolley":
-                    # Parse with N-way support
-                    parsed = parse_trolley_response(response, option_count)
-                    return {
-                        "iteration": iteration_number,
-                        "decisionToken": parsed["decisionToken"],
-                        "optionId": parsed["optionId"],  # Changed from "group" (string) to "optionId" (int)
-                        "explanation": parsed["explanation"],
-                        "raw": response,
-                        "timestamp": timestamp
-                    }
-                else:
-                    # Open-ended
-                    return {
-                        "iteration": iteration_number,
-                        "response": response,
-                        "raw": response,
-                        "timestamp": timestamp
-                    }
+                # Parse with N-way support.
+                parsed = parse_trolley_response(response, option_count)
+                return {
+                    "iteration": iteration_number,
+                    "decisionToken": parsed["decisionToken"],
+                    "optionId": parsed["optionId"],
+                    "explanation": parsed["explanation"],
+                    "raw": response,
+                    "timestamp": timestamp
+                }
 
         # Run all iterations concurrently (limited by semaphore)
         tasks = [run_iteration(i + 1) for i in range(iterations)]
@@ -265,7 +256,7 @@ class QueryProcessor:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "modelName": model_name,
             "paradoxId": paradox["id"],
-            "paradoxType": paradox["type"],
+            "paradoxType": "trolley",
             "prompt": prompt,
             "iterationCount": iterations,
             "params": {
@@ -285,10 +276,8 @@ class QueryProcessor:
         if params.get("seed") is not None:
             run_data["params"]["seed"] = params["seed"]
 
-        if paradox["type"] == "trolley":
-            # Store resolved options (N-way support)
-            run_data["options"] = resolved_options
-            # Aggregate with N-way support
-            run_data["summary"] = aggregate_trolley_stats(responses, option_count)
+        # Store resolved options (N-way support).
+        run_data["options"] = resolved_options
+        run_data["summary"] = aggregate_trolley_stats(responses, option_count)
 
         return run_data

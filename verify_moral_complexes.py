@@ -70,20 +70,35 @@ async def verify() -> None:
     print(content)
     print("\n-------------------------------\n")
 
-    if "Moral Complexes" in content:
-        print("✅ SUCCESS: 'Moral Complexes' section found.")
-        # Optional: Check for specific labels
-        missing = []
-        for label in ["Duty", "Consequence"]:
-            if label not in content:
-                missing.append(label)
+    if not isinstance(content, dict):
+        print("❌ FAILURE: Expected structured dict response.")
+        return
 
-        if not missing:
-            print("✅ SUCCESS: Expected labels found.")
-        else:
-            print(f"⚠️ WARNING: Some labels missing: {missing}")
+    required_keys = [
+        "dominant_framework",
+        "moral_complexes",
+        "justifications",
+        "consistency",
+        "key_insights",
+    ]
+    missing_keys = [key for key in required_keys if key not in content]
+    if missing_keys:
+        print(f"❌ FAILURE: Missing required keys: {missing_keys}")
+        return
+
+    if not isinstance(content["moral_complexes"], list):
+        print("❌ FAILURE: moral_complexes is not a list.")
+        return
+
+    labels = [item.get("label", "") for item in content["moral_complexes"] if isinstance(item, dict)]
+    expected_labels = {"Duty", "Consequence"}
+    missing_labels = sorted(expected_labels.difference(labels))
+
+    print("✅ SUCCESS: Structured analysis schema is valid.")
+    if missing_labels:
+        print(f"⚠️ WARNING: Expected labels not found: {missing_labels}")
     else:
-        print("❌ FAILURE: 'Moral Complexes' section NOT found.")
+        print("✅ SUCCESS: Expected labels found.")
 
 if __name__ == "__main__":
     asyncio.run(verify())

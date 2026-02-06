@@ -1,3 +1,16 @@
+# ARCHIVAL NOTE
+
+This document is a historical code-review snapshot from December 29, 2025.
+Many items here are already addressed and some architecture details are outdated.
+
+Use these files for current behavior and active guidance:
+
+- `README.md`
+- `ROADMAP.md`
+- `CLAUDE.md`
+
+---
+
 # Code Review: Smells, Inconsistencies, and Bugs
 
 **Date:** 2025-12-29

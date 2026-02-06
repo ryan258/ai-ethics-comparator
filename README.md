@@ -1,67 +1,120 @@
-# AI Ethics Comparator (Python/FastAPI)
+# AI Ethics Comparator (FastAPI + HTMX)
 
-A research tool for analyzing how large language models (LLMs) reason about ethical dilemmas. It supports both **trolley-style scenarios** (binary choices) and **open-ended ethical questions**.
+AI Ethics Comparator is a local-first research tool for measuring how LLMs respond to trolley-style ethical dilemmas across repeated iterations.
 
-## Core Features
-*   **Arsenal Architecture**: Modular, dependency-injected design (FastAPI + HTMX).
-*   **Dual Paradox Support**: Binary choices & open-ended scenarios.
-*   **Deep Analysis**: "Moral Complexes" detection (Duty, Consequence, etc.) by an Analyst Agent.
-*   **Persistence**: Run history saved to local JSON files.
-*   **Reproducibility**: Experiments capture all parameters (temperature, full prompt, seeds).
+## Current Scope
+
+- Paradox type: `trolley` only (2-4 options per scenario)
+- Storage format: flat JSON files at `results/<run_id>.json`
+- Run ID format: strict `<base>-NNN` (example: `claude-3-opus-001`)
+- Legacy migration: startup migrates legacy IDs to strict format
+
+## Stack
+
+- Backend: FastAPI
+- Templates: Jinja2
+- Interactivity: HTMX
+- AI provider: OpenRouter via OpenAI Python SDK
+- Reports: WeasyPrint PDF generation
 
 ## Quick Start
 
-### Prerequisites
-*   Python 3.10+
-*   An OpenRouter API Key
+### 1. Environment
 
-### Installation
+Requirements:
 
-1.  **Clone & Setup**:
-    ```bash
-    git clone <repo>
-    cd ai-ethics-comparator
-    python3 -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
-    ```
+- Python 3.10+
+- OpenRouter API key
 
-2.  **Configuration**:
-    Create a `.env` file:
-    ```env
-    OPENROUTER_API_KEY=sk-or-your-key-here
-    OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-    APP_BASE_URL=http://localhost:8000
-    APP_NAME="AI Ethics Comparator"
-    # optional:
-    ANALYST_MODEL=provider/model-name
-    ```
+Install dependencies:
 
-3.  **Run**:
-    ```bash
-    ./run_server.sh
-    # OR
-    source venv/bin/activate
-    uvicorn main:app --reload
-    ```
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+pip install pytest
+```
 
-4.  **Access**: Open `http://localhost:8000`
+### 2. Configure
 
-## Project Structure
+Create `.env` (or copy from `.example.env`):
 
-*   `main.py`: Fast API entry point & routing.
-*   `lib/`: Core logic modules (Arsenal Strategy).
-    *   `ai_service.py`: OpenRouter interaction.
-    *   `analysis.py`: Insight generation & Moral Complexes.
-    *   `query_processor.py`: Experiment execution engine.
-    *   `storage.py`: Async filesystem result storage.
-    *   `stats.py`: Statistical utilities.
-*   `templates/`: Jinja2 templates (HTMX partials).
-*   `static/`: CSS & assets (Candlelight theme).
-*   `results/`: Local JSON storage for runs (gitignored).
+```env
+OPENROUTER_API_KEY=sk-or-your-key-here
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
+APP_BASE_URL=http://localhost:8000
+APP_NAME="AI Ethics Comparator"
 
-## Usage
+# optional overrides
+ANALYST_MODEL=provider/model-name
+DEFAULT_MODEL=provider/model-name
+MAX_ITERATIONS=20
+AI_CONCURRENCY_LIMIT=2
+AI_MAX_RETRIES=5
+AI_RETRY_DELAY=2
+```
 
-1.  **Configure**: Select a paradox and an AI model (or type any OpenRouter ID).
-2.  **Run**: Set iterations (e.g., 5 or 10) and click "Run Experiment".
-3.  **Analyze**: Click "View Analysis" on any result to generate an AI-powered breakdown of ethical frameworks used.
+### 3. Run
+
+```bash
+./run_server.sh
+# or
+uvicorn main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Open [http://localhost:8000](http://localhost:8000).
+
+### 4. Test
+
+```bash
+pytest
+```
+
+Minimal suite currently covers:
+
+- startup/health behavior
+- strict run ID validation
+- legacy run ID migration
+- safe analysis error rendering (escaped output)
+
+## API Surface
+
+- `GET /` - main UI
+- `GET /health` - health + version
+- `GET /api/paradoxes` - list paradox definitions
+- `GET /api/fragments/paradox-details?paradoxId=...` - HTMX fragment
+- `POST /api/query` - execute run
+- `GET /api/runs` - list run metadata
+- `GET /api/runs/{run_id}` - get full run record
+- `POST /api/insight` - generate and optionally persist insight
+- `POST /api/runs/{run_id}/analyze` - HTMX analysis render
+- `GET /api/runs/{run_id}/pdf` - PDF export
+
+## Run Data Shape
+
+Each run file (`results/<run_id>.json`) includes:
+
+- identity: `runId`, `timestamp`, `modelName`, `paradoxId`, `paradoxType`
+- prompt + execution config: `prompt`, optional `systemPrompt`, `iterationCount`, `params`
+- option metadata: `options[]`
+- per-iteration responses: `responses[]`
+- aggregate stats: `summary.options[]` + `summary.undecided`
+- optional analysis history: `insights[]`
+
+## Repository Layout
+
+- `main.py` - app factory, startup wiring, routes
+- `lib/` - reusable modules (`ai_service`, `query_processor`, `analysis`, `storage`, etc.)
+- `templates/` - Jinja2 views/partials
+- `static/` - Candlelight theme assets
+- `tests/` - pytest suite
+- `paradoxes.json` - scenario library
+- `results/` - persisted run output (gitignored)
+- `CONTRIBUTING.md` - contribution and documentation sync rules
+
+## Security and Operational Notes
+
+- Required secrets validated at startup (`OPENROUTER_API_KEY`, `APP_BASE_URL`, `OPENROUTER_BASE_URL`)
+- Strict run ID regex blocks malformed lookup paths
+- Markdown rendering escapes raw HTML and strips links/images
+- `.env` is gitignored; `.example.env` documents expected variables

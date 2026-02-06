@@ -5,8 +5,10 @@ Typed configuration management using Pydantic Settings
 
 import os
 import json
+from pathlib import Path
 from typing import List, Optional
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel, Field, ValidationError
 
 # Strict Candlelight Palette (Reference)
 # Background: #121212
@@ -23,9 +25,9 @@ class AppConfig(BaseModel):
     VERSION: str = "6.0.0"
 
     # AI Service Config
-    AI_CONCURRENCY_LIMIT: int = 2
-    AI_MAX_RETRIES: int = 5
-    AI_RETRY_DELAY: int = 2
+    AI_CONCURRENCY_LIMIT: int = Field(default_factory=lambda: int(os.getenv("AI_CONCURRENCY_LIMIT", "2")))
+    AI_MAX_RETRIES: int = Field(default_factory=lambda: int(os.getenv("AI_MAX_RETRIES", "5")))
+    AI_RETRY_DELAY: int = Field(default_factory=lambda: int(os.getenv("AI_RETRY_DELAY", "2")))
     
     # Limits
     MAX_ITERATIONS: int = int(os.getenv("MAX_ITERATIONS", "20"))
@@ -63,8 +65,7 @@ class AppConfig(BaseModel):
     DEFAULT_MODEL: Optional[str] = Field(default_factory=lambda: os.getenv("DEFAULT_MODEL"))
 
     @property
-    def results_path(self) -> "Path":
-        from pathlib import Path
+    def results_path(self) -> Path:
         return Path(__file__).parent.parent / "results"
 
     @classmethod
@@ -78,20 +79,31 @@ class AppConfig(BaseModel):
         if _models_json:
             try:
                 data = json.loads(_models_json)
+                if not isinstance(data, list):
+                    raise ValueError("AVAILABLE_MODELS_JSON must be a JSON array.")
                 config.AVAILABLE_MODELS = [ModelConfig(**m) for m in data]
-            except Exception:
-                pass
+            except json.JSONDecodeError as exc:
+                raise ValueError("AVAILABLE_MODELS_JSON must be valid JSON.") from exc
+            except (TypeError, ValueError) as exc:
+                raise ValueError(str(exc)) from exc
+            except ValidationError as exc:
+                raise ValueError("AVAILABLE_MODELS_JSON contains invalid model objects.") from exc
         else:
             # Load from models.json
-            try:
-                from pathlib import Path
-                models_path = Path(__file__).parent.parent / "models.json"
-                if models_path.exists():
-                     with open(models_path, 'r') as f:
-                         data = json.load(f)
-                         config.AVAILABLE_MODELS = [ModelConfig(**m) for m in data]
-            except Exception:
-                pass
+            models_path = Path(__file__).parent.parent / "models.json"
+            if models_path.exists():
+                try:
+                    with open(models_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    if not isinstance(data, list):
+                        raise ValueError(f"{models_path.name} must contain a JSON array.")
+                    config.AVAILABLE_MODELS = [ModelConfig(**m) for m in data]
+                except json.JSONDecodeError as exc:
+                    raise ValueError(f"Invalid JSON in {models_path.name}.") from exc
+                except (TypeError, ValueError) as exc:
+                    raise ValueError(str(exc)) from exc
+                except ValidationError as exc:
+                    raise ValueError(f"Invalid model entry in {models_path.name}.") from exc
 
         # Smart defaults for models
         if not config.ANALYST_MODEL and config.AVAILABLE_MODELS:

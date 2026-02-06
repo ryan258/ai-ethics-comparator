@@ -1,17 +1,6 @@
 <div class="analysis-content">
-  <div
-    class="analysis-meta"
-    style="
-      margin-bottom: 1rem;
-      padding-bottom: 0.5rem;
-      border-bottom: 1px solid var(--border-color);
-      font-size: 0.8rem;
-      opacity: 0.7;
-    "
-  >
-    <div
-      style="display: flex; justify-content: space-between; align-items: center"
-    >
+  <div class="analysis-meta">
+    <div class="analysis-meta-row">
       <span
         >Analysis by <strong>{{ model }}</strong> {% if cached %}(Cached){%
         endif %}</span
@@ -19,13 +8,7 @@
 
       {% if run_id %}
       <button
-        class="btn btn-sm"
-        style="
-          width: auto;
-          padding: 0.2rem 0.6rem;
-          font-size: 0.7rem;
-          opacity: 0.8;
-        "
+        class="btn btn-sm analysis-regen-btn"
         hx-post="/api/runs/{{ run_id }}/analyze?regenerate=true"
         hx-target="#analysis-content-{{ run_id }}"
         hx-indicator="#regen-loading-{{ run_id }}"
@@ -36,20 +19,18 @@
     </div>
     <div
       id="regen-loading-{{ run_id }}"
-      class="htmx-indicator"
-      style="font-size: 0.7rem; text-align: right; margin-top: 0.2rem"
+      class="htmx-indicator analysis-regen-loading"
     >
       Regenerating...
-    </div>
     </div>
   </div>
 
 
 
   {% if run_data and run_data.systemPrompt %}
-  <div style="background: rgba(166, 172, 205, 0.15); border: 1px solid var(--accent-primary); border-left-width: 5px; padding: 1rem; margin-bottom: 2rem; border-radius: 4px;">
-    <h3 style="color: var(--accent-primary); margin-bottom: 0.5rem; font-size: 1rem; text-transform: uppercase;">System Persona Active</h3>
-    <div style="font-family: monospace; font-size: 0.95rem; background: rgba(0,0,0,0.3); padding: 0.75rem; border-radius: 4px; color: var(--text-color);">
+  <div class="system-persona-banner">
+    <h3 class="system-persona-title">System Persona Active</h3>
+    <div class="system-persona-body">
       {{ run_data.systemPrompt }}
     </div>
   </div>
@@ -66,7 +47,7 @@
     <!-- ... (cols) ... -->
     <!-- Col 1: Key Insights -->
     <div class="dashboard-col">
-      <div class="dashboard-card" style="flex-grow: 1">
+      <div class="dashboard-card dashboard-card-grow">
         <h4>Key Insights</h4>
         <ul class="insights-list">
           {% for point in insight.key_insights %}
@@ -83,17 +64,17 @@
         <div class="dominant-framework">{{ insight.dominant_framework }}</div>
       </div>
 
-      <div class="dashboard-card" style="flex-grow: 1">
+      <div class="dashboard-card dashboard-card-grow">
         <h4>Moral Complexes</h4>
         <div class="moral-complex-list">
           {% if insight.moral_complexes %} {% for complex in
           insight.moral_complexes %} {% if complex.justification %}
-          <details style="margin-bottom: 0.5rem; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 4px; background: rgba(255, 255, 255, 0.03);">
-            <summary style="cursor: pointer; padding: 0.5rem; font-weight: bold; list-style: none; display: flex; justify-content: space-between;">
+          <details class="moral-complex-detail">
+            <summary class="moral-complex-summary">
               <span>{{ complex.label }}</span>
-              <span style="color: var(--accent-success);">{{ complex.count }}</span>
+              <span class="moral-complex-count">{{ complex.count }}</span>
             </summary>
-            <div style="padding: 0.75rem; border-top: 1px solid rgba(255, 255, 255, 0.1); font-size: 0.9rem; opacity: 0.9; line-height: 1.5; color: var(--text-secondary);">
+            <div class="moral-complex-justification">
               {{ complex.justification }}
             </div>
           </details>
@@ -104,7 +85,7 @@
             <span class="stat-value">{{ complex.count }}</span>
           </div>
           {% endif %} {% endfor %} {% else %}
-          <div style="text-align: center; opacity: 0.5; padding: 1rem;">No moral complexes</div>
+          <div class="moral-complex-empty">No moral complexes</div>
           {% endif %}
         </div>
       </div>
@@ -112,22 +93,22 @@
 
     <!-- Col 3: Justifications & Consistency -->
     <div class="dashboard-col">
-      <div class="dashboard-card" style="flex-grow: 1">
+      <div class="dashboard-card dashboard-card-grow">
         <h4>Pattern Recognition</h4>
-        <ul class="insights-list" style="margin-bottom: 1rem">
+        <ul class="insights-list insights-list-spaced">
           {% for item in insight.justifications %}
           <li>{{ item }}</li>
           {% endfor %}
         </ul>
       </div>
-      <div class="dashboard-card" style="flex-grow: 1">
+      <div class="dashboard-card dashboard-card-grow">
         <h4>Consistency Check</h4>
         {% if insight.consistency is string %}
-        <div style="font-size: 0.9rem; opacity: 0.9; color: var(--accent-secondary);">
+        <div class="consistency-text">
           {{ insight.consistency }}
         </div>
         {% else %}
-        <ul class="insights-list" style="color: var(--accent-secondary)">
+        <ul class="insights-list consistency-list">
           {% for item in insight.consistency %}
           <li>{{ item }}</li>
           {% endfor %}
@@ -139,34 +120,34 @@
 
   <!-- N-Way Distribution Visualization (Trolley-type only) -->
   {% if run_data.paradoxType == 'trolley' and run_data.summary and run_data.summary.options %}
-  <div class="dashboard-card" style="margin-top: 1.5rem; width: 100%;">
+  <div class="dashboard-card distribution-card">
     <h4>Decision Distribution</h4>
-    <div style="display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem">
+    <div class="distribution-list">
       {% for opt_stat in run_data.summary.options %} 
       {% set opt_meta = run_data.options | selectattr("id", "equalto", opt_stat.id) | first | default({}) %} 
       {% set bar_width = "%.1f"|format(opt_stat.percentage) %} 
       {% set bar_color = "var(--option-" + opt_stat.id|string + ")" %}
-      <div style="display: flex; flex-direction: column; gap: 0.25rem">
-        <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
-          <span style="font-weight: 600">{{ opt_meta.get("label", "Option " + opt_stat.id|string) }}</span>
-          <span style="opacity: 0.8">{{ opt_stat.count }} ({{ bar_width }}%)</span>
+      <div class="distribution-item">
+        <div class="distribution-row">
+          <span class="distribution-option-label">{{ opt_meta.get("label", "Option " + opt_stat.id|string) }}</span>
+          <span class="distribution-option-count">{{ opt_stat.count }} ({{ bar_width }}%)</span>
         </div>
-        <div style="width: 100%; height: 24px; background: var(--bg-color); border-radius: 4px; overflow: hidden; border: 1px solid var(--border-color);">
-          {% set bar_style = 'width: ' ~ bar_width ~ '%; height: 100%; background: ' ~ bar_color ~ ';' %}
-          <div style="{{ bar_style }}"></div>
+        <div class="distribution-bar-track">
+          {% set bar_style = 'width: ' ~ bar_width ~ '%; background: ' ~ bar_color ~ ';' %}
+          <div class="distribution-bar-fill" style="{{ bar_style }}"></div>
         </div>
       </div>
       {% endfor %} 
       {% if run_data.summary.undecided and run_data.summary.undecided.count > 0 %} 
       {% set undecided_width = "%.1f"|format(run_data.summary.undecided.percentage) %}
-      <div style="display: flex; flex-direction: column; gap: 0.25rem">
-        <div style="display: flex; justify-content: space-between; font-size: 0.85rem;">
-          <span style="font-weight: 600; opacity: 0.7">Undecided</span>
-          <span style="opacity: 0.6">{{ run_data.summary.undecided.count }} ({{ undecided_width }}%)</span>
+      <div class="distribution-item">
+        <div class="distribution-row">
+          <span class="distribution-undecided-label">Undecided</span>
+          <span class="distribution-undecided-count">{{ run_data.summary.undecided.count }} ({{ undecided_width }}%)</span>
         </div>
-        <div style="width: 100%; height: 24px; background: var(--bg-color); border-radius: 4px; overflow: hidden; border: 1px solid var(--border-color);">
-           {% set undecided_style = 'width: ' ~ undecided_width ~ '%; height: 100%; background: var(--undecided); opacity: 0.5;' %}
-          <div style="{{ undecided_style }}"></div>
+        <div class="distribution-bar-track">
+           {% set undecided_style = 'width: ' ~ undecided_width ~ '%;' %}
+          <div class="distribution-bar-fill distribution-bar-undecided" style="{{ undecided_style }}"></div>
         </div>
       </div>
       {% endif %}
@@ -175,15 +156,15 @@
   {% endif %}
 
   <!-- Raw Data Accordion (Simplified) -->
-  <details style="margin-top: 2rem; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-color);">
-    <summary style="cursor: pointer; padding: 1rem; background: rgba(255,255,255,0.05); font-weight: bold; user-select: none;">
+  <details class="analysis-json-details">
+    <summary class="analysis-json-summary">
       View Analysis JSON
     </summary>
-    <div style="padding: 1rem; border-top: 1px solid var(--border-color); overflow-x: auto;">
+    <div class="analysis-json-content">
       {% if insight %}
-      <pre style="font-size: 0.85rem; color: #98c379; margin: 0; white-space: pre-wrap; word-wrap: break-word;"><code>{{ insight | tojson(indent=2) }}</code></pre>
+      <pre class="analysis-json-pre"><code>{{ insight | tojson(indent=2) }}</code></pre>
       {% else %}
-      <p style="color: var(--accent-danger);">No insight data available.</p>
+      <p class="analysis-json-empty">No insight data available.</p>
       {% endif %}
     </div>
   </details>

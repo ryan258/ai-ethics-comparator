@@ -9,7 +9,7 @@ sys.path.append(os.getcwd())
 
 from lib.reporting import ReportGenerator
 
-def generate_test_pdf():
+def generate_test_pdf() -> None:
     print("Generating test PDF...")
     
     # Mock Data

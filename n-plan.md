@@ -1,3 +1,16 @@
+# ARCHIVAL NOTE
+
+This file is a historical migration log from December 29, 2025.
+It is not the current source of truth for architecture or runtime behavior.
+
+For current state and active plans, use:
+
+- `README.md`
+- `ROADMAP.md`
+- `CLAUDE.md`
+
+---
+
 # N-Way Paradox Migration Plan
 ## AI Ethics Comparator: Binary → N-Way (3-4 Options)
 

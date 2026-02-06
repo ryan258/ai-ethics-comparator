@@ -5,16 +5,30 @@ Handles PDF generation for experimental runs
 
 from typing import Dict, Any, Optional
 from pathlib import Path
-from jinja2 import Environment, FileSystemLoader
 import logging
-from weasyprint import HTML, CSS
+
+try:
+    from jinja2 import Environment, FileSystemLoader
+except ModuleNotFoundError:  # pragma: no cover - optional dependency guard
+    Environment = None  # type: ignore[assignment]
+    FileSystemLoader = None  # type: ignore[assignment]
+
+try:
+    from weasyprint import HTML
+except ModuleNotFoundError:  # pragma: no cover - optional dependency guard
+    HTML = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
 class ReportGenerator:
     """Generates PDF reports from run data"""
 
-    def __init__(self, templates_dir: str = "templates"):
+    def __init__(self, templates_dir: str = "templates") -> None:
+        if Environment is None or FileSystemLoader is None:
+            raise RuntimeError("jinja2 is required to generate reports.")
+        if HTML is None:
+            raise RuntimeError("weasyprint is required to generate reports.")
+
         self.templates_dir = Path(templates_dir)
         if not self.templates_dir.exists():
             raise ValueError(f"Templates directory not found: {templates_dir}")
