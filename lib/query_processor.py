@@ -14,6 +14,109 @@ from lib.ai_service import AIService
 logger = logging.getLogger(__name__)
 
 
+def _decision_tokens(option_count: int) -> List[str]:
+    """Return canonical decision tokens for the current option count."""
+    return [f"{{{i}}}" for i in range(1, option_count + 1)]
+
+
+def _strict_single_choice_contract(option_count: int) -> str:
+    """Build a strict output contract to enforce one decision token."""
+    tokens = _decision_tokens(option_count)
+    token_list = ", ".join(f"`{token}`" for token in tokens)
+    return (
+        "\n\n**Output Contract (Strict):**\n\n"
+        f"- Choose exactly one decision token from: {token_list}.\n"
+        "- The first non-whitespace characters of your response MUST be that single token.\n"
+        "- Do not include any other decision token anywhere in your response.\n"
+        "- Do not write token alternatives such as \"{1} or {2}\".\n"
+        "- After the token, provide your reasoning."
+    )
+
+
+def _extract_choice_from_classifier_output(classifier_output: str, option_count: int) -> Optional[int]:
+    """Extract a single option ID from classifier output; 0 means undecided."""
+    if option_count < 1:
+        return None
+
+    pattern = r"\b([0-" + str(option_count) + r"])\b"
+    numeric_match = re.search(pattern, classifier_output)
+    if numeric_match:
+        value = int(numeric_match.group(1))
+        if value == 0:
+            return None
+        return value
+
+    brace_pattern = r"\{([1-" + str(option_count) + r"])\}"
+    brace_match = re.search(brace_pattern, classifier_output)
+    if brace_match:
+        return int(brace_match.group(1))
+
+    return None
+
+
+def _infer_option_from_text(response_text: str, option_count: int) -> Optional[int]:
+    """
+    Infer a final option choice from natural-language commitment phrases.
+    Returns None when no clear single commitment is present.
+    """
+    if not response_text or option_count < 1:
+        return None
+
+    explicit_patterns = [
+        (
+            r"(?i)\b(?:i|we)\s+(?:choose|chose|select|selected|recommend|recommended|pick|picked|prefer|support)\b"
+            r"[^0-9{}]{0,40}(?:option|policy|choice)?\s*\{?([1-" + str(option_count) + r"])\}?"
+        ),
+        (
+            r"(?i)\b(?:i(?:'d| would)\s+(?:choose|select|recommend|pick|go with)|i\s+will\s+(?:choose|select|recommend|pick))\b"
+            r"[^0-9{}]{0,40}(?:option|policy|choice)?\s*\{?([1-" + str(option_count) + r"])\}?"
+        ),
+        (
+            r"(?i)\b(?:my|the)\s+(?:choice|recommendation)\s+(?:is|:)\s*(?:option|policy|choice)?\s*\{?([1-"
+            + str(option_count)
+            + r"])\}?"
+        ),
+    ]
+
+    inferred: List[int] = []
+    for pattern in explicit_patterns:
+        inferred.extend(int(m) for m in re.findall(pattern, response_text))
+
+    if not inferred:
+        return None
+
+    unique_ids = set(inferred)
+    if len(unique_ids) == 1:
+        return inferred[-1]
+
+    return None
+
+
+def _build_choice_inference_prompt(response_text: str, option_count: int) -> str:
+    """
+    Build a strict extraction prompt for AI fallback when parser+heuristics fail.
+    Returns only the classifier instruction text.
+    """
+    if len(response_text) > 6000:
+        response_text = f"{response_text[:3000]}\n\n...[truncated]...\n\n{response_text[-3000:]}"
+
+    return (
+        "Classify the FINAL chosen option in the following model response.\n"
+        f"Valid options are integers 1..{option_count}.\n"
+        "Return exactly one character only:\n"
+        f"- '1'..'{option_count}' if there is one clear final choice\n"
+        "- '0' if no clear single final choice exists\n"
+        "Rules:\n"
+        "- Ignore option lists and hypothetical analysis.\n"
+        "- Use only an explicit final commitment (e.g. \"I choose option 2\", \"I'd pick {3}\").\n"
+        "- If the text contains conflicting commitments, return 0.\n"
+        "- Do not output any words.\n\n"
+        "MODEL RESPONSE START\n"
+        f"{response_text}\n"
+        "MODEL RESPONSE END"
+    )
+
+
 def render_options_template(
     paradox: Dict[str, Any],
     overrides: Optional[List[Dict[str, Any]]] = None,
@@ -56,6 +159,9 @@ def render_options_template(
         if len(options) >= 2:
             prompt = prompt.replace("{{GROUP2}}", options[1]["description"])
 
+    if options:
+        prompt = f"{prompt}{_strict_single_choice_contract(len(options))}"
+
     return prompt, options
 
 
@@ -81,8 +187,14 @@ def parse_trolley_response(response_text: str, option_count: int) -> Dict[str, A
             "explanation": response_text.strip()
         }
 
-    if len(matches) > 1:
-        logger.warning(f"Ambiguous response with multiple decision tokens: {matches}")
+    unique_matches = set(matches)
+    if len(unique_matches) > 1:
+        logger.warning("Ambiguous response with multiple decision tokens: %s", matches)
+        return {
+            "decisionToken": None,
+            "optionId": None,
+            "explanation": response_text.strip()
+        }
 
     decision_token = "{" + matches[0] + "}"
     option_id = int(matches[0])  # Convert to integer
@@ -162,9 +274,43 @@ class QueryProcessor:
     Manages concurrent iteration execution with paradox-aware parsing
     """
 
-    def __init__(self, ai_service: AIService, concurrency_limit: int = 2) -> None:
+    def __init__(
+        self,
+        ai_service: AIService,
+        concurrency_limit: int = 2,
+        choice_inference_model: Optional[str] = None,
+    ) -> None:
         self.ai_service = ai_service
         self.semaphore = asyncio.Semaphore(concurrency_limit)
+        self.choice_inference_model = choice_inference_model
+
+    async def _infer_option_id_with_fallback(
+        self,
+        response_text: str,
+        option_count: int,
+    ) -> Tuple[Optional[int], Optional[str]]:
+        """
+        Infer an option ID when strict token parsing fails.
+        Returns (option_id, method) where method is 'heuristic' or 'ai_classifier'.
+        """
+        heuristic_option = _infer_option_from_text(response_text, option_count)
+        if heuristic_option is not None:
+            return heuristic_option, "heuristic"
+
+        if not self.choice_inference_model:
+            return None, None
+
+        classifier_prompt = _build_choice_inference_prompt(response_text, option_count)
+        classifier_output = await self.ai_service.get_model_response(
+            self.choice_inference_model,
+            classifier_prompt,
+            "",
+            {"temperature": 0, "top_p": 1, "max_tokens": 4},
+        )
+        inferred_option = _extract_choice_from_classifier_output(classifier_output, option_count)
+        if inferred_option is None:
+            return None, None
+        return inferred_option, "ai_classifier"
 
     async def execute_run(self, config: RunConfig) -> Dict[str, Any]:
         """
@@ -208,7 +354,25 @@ class QueryProcessor:
 
                 # Parse with N-way support.
                 parsed = parse_trolley_response(response, option_count)
-                return {
+                inferred = False
+                inference_method: Optional[str] = None
+
+                if parsed["optionId"] is None:
+                    try:
+                        inferred_option, inference_method = await self._infer_option_id_with_fallback(
+                            response,
+                            option_count,
+                        )
+                    except Exception as inference_error:
+                        logger.warning("Choice inference fallback failed: %s", inference_error)
+                        inferred_option, inference_method = None, None
+
+                    if inferred_option is not None:
+                        parsed["decisionToken"] = f"{{{inferred_option}}}"
+                        parsed["optionId"] = inferred_option
+                        inferred = True
+
+                result = {
                     "iteration": iteration_number,
                     "decisionToken": parsed["decisionToken"],
                     "optionId": parsed["optionId"],
@@ -216,6 +380,10 @@ class QueryProcessor:
                     "raw": response,
                     "timestamp": timestamp
                 }
+                if inferred and inference_method:
+                    result["inferred"] = True
+                    result["inferenceMethod"] = inference_method
+                return result
 
         # Run all iterations concurrently (limited by semaphore)
         tasks = [run_iteration(i + 1) for i in range(iterations)]

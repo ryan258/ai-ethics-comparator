@@ -5,7 +5,7 @@ Copy-paste ready: Just provide config
 """
 
 import asyncio
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from openai import AsyncOpenAI
 import logging
 
@@ -41,6 +41,89 @@ class AIService:
                 "X-Title": app_name
             }
         )
+
+    @staticmethod
+    def _extract_text_from_parts(parts: Any) -> str:
+        """Extract text from structured content parts returned by some providers."""
+        if not isinstance(parts, list):
+            return ""
+
+        extracted: List[str] = []
+        for part in parts:
+            if isinstance(part, str):
+                text = part.strip()
+                if text:
+                    extracted.append(text)
+                continue
+
+            if isinstance(part, dict):
+                text_value = part.get("text")
+                if isinstance(text_value, str):
+                    text = text_value.strip()
+                    if text:
+                        extracted.append(text)
+                continue
+
+            text_attr = getattr(part, "text", None)
+            if isinstance(text_attr, str):
+                text = text_attr.strip()
+                if text:
+                    extracted.append(text)
+
+        return "\n".join(extracted)
+
+    def _extract_response_text(self, response: Any) -> str:
+        """Extract best-effort text across chat/completions provider variants."""
+        choices = getattr(response, "choices", None)
+        if not choices:
+            return ""
+
+        first_choice = choices[0]
+        message = getattr(first_choice, "message", None)
+
+        content = getattr(message, "content", None)
+        if isinstance(content, str) and content.strip():
+            return content.strip()
+        if isinstance(content, list):
+            text = self._extract_text_from_parts(content)
+            if text:
+                return text
+
+        # Some providers populate refusal text instead of content.
+        refusal = getattr(message, "refusal", None)
+        if isinstance(refusal, str) and refusal.strip():
+            return refusal.strip()
+
+        # Some providers expose reasoning separately.
+        reasoning = getattr(message, "reasoning", None)
+        if isinstance(reasoning, str) and reasoning.strip():
+            return reasoning.strip()
+        if isinstance(reasoning, list):
+            text = self._extract_text_from_parts(reasoning)
+            if text:
+                return text
+
+        # Defensive fallback for non-chat shape.
+        choice_text = getattr(first_choice, "text", None)
+        if isinstance(choice_text, str) and choice_text.strip():
+            return choice_text.strip()
+
+        return ""
+
+    @staticmethod
+    def _empty_response_error(response: Any) -> str:
+        """Create an actionable error when a provider returns no usable text."""
+        choices = getattr(response, "choices", None)
+        if not choices:
+            return "Model returned no choices"
+
+        finish_reason = getattr(choices[0], "finish_reason", None)
+        if finish_reason == "length":
+            return "Model hit max_tokens before yielding visible output"
+        if finish_reason == "content_filter":
+            return "Model response blocked by provider content filter"
+
+        return "Model returned no usable text content"
 
     async def get_model_response(
         self,
@@ -81,49 +164,31 @@ class AIService:
             if params.get("seed") is not None:
                 request_params["seed"] = params["seed"]
 
-            # Dual API support: chat.completions (with system) vs responses.create (legacy)
+            messages: List[Dict[str, str]]
             if system_prompt and system_prompt.strip():
                 messages = [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": prompt}
                 ]
-
-                try:
-                    response = await self.client.chat.completions.create(
-                        **request_params,
-                        messages=messages
-                    )
-                except Exception as api_error:
-                    if "JSON" in str(api_error):
-                        logger.error(f"JSON parsing error - API may have returned HTML or empty response")
-                        logger.error(f"Model: {model_name}, Retry count: {retry_count}")
-                    raise
-
-                if response.choices and response.choices[0].message.content:
-                    return response.choices[0].message.content.strip()
-                
-                raise Exception("Model returned empty response - check token limits")
             else:
-                # Legacy responses.create API (no system prompt)
-                # Note: OpenRouter may not support this endpoint for all models
-                # Fallback to chat.completions without system message
                 messages = [{"role": "user", "content": prompt}]
 
-                try:
-                    response = await self.client.chat.completions.create(
-                        **request_params,
-                        messages=messages
-                    )
-                except Exception as api_error:
-                    if "JSON" in str(api_error):
-                        logger.error(f"JSON parsing error - API may have returned HTML or empty response")
-                        logger.error(f"Model: {model_name}, Retry count: {retry_count}")
-                    raise
+            try:
+                response = await self.client.chat.completions.create(
+                    **request_params,
+                    messages=messages
+                )
+            except Exception as api_error:
+                if "JSON" in str(api_error):
+                    logger.error("JSON parsing error - API may have returned HTML or empty response")
+                    logger.error("Model: %s, Retry count: %s", model_name, retry_count)
+                raise
 
-                if response.choices and response.choices[0].message.content:
-                    return response.choices[0].message.content.strip()
+            response_text = self._extract_response_text(response)
+            if response_text:
+                return response_text
 
-                raise Exception("Model returned empty response - check token limits")
+            raise Exception(self._empty_response_error(response))
 
         except Exception as error:
             return await self._handle_error(error, model_name, prompt, system_prompt, params, retry_count)
@@ -189,5 +254,9 @@ class AIService:
                 return await self.get_model_response(model_name, prompt, system_prompt, params, retry_count + 1)
 
             raise Exception(f"[Network] API error after {self.max_retries} retries: {error_msg}")
+
+        # Preserve explicit model-output failures without wrapping.
+        if error_msg.startswith("Model "):
+            raise Exception(error_msg)
 
         raise Exception(f"[Unknown] Failed to retrieve response: {error_msg}")

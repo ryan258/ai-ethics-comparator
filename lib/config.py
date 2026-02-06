@@ -19,6 +19,24 @@ class ModelConfig(BaseModel):
     id: str
     name: str
 
+
+def _env_bool(name: str, default: bool) -> bool:
+    """Parse common boolean env formats with a strict fallback."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+
+    raise ValueError(
+        f"{name} must be one of: true/false, 1/0, yes/no, on/off"
+    )
+
+
 class AppConfig(BaseModel):
     # App Identity
     APP_NAME: str = "AI Ethics Comparator"
@@ -28,6 +46,9 @@ class AppConfig(BaseModel):
     AI_CONCURRENCY_LIMIT: int = Field(default_factory=lambda: int(os.getenv("AI_CONCURRENCY_LIMIT", "2")))
     AI_MAX_RETRIES: int = Field(default_factory=lambda: int(os.getenv("AI_MAX_RETRIES", "5")))
     AI_RETRY_DELAY: int = Field(default_factory=lambda: int(os.getenv("AI_RETRY_DELAY", "2")))
+    AI_CHOICE_INFERENCE_ENABLED: bool = Field(
+        default_factory=lambda: _env_bool("AI_CHOICE_INFERENCE_ENABLED", True)
+    )
     
     # Limits
     MAX_ITERATIONS: int = int(os.getenv("MAX_ITERATIONS", "20"))

@@ -115,6 +115,9 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         query_processor = QueryProcessor(
             ai_service,
             concurrency_limit=config.AI_CONCURRENCY_LIMIT,
+            choice_inference_model=(
+                config.ANALYST_MODEL if config.AI_CHOICE_INFERENCE_ENABLED else None
+            ),
         )
         analysis_engine = AnalysisEngine(
             ai_service,
