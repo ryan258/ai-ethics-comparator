@@ -1,6 +1,13 @@
 """
 Statistical Analysis Module - Arsenal Module
 Copy-paste ready: Pure Python statistical functions
+
+Note: The following functions are currently unused but reserved for future
+analysis dashboard features (comparative run analysis, confidence intervals):
+- chi_square_test() - Compare distributions between runs
+- wilson_confidence_interval() - Proportion confidence intervals
+- bootstrap_consistency() - Decision consistency estimation
+- cohens_h() - Effect size measurement
 """
 
 import math

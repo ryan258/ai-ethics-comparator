@@ -10,6 +10,10 @@
         background-color: #121212;
       }
 
+      * {
+        box-sizing: border-box;
+      }
+
       html {
         background-color: #121212;
       }
@@ -21,7 +25,7 @@
         background-color: #121212 !important; /* Off-Black */
         font-size: 11pt;
         margin: 0;
-        padding: 2cm;
+        padding: 1.5cm;
       }
 
       /* metadata table */
@@ -72,6 +76,7 @@
         text-transform: uppercase;
         letter-spacing: 1.5px;
         font-weight: 600;
+        page-break-after: avoid;
       }
 
       h3 {
@@ -103,6 +108,7 @@
         margin-bottom: 30px;
         border: 1px solid #a6accd;
         border-left: 6px solid #98c379;
+        page-break-inside: avoid;
       }
 
       .scenario-text {
@@ -117,38 +123,31 @@
         border: 1px solid #a6accd;
       }
 
+      /* Flexbox Stats Container */
       .stats-container {
         margin-top: 25px;
-        overflow: hidden;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 15px;
+        justify-content: space-between;
       }
 
       .stat-box {
         background: #121212;
         padding: 20px;
         border-radius: 4px;
-        margin: 0 2% 15px 0;
-        float: left;
-        width: 48%;
-        box-sizing: border-box;
         border: 1px solid #a6accd;
+        flex: 1 1 45%; /* Default to 2 columns */
+        min-width: 40%;
       }
 
-      .stat-box:nth-child(2n) {
-        margin-right: 0;
+      /* Dynamic adjustments based on count (handled via flex logic mostly, but specific tweaks) */
+      .nway-3 .stat-box {
+        flex: 1 1 30%;
       }
 
-      /* Support for 3-way layout */
-      .stats-container.nway-3 .stat-box {
-        width: 31%;
-      }
-
-      .stats-container.nway-3 .stat-box:nth-child(3n) {
-        margin-right: 0;
-      }
-
-      /* Support for 4-way layout */
-      .stats-container.nway-4 .stat-box {
-        width: 48%;
+      .nway-4 .stat-box {
+        flex: 1 1 45%;
       }
 
       .stat-box strong {
@@ -158,6 +157,7 @@
         font-size: 11pt;
         border-bottom: 1px solid #a6accd;
         padding-bottom: 5px;
+        min-height: 2.5em; /* Ensure uniform height for titles */
       }
 
       .insight-card {

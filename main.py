@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, Response
+from fastapi.responses import HTMLResponse, StreamingResponse, Response
 import io
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates

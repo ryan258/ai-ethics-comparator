@@ -39,8 +39,30 @@ class AnalysisEngine:
         if paradox_type == "trolley":
             summary = run_data.get("summary", {})
             text += f"\nSummary:\n"
-            text += f"- Group 1: {summary.get('group1', {}).get('count', 0)}\n"
-            text += f"- Group 2: {summary.get('group2', {}).get('count', 0)}\n"
+
+            # Handle both N-way (options array) and legacy binary (group1/group2) schemas
+            if "options" in summary:
+                # N-way schema: options is a list of {id, count, percentage}
+                options_meta = run_data.get("options", [])
+                for opt_stat in summary["options"]:
+                    opt_id = opt_stat.get("id", "?")
+                    count = opt_stat.get("count", 0)
+                    # Find label from options metadata
+                    label = f"Option {opt_id}"
+                    for opt_meta in options_meta:
+                        if opt_meta.get("id") == opt_id:
+                            label = opt_meta.get("label", label)
+                            break
+                    text += f"- {label}: {count}\n"
+            else:
+                # Legacy binary schema: group1/group2 dicts
+                text += f"- Group 1: {summary.get('group1', {}).get('count', 0)}\n"
+                text += f"- Group 2: {summary.get('group2', {}).get('count', 0)}\n"
+
+            # Include undecided count if present
+            undecided = summary.get("undecided", {})
+            if undecided.get("count", 0) > 0:
+                text += f"- Undecided: {undecided.get('count', 0)}\n"
             
             text += "\nIteration Explanations:\n"
             for idx, response in enumerate(responses):

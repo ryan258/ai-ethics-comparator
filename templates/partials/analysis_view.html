@@ -114,17 +114,11 @@
     <div class="dashboard-col">
       <div class="dashboard-card" style="flex-grow: 1">
         <h4>Pattern Recognition</h4>
-        {% if insight.justifications is string %}
-        <div style="font-size: 0.9rem; opacity: 0.9; margin-bottom: 1rem">
-          {{ insight.justifications }}
-        </div>
-        {% else %}
         <ul class="insights-list" style="margin-bottom: 1rem">
           {% for item in insight.justifications %}
           <li>{{ item }}</li>
           {% endfor %}
         </ul>
-        {% endif %}
       </div>
       <div class="dashboard-card" style="flex-grow: 1">
         <h4>Consistency Check</h4>

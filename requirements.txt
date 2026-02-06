@@ -6,5 +6,6 @@ httpx
 jinja2
 python-multipart
 markdown
+markupsafe
 openai
 weasyprint==61.2
