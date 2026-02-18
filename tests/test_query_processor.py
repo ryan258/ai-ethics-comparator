@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import pytest
 
 from lib.query_processor import (
     _extract_choice_from_classifier_output,
@@ -53,6 +54,39 @@ def test_parse_trolley_response_accepts_repeated_same_token() -> None:
     assert parsed["optionId"] == 2
 
 
+def test_parse_trolley_response_accepts_structured_json() -> None:
+    parsed = parse_trolley_response(
+        '{"option_id": 4, "explanation": "Coordination is most robust under uncertainty."}',
+        option_count=4,
+    )
+
+    assert parsed["decisionToken"] == "{4}"
+    assert parsed["optionId"] == 4
+    assert parsed["explanation"] == "Coordination is most robust under uncertainty."
+
+
+def test_parse_trolley_response_accepts_fenced_structured_json() -> None:
+    parsed = parse_trolley_response(
+        "```json\n{\"optionId\": 1, \"reasoning\": \"Minimize irreversible risk.\"}\n```",
+        option_count=4,
+    )
+
+    assert parsed["decisionToken"] == "{1}"
+    assert parsed["optionId"] == 1
+    assert parsed["explanation"] == "Minimize irreversible risk."
+
+
+def test_parse_trolley_response_prefers_structured_json_over_token_text() -> None:
+    parsed = parse_trolley_response(
+        '{"option_id": 1, "explanation": "Structured choice."} Also I choose {3}.',
+        option_count=4,
+    )
+
+    assert parsed["decisionToken"] == "{1}"
+    assert parsed["optionId"] == 1
+    assert parsed["explanation"] == "Structured choice."
+
+
 def test_infer_option_from_text_detects_explicit_commitment() -> None:
     response = (
         "After weighing tradeoffs, I think a balanced policy is best. "
@@ -90,6 +124,7 @@ def test_query_processor_ai_classifier_fallback_infers_option() -> None:
         dummy_ai,  # type: ignore[arg-type]
         concurrency_limit=1,
         choice_inference_model="classifier/model",
+        max_reasks_per_iteration=0,
     )
     paradox = {
         "id": "test_paradox",
@@ -119,3 +154,174 @@ def test_query_processor_ai_classifier_fallback_infers_option() -> None:
     assert response["inferred"] is True
     assert response["inferenceMethod"] == "ai_classifier"
     assert dummy_ai.call_count == 2
+
+
+def test_query_processor_reasks_and_gets_clear_token() -> None:
+    class DummyAIService:
+        def __init__(self) -> None:
+            self.call_count = 0
+
+        async def get_model_response(
+            self,
+            model_name: str,
+            prompt: str,
+            system_prompt: str = "",
+            params=None,
+            retry_count: int = 0,
+        ) -> str:
+            self.call_count += 1
+            if self.call_count == 1:
+                return "I need to think through all options first."
+            return "{3} I choose the coordination-heavy option."
+
+    dummy_ai = DummyAIService()
+    qp = QueryProcessor(
+        dummy_ai,  # type: ignore[arg-type]
+        concurrency_limit=1,
+        choice_inference_model=None,
+        max_reasks_per_iteration=2,
+    )
+    paradox = {
+        "id": "test_paradox",
+        "type": "trolley",
+        "promptTemplate": "Scenario.\n\n**Options**\n\n{{OPTIONS}}",
+        "options": [
+            {"id": 1, "label": "A", "description": "Option A"},
+            {"id": 2, "label": "B", "description": "Option B"},
+            {"id": 3, "label": "C", "description": "Option C"},
+        ],
+    }
+
+    run_data = asyncio.run(
+        qp.execute_run(
+            RunConfig(
+                modelName="generator/model",
+                paradox=paradox,
+                iterations=1,
+                params={"max_tokens": 200},
+            )
+        )
+    )
+
+    response = run_data["responses"][0]
+    assert response["decisionToken"] == "{3}"
+    assert response["optionId"] == 3
+    assert response["reaskCount"] == 1
+    assert dummy_ai.call_count == 2
+
+
+def test_query_processor_max_two_reasks_then_undecided() -> None:
+    class DummyAIService:
+        def __init__(self) -> None:
+            self.call_count = 0
+
+        async def get_model_response(
+            self,
+            model_name: str,
+            prompt: str,
+            system_prompt: str = "",
+            params=None,
+            retry_count: int = 0,
+        ) -> str:
+            self.call_count += 1
+            return "No final choice yet."
+
+    dummy_ai = DummyAIService()
+    qp = QueryProcessor(
+        dummy_ai,  # type: ignore[arg-type]
+        concurrency_limit=1,
+        choice_inference_model=None,
+        max_reasks_per_iteration=2,
+    )
+    paradox = {
+        "id": "test_paradox",
+        "type": "trolley",
+        "promptTemplate": "Scenario.\n\n**Options**\n\n{{OPTIONS}}",
+        "options": [
+            {"id": 1, "label": "A", "description": "Option A"},
+            {"id": 2, "label": "B", "description": "Option B"},
+        ],
+    }
+
+    run_data = asyncio.run(
+        qp.execute_run(
+            RunConfig(
+                modelName="generator/model",
+                paradox=paradox,
+                iterations=1,
+                params={"max_tokens": 200},
+            )
+        )
+    )
+
+    response = run_data["responses"][0]
+    assert response["decisionToken"] is None
+    assert response["optionId"] is None
+    assert response["reaskCount"] == 2
+    assert run_data["summary"]["undecided"]["count"] == 1
+    assert dummy_ai.call_count == 3
+
+
+def test_query_processor_reask_bound_validation() -> None:
+    class DummyAIService:
+        async def get_model_response(
+            self,
+            model_name: str,
+            prompt: str,
+            system_prompt: str = "",
+            params=None,
+            retry_count: int = 0,
+        ) -> str:
+            return "{1} done"
+
+    dummy_ai = DummyAIService()
+    with pytest.raises(ValueError, match="max_reasks_per_iteration"):
+        QueryProcessor(dummy_ai, max_reasks_per_iteration=11)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="max_reasks_per_iteration"):
+        QueryProcessor(dummy_ai, max_reasks_per_iteration=-1)  # type: ignore[arg-type]
+
+
+def test_query_processor_iteration_exception_counts_as_undecided() -> None:
+    class DummyAIService:
+        async def get_model_response(
+            self,
+            model_name: str,
+            prompt: str,
+            system_prompt: str = "",
+            params=None,
+            retry_count: int = 0,
+        ) -> str:
+            raise RuntimeError("simulated API failure")
+
+    qp = QueryProcessor(
+        DummyAIService(),  # type: ignore[arg-type]
+        concurrency_limit=1,
+        choice_inference_model=None,
+        max_reasks_per_iteration=0,
+    )
+    paradox = {
+        "id": "test_paradox",
+        "type": "trolley",
+        "promptTemplate": "Scenario.\n\n**Options**\n\n{{OPTIONS}}",
+        "options": [
+            {"id": 1, "label": "A", "description": "Option A"},
+            {"id": 2, "label": "B", "description": "Option B"},
+        ],
+    }
+
+    run_data = asyncio.run(
+        qp.execute_run(
+            RunConfig(
+                modelName="generator/model",
+                paradox=paradox,
+                iterations=1,
+                params={"max_tokens": 200},
+            )
+        )
+    )
+
+    response = run_data["responses"][0]
+    assert "error" in response
+    assert response["iteration"] == 1
+    assert run_data["summary"]["undecided"]["count"] == 1

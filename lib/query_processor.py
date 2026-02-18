@@ -5,6 +5,7 @@ Nearly copy-paste ready: Depends on ai_service patterns
 """
 
 import asyncio
+import json
 import re
 from typing import Dict, Any, List, Tuple, Optional
 from datetime import datetime, timezone
@@ -25,11 +26,12 @@ def _strict_single_choice_contract(option_count: int) -> str:
     token_list = ", ".join(f"`{token}`" for token in tokens)
     return (
         "\n\n**Output Contract (Strict):**\n\n"
-        f"- Choose exactly one decision token from: {token_list}.\n"
-        "- The first non-whitespace characters of your response MUST be that single token.\n"
-        "- Do not include any other decision token anywhere in your response.\n"
-        "- Do not write token alternatives such as \"{1} or {2}\".\n"
-        "- After the token, provide your reasoning."
+        "- Return only a JSON object (no markdown, no code fences).\n"
+        f"- The JSON must contain `option_id` as an integer in range 1..{option_count}.\n"
+        "- The parser also accepts `optionId`, but prefer `option_id`.\n"
+        "- The JSON must contain `explanation` as a string.\n"
+        f"- Allowed option tokens for reference: {token_list}.\n"
+        "- Do not write token alternatives such as \"{1} or {2}\"."
     )
 
 
@@ -117,6 +119,89 @@ def _build_choice_inference_prompt(response_text: str, option_count: int) -> str
     )
 
 
+def _build_reask_prompt(
+    base_prompt: str,
+    option_count: int,
+    previous_response: str,
+    attempt_number: int,
+) -> str:
+    """Build a corrective re-ask prompt when no single valid token is returned."""
+    tokens = ", ".join(_decision_tokens(option_count))
+    return (
+        f"{base_prompt}\n\n"
+        f"RETRY NOTICE ({attempt_number}): Your previous answer did not contain exactly one valid token from {tokens}.\n"
+        "Respond again.\n"
+        "Requirements:\n"
+        "- Return only a JSON object.\n"
+        f"- `option_id` must be an integer from 1..{option_count}.\n"
+        "- `explanation` must be a short string.\n\n"
+        "Previous response:\n"
+        f"{previous_response}"
+    )
+
+
+def _extract_json_object(response_text: str) -> Optional[Dict[str, Any]]:
+    """Extract and parse a JSON object from raw model text."""
+    text = response_text.strip()
+    candidates: List[str] = [text]
+
+    fenced_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.DOTALL)
+    if fenced_match:
+        candidates.append(fenced_match.group(1).strip())
+
+    start = text.find("{")
+    end = text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        candidates.append(text[start : end + 1].strip())
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+
+    # Fallback: scan for the first decodable JSON object in mixed content.
+    decoder = json.JSONDecoder()
+    for idx, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(text[idx:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
+
+
+def _coerce_option_id(value: object, option_count: int) -> Optional[int]:
+    """Coerce option_id-like values from structured responses."""
+    option_id: Optional[int] = None
+
+    if isinstance(value, int):
+        option_id = value
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            option_id = int(stripped)
+        else:
+            token_match = re.match(r"^\{([1-9]\d*)\}$", stripped)
+            if token_match:
+                option_id = int(token_match.group(1))
+
+    if option_id is None:
+        return None
+    if 1 <= option_id <= option_count:
+        return option_id
+    return None
+
+
 def render_options_template(
     paradox: Dict[str, Any],
     overrides: Optional[List[Dict[str, Any]]] = None,
@@ -176,6 +261,34 @@ def parse_trolley_response(response_text: str, option_count: int) -> Dict[str, A
     Returns:
         Dict with decisionToken, optionId (int), and explanation
     """
+    # Structured JSON takes precedence over free-form brace tokens when both are present.
+    structured = _extract_json_object(response_text)
+    if structured is not None:
+        option_id = _coerce_option_id(
+            structured.get("option_id", structured.get("optionId")),
+            option_count,
+        )
+        if option_id is None:
+            option_id = _coerce_option_id(structured.get("decisionToken"), option_count)
+
+        if option_id is not None:
+            explanation_value = (
+                structured.get("explanation")
+                or structured.get("reasoning")
+                or structured.get("rationale")
+                or ""
+            )
+            explanation = (
+                explanation_value.strip()
+                if isinstance(explanation_value, str)
+                else str(explanation_value)
+            )
+            return {
+                "decisionToken": f"{{{option_id}}}",
+                "optionId": option_id,
+                "explanation": explanation,
+            }
+
     # Dynamic regex based on option count: {1} through {N}
     pattern = r'\{([1-' + str(option_count) + r'])\}'
     matches = re.findall(pattern, response_text)
@@ -279,10 +392,14 @@ class QueryProcessor:
         ai_service: AIService,
         concurrency_limit: int = 2,
         choice_inference_model: Optional[str] = None,
+        max_reasks_per_iteration: int = 2,
     ) -> None:
+        if max_reasks_per_iteration < 0 or max_reasks_per_iteration > 10:
+            raise ValueError("max_reasks_per_iteration must be between 0 and 10")
         self.ai_service = ai_service
         self.semaphore = asyncio.Semaphore(concurrency_limit)
         self.choice_inference_model = choice_inference_model
+        self.max_reasks_per_iteration = max_reasks_per_iteration
 
     async def _infer_option_id_with_fallback(
         self,
@@ -343,17 +460,40 @@ class QueryProcessor:
         # Execute iterations with concurrency limiting
         async def run_iteration(iteration_number: int):
             async with self.semaphore:
-                response = await self.ai_service.get_model_response(
-                    model_name,
-                    prompt,
-                    "", # Pass empty string to disable system prompt handling in AI service
-                    params
-                )
+                response: str = ""
+                parsed: Dict[str, Any] = {
+                    "decisionToken": None,
+                    "optionId": None,
+                    "explanation": "",
+                }
+                reask_count = 0
+
+                max_attempts = self.max_reasks_per_iteration + 1
+                for attempt_idx in range(max_attempts):
+                    iteration_prompt = prompt
+                    if attempt_idx > 0:
+                        iteration_prompt = _build_reask_prompt(
+                            prompt,
+                            option_count,
+                            response,
+                            attempt_idx,
+                        )
+
+                    response = await self.ai_service.get_model_response(
+                        model_name,
+                        iteration_prompt,
+                        "",  # Pass empty string to disable system prompt handling in AI service
+                        params,
+                    )
+                    parsed = parse_trolley_response(response, option_count)
+                    if parsed["optionId"] is not None:
+                        break
+
+                    if attempt_idx < self.max_reasks_per_iteration:
+                        reask_count += 1
 
                 timestamp = datetime.now(timezone.utc).isoformat()
 
-                # Parse with N-way support.
-                parsed = parse_trolley_response(response, option_count)
                 inferred = False
                 inference_method: Optional[str] = None
 
@@ -380,6 +520,8 @@ class QueryProcessor:
                     "raw": response,
                     "timestamp": timestamp
                 }
+                if reask_count:
+                    result["reaskCount"] = reask_count
                 if inferred and inference_method:
                     result["inferred"] = True
                     result["inferenceMethod"] = inference_method
@@ -396,17 +538,16 @@ class QueryProcessor:
                 timeout=timeout_seconds
             )
         except asyncio.TimeoutError:
-             logger.error("Query batch timed out")
-             # We might want to return partial results or just fail. 
-             # Implementation choice: fail hard or return error dicts. 
-             # Let's fail hard to signal critical issue.
-             raise Exception(f"Query executions exceeded {timeout_seconds}s timeout")
+            logger.error("Query batch timed out after %ss", timeout_seconds)
+            raise asyncio.TimeoutError(
+                f"Query executions exceeded {timeout_seconds}s timeout"
+            )
         
         # Filter out exceptions from gather results
         valid_responses = []
         for i, resp in enumerate(responses):
             if isinstance(resp, Exception):
-                logger.error(f"Iteration {i+1} failed: {resp}")
+                logger.error("Iteration %s failed: %s", i + 1, resp)
                 # Create a strict error response structure
                 valid_responses.append({
                     "iteration": i+1,

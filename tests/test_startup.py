@@ -26,6 +26,14 @@ def test_choice_inference_enabled_by_default(client) -> None:
     assert qp.choice_inference_model == "test/model"
 
 
+def test_model_field_renders_as_select(client) -> None:
+    response = client.get("/")
+    assert response.status_code == 200
+    assert '<select name="modelName" id="modelName" required>' in response.text
+    assert 'list="model-suggestions"' not in response.text
+    assert "<datalist id=\"model-suggestions\">" not in response.text
+
+
 def test_choice_inference_can_be_disabled(monkeypatch, tmp_path: Path) -> None:
     main = importlib.import_module("main")
 

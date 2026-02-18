@@ -20,18 +20,28 @@
                 </select>
             </div>
 
-            <!-- Model Selection (Free Text + Datalist) -->
+            <!-- Model Selection -->
             <div class="form-group">
                 <label for="modelName">AI Model (OpenRouter ID)</label>
-                <input type="text" name="modelName" id="modelName" list="model-suggestions"
-                    value="{{ default_model or '' }}" placeholder="e.g. provider/model-name" required>
-                <datalist id="model-suggestions">
+                <select name="modelName" id="modelName" required>
+                    {% set ns = namespace(default_found=false) %}
                     {% for model in models %}
-                    <option value="{{ model.id }}">{{ model.name }}</option>
+                    {% if default_model and model.id == default_model %}
+                        {% set ns.default_found = true %}
+                    {% endif %}
+                    <option value="{{ model.id }}" {% if default_model and model.id == default_model %}selected{% endif %}>
+                        {{ model.id }}{% if model.name and model.name != model.id %} - {{ model.name }}{% endif %}
+                    </option>
                     {% endfor %}
-                </datalist>
+                    {% if default_model and not ns.default_found %}
+                    <option value="{{ default_model }}" selected>{{ default_model }}</option>
+                    {% endif %}
+                    {% if not models and not default_model %}
+                    <option value="" selected disabled>No models configured</option>
+                    {% endif %}
+                </select>
                 <div style="font-size: 0.8rem; opacity: 0.7; margin-top: 0.25rem;">
-                    Select a preset or type ANY OpenRouter model ID.
+                    Populate this dropdown via <code>models.json</code>.
                 </div>
             </div>
 

@@ -20,6 +20,48 @@ class ModelConfig(BaseModel):
     name: str
 
 
+def _normalize_model_entries(entries: object, source_name: str) -> List[ModelConfig]:
+    """Normalize model entries to typed ModelConfig objects."""
+    if not isinstance(entries, list):
+        raise ValueError(f"{source_name} must contain a JSON array.")
+
+    models: List[ModelConfig] = []
+    for idx, entry in enumerate(entries):
+        if isinstance(entry, str):
+            model_id = entry.strip()
+            if not model_id:
+                raise ValueError(f"{source_name} contains an empty model ID at index {idx}.")
+            models.append(ModelConfig(id=model_id, name=model_id))
+            continue
+
+        if isinstance(entry, dict):
+            try:
+                models.append(ModelConfig(**entry))
+            except ValidationError as exc:
+                raise ValueError(f"Invalid model entry in {source_name} at index {idx}.") from exc
+            continue
+
+        raise ValueError(
+            f"{source_name} entries must be strings or objects with 'id' and 'name'."
+        )
+
+    return models
+
+
+def _parse_models_env_var(env_name: str) -> Optional[List[ModelConfig]]:
+    """Parse model list from a JSON-array env var."""
+    raw = os.getenv(env_name)
+    if raw is None:
+        return None
+
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"{env_name} must be valid JSON.") from exc
+
+    return _normalize_model_entries(parsed, env_name)
+
+
 def _env_bool(name: str, default: bool) -> bool:
     """Parse common boolean env formats with a strict fallback."""
     raw = os.getenv(name)
@@ -94,37 +136,27 @@ class AppConfig(BaseModel):
         """Load configuration from environment and files."""
         # Initialize with env vars
         config = cls()
-        
-        # Load models from file if env not set
-        _models_json = os.getenv("AVAILABLE_MODELS_JSON")
-        if _models_json:
+
+        # Model source priority:
+        # 1) models.json (repo source of truth)
+        # 2) OPENROUTER_MODELS (env fallback)
+        # 3) AVAILABLE_MODELS_JSON (legacy env fallback)
+        models_path = Path(__file__).parent.parent / "models.json"
+        if models_path.exists():
             try:
-                data = json.loads(_models_json)
-                if not isinstance(data, list):
-                    raise ValueError("AVAILABLE_MODELS_JSON must be a JSON array.")
-                config.AVAILABLE_MODELS = [ModelConfig(**m) for m in data]
+                with open(models_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                config.AVAILABLE_MODELS = _normalize_model_entries(data, models_path.name)
             except json.JSONDecodeError as exc:
-                raise ValueError("AVAILABLE_MODELS_JSON must be valid JSON.") from exc
-            except (TypeError, ValueError) as exc:
-                raise ValueError(str(exc)) from exc
-            except ValidationError as exc:
-                raise ValueError("AVAILABLE_MODELS_JSON contains invalid model objects.") from exc
+                raise ValueError(f"Invalid JSON in {models_path.name}.") from exc
         else:
-            # Load from models.json
-            models_path = Path(__file__).parent.parent / "models.json"
-            if models_path.exists():
-                try:
-                    with open(models_path, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    if not isinstance(data, list):
-                        raise ValueError(f"{models_path.name} must contain a JSON array.")
-                    config.AVAILABLE_MODELS = [ModelConfig(**m) for m in data]
-                except json.JSONDecodeError as exc:
-                    raise ValueError(f"Invalid JSON in {models_path.name}.") from exc
-                except (TypeError, ValueError) as exc:
-                    raise ValueError(str(exc)) from exc
-                except ValidationError as exc:
-                    raise ValueError(f"Invalid model entry in {models_path.name}.") from exc
+            openrouter_models = _parse_models_env_var("OPENROUTER_MODELS")
+            if openrouter_models is not None:
+                config.AVAILABLE_MODELS = openrouter_models
+            else:
+                available_models_json = _parse_models_env_var("AVAILABLE_MODELS_JSON")
+                if available_models_json is not None:
+                    config.AVAILABLE_MODELS = available_models_json
 
         # Smart defaults for models
         if not config.ANALYST_MODEL and config.AVAILABLE_MODELS:

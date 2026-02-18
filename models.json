@@ -1,22 +1,42 @@
 [
-    {
-        "id": "google/gemini-2.0-flash-001",
-        "name": "Gemini 2.0 Flash"
-    },
-    {
-        "id": "google/gemini-pro",
-        "name": "Gemini Pro"
-    },
-    {
-        "id": "anthropic/claude-3-opus",
-        "name": "Claude 3 Opus"
-    },
-    {
-        "id": "openai/gpt-4-turbo",
-        "name": "GPT-4 Turbo"
-    },
-    {
-        "id": "mistral/mistral-large",
-        "name": "Mistral Large"
-    }
+  {
+    "id": "openrouter/aurora-alpha",
+    "name": "openrouter/aurora-alpha"
+  },
+  {
+    "id": "nvidia/nemotron-3-nano-30b-a3b:free",
+    "name": "nvidia/nemotron-3-nano-30b-a3b:free"
+  },
+  {
+    "id": "sourceful/riverflow-v2-pro",
+    "name": "sourceful/riverflow-v2-pro"
+  },
+  {
+    "id": "stepfun/step-3.5-flash:free",
+    "name": "stepfun/step-3.5-flash:free"
+  },
+  {
+    "id": "arcee-ai/trinity-large-preview:free",
+    "name": "arcee-ai/trinity-large-preview:free"
+  },
+  {
+    "id": "upstage/solar-pro-3:free",
+    "name": "upstage/solar-pro-3:free"
+  },
+  {
+    "id": "liquid/lfm-2.5-1.2b-thinking:free",
+    "name": "liquid/lfm-2.5-1.2b-thinking:free"
+  },
+  {
+    "id": "qwen/qwen3-vl-235b-a22b-thinking",
+    "name": "qwen/qwen3-vl-235b-a22b-thinking"
+  },
+  {
+    "id": "qwen/qwen3-coder:free",
+    "name": "qwen/qwen3-coder:free"
+  },
+  {
+    "id": "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
+    "name": "cognitivecomputations/dolphin-mistral-24b-venice-edition:free"
+  }
 ]

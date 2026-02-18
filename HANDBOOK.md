@@ -77,7 +77,7 @@ The homepage has two main areas:
 ### Configuration Inputs
 
 - `Paradox Scenario`: choose a scenario from `paradoxes.json`
-- `AI Model (OpenRouter ID)`: select preset or type any model ID
+- `AI Model (OpenRouter ID)`: select from dropdown options populated by `models.json`
 - `Persona (Prepended)`: optional text prepended to the prompt
 - `Iterations`: number of requests in a run (bounded by `MAX_ITERATIONS`)
 
@@ -89,7 +89,7 @@ The homepage has two main areas:
 ## 4. Running an Experiment
 
 1. Select a paradox.
-2. Enter model ID.
+2. Choose a model from the dropdown.
 3. Optionally set a persona.
 4. Choose iteration count.
 5. Click `Run Experiment`.

@@ -1,3 +1,5 @@
+verify*
+*.bak
 # --- Python ---
 __pycache__/
 *.py[cod]
