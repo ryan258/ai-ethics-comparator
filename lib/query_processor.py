@@ -7,6 +7,10 @@ Nearly copy-paste ready: Depends on ai_service patterns
 import asyncio
 import json
 import re
+import hashlib
+import time
+import random
+import copy
 from typing import Dict, Any, List, Tuple, Optional
 from datetime import datetime, timezone
 import logging
@@ -283,11 +287,15 @@ def parse_trolley_response(response_text: str, option_count: int) -> Dict[str, A
                 if isinstance(explanation_value, str)
                 else str(explanation_value)
             )
-            return {
+            result = {
                 "decisionToken": f"{{{option_id}}}",
                 "optionId": option_id,
                 "explanation": explanation,
             }
+            for key in ["valuePriorities", "keyAssumptions", "mainRisk", "switchCondition", "evidenceNeeded"]:
+                if key in structured:
+                    result[key] = structured[key]
+            return result
 
     # Dynamic regex based on option count: {1} through {N}
     pattern = r'\{([1-' + str(option_count) + r'])\}'
@@ -316,11 +324,35 @@ def parse_trolley_response(response_text: str, option_count: int) -> Dict[str, A
     match = re.search(pattern, response_text)
     explanation = response_text[match.end():].strip()
 
-    return {
+    result = {
         "decisionToken": decision_token,
         "optionId": option_id,  # Integer instead of string
         "explanation": explanation
     }
+
+    # Free-text parsing fallback for structured fields
+    def _extract_field(key: str, text: str) -> Optional[str]:
+        # Handle the specific case of 'evidenceNeeded' -> 'Evidence Needed to Change Choice'
+        if key == "evidenceNeeded":
+            pattern = re.compile(
+                r'(?:Evidence Needed(?:\s+to\s+Change\s+Choice)?)\s*:\s*(.*?)(?=\n[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s*:|$)',
+                re.DOTALL | re.IGNORECASE
+            )
+        else:
+            spaced = re.sub(r'([A-Z])', r' \1', key).title()
+            pattern = re.compile(
+                rf'{spaced}\s*:\s*(.*?)(?=\n[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s*:|$)',
+                re.DOTALL | re.IGNORECASE
+            )
+        match = pattern.search(text)
+        return match.group(1).strip() if match else None
+
+    for key in ["valuePriorities", "keyAssumptions", "mainRisk", "switchCondition", "evidenceNeeded"]:
+        val = _extract_field(key, response_text)
+        if val:
+            result[key] = val
+
+    return result
 
 
 def aggregate_trolley_stats(responses: List[Dict[str, Any]], option_count: int) -> Dict[str, Any]:
@@ -377,6 +409,7 @@ class RunConfig:
     iterations: int = 10
     systemPrompt: str = ""
     params: Dict[str, Any] = field(default_factory=dict)
+    shuffle_options: bool = False
 
 
 
@@ -418,7 +451,7 @@ class QueryProcessor:
             return None, None
 
         classifier_prompt = _build_choice_inference_prompt(response_text, option_count)
-        classifier_output = await self.ai_service.get_model_response(
+        classifier_output, _ = await self.ai_service.get_model_response(
             self.choice_inference_model,
             classifier_prompt,
             "",
@@ -450,8 +483,28 @@ class QueryProcessor:
         if paradox_type != "trolley":
             raise ValueError(f"Unsupported paradox type: {paradox_type}")
 
-        # Use render_options_template for N-way support.
-        prompt, resolved_options = render_options_template(paradox, option_overrides)
+        # Map options and apply overrides
+        original_options = copy.deepcopy(paradox.get("options", []))
+        if option_overrides:
+            override_map = {opt["id"]: opt["description"] for opt in option_overrides}
+            original_options = [
+                {**opt, "description": override_map.get(opt["id"], opt["description"])}
+                for opt in original_options
+            ]
+
+        options_to_render = copy.deepcopy(original_options)
+        shuffle_mapping = None
+        if config.shuffle_options and options_to_render:
+            random.shuffle(options_to_render)
+            shuffle_mapping = {}
+            for index, opt in enumerate(options_to_render):
+                new_id = index + 1
+                shuffle_mapping[str(new_id)] = opt["id"]
+                opt["id"] = new_id
+
+        # Use render_options_template for N-way support, passing in our modified paradox
+        dummy_paradox = {**paradox, "options": options_to_render}
+        prompt, resolved_options = render_options_template(dummy_paradox, None)
         option_count = len(resolved_options)
 
         if system_prompt:
@@ -469,6 +522,9 @@ class QueryProcessor:
                 reask_count = 0
 
                 max_attempts = self.max_reasks_per_iteration + 1
+                total_latency = 0.0
+                total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+
                 for attempt_idx in range(max_attempts):
                     iteration_prompt = prompt
                     if attempt_idx > 0:
@@ -479,13 +535,28 @@ class QueryProcessor:
                             attempt_idx,
                         )
 
-                    response = await self.ai_service.get_model_response(
+                    start_t = time.monotonic()
+                    response, usage = await self.ai_service.get_model_response(
                         model_name,
                         iteration_prompt,
                         "",  # Pass empty string to disable system prompt handling in AI service
                         params,
                     )
+                    latency = time.monotonic() - start_t
+                    total_latency += latency
+                    total_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+                    total_usage["completion_tokens"] += usage.get("completion_tokens", 0)
+
                     parsed = parse_trolley_response(response, option_count)
+                    
+                    if shuffle_mapping and parsed["optionId"] is not None:
+                        orig_id = shuffle_mapping.get(str(parsed["optionId"]))
+                        if orig_id is not None:
+                            parsed["optionId"] = orig_id
+                            parsed["decisionToken"] = f"{{{orig_id}}}"
+
+                    parsed["latency"] = total_latency
+                    parsed["tokenUsage"] = total_usage
                     if parsed["optionId"] is not None:
                         break
 
@@ -508,6 +579,11 @@ class QueryProcessor:
                         inferred_option, inference_method = None, None
 
                     if inferred_option is not None:
+                        if shuffle_mapping:
+                            orig_id = shuffle_mapping.get(str(inferred_option))
+                            if orig_id is not None:
+                                inferred_option = orig_id
+
                         parsed["decisionToken"] = f"{{{inferred_option}}}"
                         parsed["optionId"] = inferred_option
                         inferred = True
@@ -520,6 +596,9 @@ class QueryProcessor:
                     "raw": response,
                     "timestamp": timestamp
                 }
+                for key in ["valuePriorities", "keyAssumptions", "mainRisk", "switchCondition", "evidenceNeeded", "latency", "tokenUsage"]:
+                    if key in parsed:
+                        result[key] = parsed[key]
                 if reask_count:
                     result["reaskCount"] = reask_count
                 if inferred and inference_method:
@@ -566,6 +645,7 @@ class QueryProcessor:
             "modelName": model_name,
             "paradoxId": paradox["id"],
             "paradoxType": "trolley",
+            "promptHash": hashlib.sha256(prompt.encode()).hexdigest()[:16],
             "prompt": prompt,
             "iterationCount": iterations,
             "params": {
@@ -585,8 +665,11 @@ class QueryProcessor:
         if params.get("seed") is not None:
             run_data["params"]["seed"] = params["seed"]
 
-        # Store resolved options (N-way support).
-        run_data["options"] = resolved_options
+        if config.shuffle_options and shuffle_mapping is not None:
+            run_data["shuffleMapping"] = shuffle_mapping
+
+        # Store original options so cross-run comparison is possible.
+        run_data["options"] = original_options
         run_data["summary"] = aggregate_trolley_stats(responses, option_count)
 
         return run_data

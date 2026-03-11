@@ -31,7 +31,8 @@ def _mk_response(
 ) -> object:
     message = SimpleNamespace(content=content, refusal=refusal, reasoning=reasoning)
     choice = SimpleNamespace(message=message, text=text, finish_reason=finish_reason)
-    return SimpleNamespace(choices=[choice])
+    usage = SimpleNamespace(prompt_tokens=0, completion_tokens=0)
+    return SimpleNamespace(choices=[choice], usage=usage)
 
 
 def _mk_service_with_response(response: object) -> AIService:
@@ -52,7 +53,7 @@ def test_get_model_response_accepts_refusal_text_when_content_missing() -> None:
 
     result = asyncio.run(service.get_model_response("test/model", "test prompt"))
 
-    assert result == "I cannot do that."
+    assert result[0] == "I cannot do that."
 
 
 def test_get_model_response_extracts_text_from_structured_content_parts() -> None:
@@ -62,7 +63,7 @@ def test_get_model_response_extracts_text_from_structured_content_parts() -> Non
 
     result = asyncio.run(service.get_model_response("test/model", "test prompt"))
 
-    assert result == "{3} Pick targeted alert"
+    assert result[0] == "{3} Pick targeted alert"
 
 
 def test_get_model_response_reports_length_finish_reason_as_token_issue() -> None:

@@ -1,0 +1,37 @@
+<div class="fingerprint-wrapper" style="background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; padding: 1.5rem;">
+    <h3 style="margin-top: 0; margin-bottom: 0.5rem;">{{ model_id }}</h3>
+    <p style="font-size: 0.85rem; opacity: 0.8; margin-bottom: 1.5rem;">Based on {{ total_insights }} evaluated runs</p>
+
+    {% if total_insights == 0 %}
+    <div style="padding: 1rem; border-left: 3px solid var(--accent-danger); font-size: 0.9rem;">
+        No insights generated for this model yet. Run experiments and view their analysis to build a fingerprint.
+    </div>
+    {% else %}
+    <div class="fingerprint-chart" style="display: flex; flex-direction: column; gap: 0.75rem;">
+        {% for complex in fingerprint|sort(attribute='prevalence', reverse=True) %}
+        <div class="complex-row" style="display: grid; grid-template-columns: 140px 1fr 60px; align-items: center; gap: 1rem;">
+            <div class="complex-label" style="font-size: 0.85rem; font-weight: bold; text-align: right;">
+                {{ complex.dimension }}
+            </div>
+            <div class="complex-bar-container" style="position: relative; height: 20px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 10px;">
+                <!-- Main probability bar -->
+                <div class="complex-bar" style="position: absolute; left: 0; top: 0; height: 100%; width: {{ complex.prevalence * 100 }}%; background: var(--accent-primary); border-radius: 10px; opacity: 0.8;"></div>
+                
+                <!-- Confidence interval indicator -->
+                <div class="complex-ci" style="position: absolute; left: {{ complex.lowerBound * 100 }}%; width: {{ (complex.upperBound - complex.lowerBound) * 100 }}%; top: 50%; transform: translateY(-50%); height: 2px; background: var(--text-color); z-index: 2;"></div>
+                
+                <!-- CI caps -->
+                <div style="position: absolute; left: {{ complex.lowerBound * 100 }}%; top: 2px; bottom: 2px; width: 2px; background: var(--text-color); z-index: 2;"></div>
+                <div style="position: absolute; left: {{ complex.upperBound * 100 }}%; top: 2px; bottom: 2px; width: 2px; background: var(--text-color); z-index: 2;"></div>
+            </div>
+            <div class="complex-value" style="font-size: 0.8rem; opacity: 0.8;">
+                {{ "%.0f"|format(complex.prevalence * 100) }}%
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    <div style="margin-top: 1.5rem; font-size: 0.75rem; opacity: 0.6; text-align: center;">
+        Lines indicate 95% Wilson confidence intervals based on sample size.
+    </div>
+    {% endif %}
+</div>

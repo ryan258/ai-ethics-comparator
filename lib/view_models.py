@@ -139,7 +139,16 @@ class RunViewModel:
             "run_data_json": json.dumps(run_data, indent=2),
 
             # Original Logic Objects (if strictly needed by template logic, but try to avoid)
-            "_raw_run": run_data
+            "_raw_run": run_data,
+
+            # Audit / Counterfactual Metadata
+            "is_counterfactual": run_data.get("isCounterfactual", False),
+            "original_run_id": run_data.get("originalRunId", ""),
+            "applied_evidence": run_data.get("appliedEvidence", ""),
+            "prompt_hash": run_data.get("promptHash", ""),
+            "total_latency": sum(r.get("latency", 0) for r in run_data.get("responses", [])),
+            "total_prompt_tokens": sum(r.get("tokenUsage", {}).get("prompt_tokens", 0) for r in run_data.get("responses", [])),
+            "total_completion_tokens": sum(r.get("tokenUsage", {}).get("completion_tokens", 0) for r in run_data.get("responses", []))
         }
 
 async def fetch_recent_run_view_models(

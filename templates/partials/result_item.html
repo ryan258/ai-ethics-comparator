@@ -10,6 +10,19 @@
   </div>
 
   <div class="result-body">
+    {% if ctx.is_counterfactual %}
+    <div style="border-left: 3px solid var(--accent-success); padding: 0.5rem; margin-bottom: 1rem; font-size: 0.85rem;">
+        <strong>Counterfactual Run</strong> (from <a href="/?runId={{ ctx.original_run_id }}" style="color: var(--accent-primary);">{{ ctx.original_run_id }}</a>)<br>
+        <em>Applied Evidence Test:</em> "{{ ctx.applied_evidence }}"
+    </div>
+    {% endif %}
+
+    <div class="result-meta" style="font-size: 0.75rem; color: var(--accent-primary); margin-bottom: 1rem; display: flex; gap: 1rem;">
+        <span title="Prompt Hash">Hash {{ ctx.prompt_hash[:8] }}...</span>
+        <span title="Total Latency">Time {{ "%.2f"|format(ctx.total_latency) }}s</span>
+        <span title="Token Usage">Tokens {{ ctx.total_prompt_tokens }} in / {{ ctx.total_completion_tokens }} out</span>
+    </div>
+
     <div class="scenario-box">
       <h4 class="scenario-title">The Scenario</h4>
       <div class="markdown-body">{{ ctx.scenario_html }}</div>
@@ -74,8 +87,20 @@
         justify-content: center;
       "
     >
-      📄 PDF
+      PDF Report
     </a>
+    
+    {% if ctx.has_insight and not ctx.is_counterfactual %}
+    <button 
+        class="btn btn-sm"
+        hx-post="/api/runs/{{ ctx.run_id }}/counterfactual"
+        hx-target="#results-area"
+        hx-swap="afterbegin"
+        style="margin-left: 0.5rem;"
+    >
+        Generate Counterfactual
+    </button>
+    {% endif %}
   </div>
 
   <dialog id="analysis-{{ ctx.run_id }}" class="analysis-modal">
@@ -85,7 +110,7 @@
         class="btn btn-sm"
         onclick="document.getElementById('analysis-{{ ctx.run_id }}').close()"
       >
-        ✕
+        Close
       </button>
     </div>
 
@@ -136,7 +161,7 @@
           hx-swap="innerHTML"
           hx-indicator="#loading-{{ ctx.run_id }}"
         >
-          ✨ Generate Ethical Analysis
+          Generate Ethical Analysis
         </button>
         <div
           id="loading-{{ ctx.run_id }}"

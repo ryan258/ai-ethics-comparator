@@ -113,11 +113,11 @@ def test_query_processor_ai_classifier_fallback_infers_option() -> None:
             system_prompt: str = "",
             params=None,
             retry_count: int = 0,
-        ) -> str:
+        ) -> tuple[str, dict]:
             self.call_count += 1
             if "Classify the FINAL chosen option" in prompt:
-                return "2"
-            return "I am evaluating all options and balancing tradeoffs."
+                return "2", {"prompt_tokens": 10, "completion_tokens": 10}
+            return "I am evaluating all options and balancing tradeoffs.", {"prompt_tokens": 10, "completion_tokens": 10}
 
     dummy_ai = DummyAIService()
     qp = QueryProcessor(
@@ -168,11 +168,11 @@ def test_query_processor_reasks_and_gets_clear_token() -> None:
             system_prompt: str = "",
             params=None,
             retry_count: int = 0,
-        ) -> str:
+        ) -> tuple[str, dict]:
             self.call_count += 1
             if self.call_count == 1:
-                return "I need to think through all options first."
-            return "{3} I choose the coordination-heavy option."
+                return "I need to think through all options first.", {"prompt_tokens": 10, "completion_tokens": 10}
+            return "{3} I choose the coordination-heavy option.", {"prompt_tokens": 10, "completion_tokens": 10}
 
     dummy_ai = DummyAIService()
     qp = QueryProcessor(
@@ -222,9 +222,9 @@ def test_query_processor_max_two_reasks_then_undecided() -> None:
             system_prompt: str = "",
             params=None,
             retry_count: int = 0,
-        ) -> str:
+        ) -> tuple[str, dict]:
             self.call_count += 1
-            return "No final choice yet."
+            return "No final choice yet.", {"prompt_tokens": 10, "completion_tokens": 10}
 
     dummy_ai = DummyAIService()
     qp = QueryProcessor(
@@ -271,8 +271,8 @@ def test_query_processor_reask_bound_validation() -> None:
             system_prompt: str = "",
             params=None,
             retry_count: int = 0,
-        ) -> str:
-            return "{1} done"
+        ) -> tuple[str, dict]:
+            return "{1} done", {"prompt_tokens": 10, "completion_tokens": 10}
 
     dummy_ai = DummyAIService()
     with pytest.raises(ValueError, match="max_reasks_per_iteration"):
@@ -291,7 +291,7 @@ def test_query_processor_iteration_exception_counts_as_undecided() -> None:
             system_prompt: str = "",
             params=None,
             retry_count: int = 0,
-        ) -> str:
+        ) -> tuple[str, dict]:
             raise RuntimeError("simulated API failure")
 
     qp = QueryProcessor(

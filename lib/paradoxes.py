@@ -27,6 +27,7 @@ class ParadoxBase(TypedDict):
 class Paradox(ParadoxBase, total=False):
     type: str
     category: str
+    rubric: List[str]
 
 
 _REQUIRED_KEYS: Tuple[str, ...] = (
@@ -108,6 +109,10 @@ def _normalize_paradox(item: object) -> Optional[Paradox]:
     category_value = item.get("category")
     if isinstance(category_value, str):
         result["category"] = category_value
+
+    rubric_value = item.get("rubric")
+    if isinstance(rubric_value, list):
+        result["rubric"] = [str(r) for r in rubric_value]
 
     return result
 

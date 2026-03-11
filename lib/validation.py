@@ -3,9 +3,13 @@ Validation - Arsenal Module
 Copy-paste ready: Works in any project using Pydantic
 """
 
-from typing import Optional, Any, List
-from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Optional, Any, List, Dict
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 import re
+
+MAX_EXPERIMENT_PARADOXES = 10
+MAX_EXPERIMENT_CONDITIONS = 10
+MAX_EXPERIMENT_RUNS = 50
 
 
 class GenerationParams(BaseModel):
@@ -28,8 +32,8 @@ class OptionInputs(BaseModel):
     """Optional option overrides for trolley-type paradoxes (N-way support)"""
     options: Optional[List[OptionInput]] = Field(
         default=None,
-        max_items=4,
-        min_items=2,
+        max_length=4,
+        min_length=2,
         description="List of option overrides (2-4 options)"
     )
 
@@ -125,3 +129,77 @@ class InsightRequest(BaseModel):
         if 'responses' not in v or len(v['responses']) < 1:
             raise ValueError('runData must contain at least one response')
         return v
+
+class ConditionConfig(BaseModel):
+    modelName: str = Field(..., min_length=1, max_length=200)
+    systemPrompt: str = Field(default="", max_length=2000)
+    params: GenerationParams = Field(default_factory=GenerationParams)
+    iterations: Optional[int] = Field(default=None, ge=1, le=1000)
+    shuffle_options: bool = Field(default=False, alias="shuffleOptions")
+
+    class Config:
+        populate_by_name = True
+
+    @field_validator('params', mode='before')
+    @classmethod
+    def normalize_params(cls, v: Any) -> Any:
+        return v if v is not None else {}
+
+    @field_validator('modelName')
+    @classmethod
+    def validate_model_name(cls, v: str) -> str:
+        if not re.match(r'^[a-z0-9\-_/:.]+$', v, re.IGNORECASE):
+            raise ValueError('Invalid model name format')
+        return v
+
+    def to_run_config(self, paradox: Any, max_allowed_iterations: int) -> "RunConfig":
+        from lib.query_processor import RunConfig
+        
+        iters = self.iterations if self.iterations is not None else max_allowed_iterations
+        if iters > max_allowed_iterations:
+            raise ValueError(f"Requested iterations ({iters}) exceeds maximum allowed ({max_allowed_iterations})")
+            
+        return RunConfig(
+            modelName=self.modelName,
+            paradox=paradox,
+            systemPrompt=self.systemPrompt,
+            params=self.params.model_dump(),
+            iterations=iters,
+            shuffle_options=self.shuffle_options
+        )
+
+class ExperimentCreateRequest(BaseModel):
+    title: str = Field(..., max_length=200)
+    paradoxIds: List[str] = Field(..., min_length=1, max_length=MAX_EXPERIMENT_PARADOXES)
+    conditions: List[ConditionConfig] = Field(..., min_length=1, max_length=MAX_EXPERIMENT_CONDITIONS)
+    tags: Optional[List[str]] = Field(default_factory=list)
+
+    @field_validator('paradoxIds')
+    @classmethod
+    def validate_paradox_ids(cls, v: List[str]) -> List[str]:
+        for pid in v:
+            if not re.match(r'^[a-z0-9_-]+$', pid, re.IGNORECASE):
+                raise ValueError(f'Invalid paradox ID format: {pid}')
+        return v
+
+    @model_validator(mode="after")
+    def validate_experiment_matrix(self) -> "ExperimentCreateRequest":
+        run_count = len(self.paradoxIds) * len(self.conditions)
+        if run_count > MAX_EXPERIMENT_RUNS:
+            raise ValueError(
+                f"Experiment matrix exceeds maximum allowed runs ({MAX_EXPERIMENT_RUNS})"
+            )
+        return self
+
+class ExperimentRecord(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    id: str = Field(..., max_length=100)
+    title: str = Field(..., max_length=200)
+    paradoxIds: List[str] = Field(default_factory=list)
+    conditions: List[ConditionConfig] = Field(default_factory=list)
+    runIds: List[str] = Field(default_factory=list)
+    errors: List[str] = Field(default_factory=list)
+    status: str = Field(..., max_length=20)
+    tags: List[str] = Field(default_factory=list)
+    createdAt: str = Field(...)

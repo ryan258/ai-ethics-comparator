@@ -14,6 +14,7 @@ import base64
 
 STRICT_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+-\d{3}$")
 LEGACY_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,120}$")
+EXPERIMENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 class RunStorage:
@@ -268,14 +269,16 @@ class RunStorage:
         if not isinstance(run_id, str) or not STRICT_RUN_ID_PATTERN.fullmatch(run_id):
             raise ValueError("Invalid run_id")
         
-        # Path resolution validation
         try:
-             run_path = (self.results_root / run_id).resolve()
-             root_path = self.results_root.resolve()
-             if not str(run_path).startswith(str(root_path)):
-                 raise ValueError("Path traversal attempt")
+            flat_path = (self.results_root / f"{run_id}.json").resolve()
+            legacy_path = (self.results_root / run_id / "run.json").resolve()
+            root_path = self.results_root.resolve()
+            if not flat_path.is_relative_to(root_path):
+                raise ValueError("Path traversal attempt")
+            if not legacy_path.is_relative_to(root_path):
+                raise ValueError("Path traversal attempt")
         except Exception:
-             raise ValueError("Invalid run_id path")
+            raise ValueError("Invalid run_id path")
              
         loop = asyncio.get_running_loop()
         
@@ -324,3 +327,73 @@ class RunStorage:
                 json.dump(run_record, f, indent=2)
 
         await loop.run_in_executor(None, _update)
+
+
+class ExperimentStorage:
+    """Storage manager for defined experiments"""
+
+    def __init__(self, experiments_root: str) -> None:
+        self.experiments_root = Path(experiments_root)
+
+    async def ensure_dir(self) -> None:
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, lambda: self.experiments_root.mkdir(parents=True, exist_ok=True))
+
+    async def save_experiment(self, exp_id: str, exp_data: Dict[str, Any]) -> None:
+        if not EXPERIMENT_ID_PATTERN.fullmatch(exp_id):
+            raise ValueError("Invalid experiment ID format")
+        await self.ensure_dir()
+        loop = asyncio.get_running_loop()
+        exp_file = self.experiments_root / f"{exp_id}.json"
+
+        def _write():
+            with open(exp_file, 'w') as f:
+                json.dump(exp_data, f, indent=2)
+
+        await loop.run_in_executor(None, _write)
+
+    async def get_experiment(self, exp_id: str) -> Dict[str, Any]:
+        if not isinstance(exp_id, str) or not EXPERIMENT_ID_PATTERN.fullmatch(exp_id):
+            raise ValueError("Invalid exp_id")
+        
+        try:
+            exp_path = (self.experiments_root / f"{exp_id}.json").resolve()
+            root_path = self.experiments_root.resolve()
+            if not exp_path.is_relative_to(root_path):
+                raise ValueError("Path traversal attempt")
+        except (RuntimeError, ValueError) as e:
+            raise ValueError(f"Invalid exp_id path: {e}")
+             
+        loop = asyncio.get_running_loop()
+        
+        def _read():
+            if exp_path.exists():
+                with open(exp_path, 'r') as f:
+                    return json.load(f)
+            raise FileNotFoundError(f"Experiment {exp_id} not found")
+
+        return await loop.run_in_executor(None, _read)
+
+    async def list_experiments(self) -> List[Dict[str, Any]]:
+        loop = asyncio.get_running_loop()
+        
+        def _list():
+            if not self.experiments_root.exists():
+                return []
+            
+            exps = []
+            for entry in self.experiments_root.iterdir():
+                if entry.is_file() and entry.suffix == ".json":
+                    try:
+                        with open(entry, 'r') as f:
+                            data = json.load(f)
+                            if "id" in data:
+                                exps.append(data)
+                    except Exception as e:
+                        import logging
+                        logging.getLogger(__name__).error(f"Error reading exp file {entry}: {e}")
+            
+            exps.sort(key=lambda x: x.get("id", ""))
+            return exps
+
+        return await loop.run_in_executor(None, _list)

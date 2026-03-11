@@ -9,3 +9,5 @@ markdown
 markupsafe
 openai
 weasyprint==61.2
+pytest
+pytest-asyncio

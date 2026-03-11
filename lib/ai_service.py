@@ -5,7 +5,7 @@ Copy-paste ready: Just provide config
 """
 
 import asyncio
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from openai import AsyncOpenAI
 import logging
 
@@ -132,7 +132,7 @@ class AIService:
         system_prompt: str = "",
         params: Optional[Dict[str, Any]] = None,
         retry_count: int = 0
-    ) -> str:
+    ) -> Tuple[str, Dict[str, int]]:
         """
         Get model response with automatic retry logic
 
@@ -144,7 +144,7 @@ class AIService:
             retry_count: Current retry attempt (internal)
 
         Returns:
-            Model response text
+            Tuple of (Model response text, Usage dictionary)
         """
         if params is None:
             params = {}
@@ -186,7 +186,12 @@ class AIService:
 
             response_text = self._extract_response_text(response)
             if response_text:
-                return response_text
+                usage = getattr(response, "usage", None)
+                usage_dict = {
+                    "prompt_tokens": getattr(usage, "prompt_tokens", 0) if usage else 0,
+                    "completion_tokens": getattr(usage, "completion_tokens", 0) if usage else 0,
+                }
+                return response_text, usage_dict
 
             raise Exception(self._empty_response_error(response))
 
@@ -201,7 +206,7 @@ class AIService:
         system_prompt: str,
         params: Dict[str, Any],
         retry_count: int,
-    ) -> str:
+    ) -> Tuple[str, Dict[str, int]]:
         """Handle errors with retry logic"""
         logger.error(f"Error querying OpenRouter: {error}")
 

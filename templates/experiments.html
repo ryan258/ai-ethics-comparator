@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="controls-grid" style="grid-template-columns: 1fr;">
+    <!-- Create Experiment Card -->
+    <div class="card">
+        <h2>Launch Laboratory Experiment</h2>
+        <p style="margin-bottom: 1rem; font-size: 0.9rem; opacity: 0.8;">Define an experiment manifest to fan out across multiple models and paradoxes simultaneously.</p>
+        
+        <form id="experiment-form"
+              hx-post="/api/experiments" 
+              hx-trigger="submit" 
+              hx-ext="json-enc"
+              hx-on::after-request="if(event.detail.successful) { window.location.reload(); } else { alert('Failed to create experiment'); }">
+            
+            <div class="form-group">
+                <label for="title">Experiment Title</label>
+                <input type="text" name="title" id="title" required placeholder="e.g. Claude 3 vs GPT-4 on Trolley Problems" style="width: 100%; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px;">
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div class="form-group">
+                    <label>Target Paradoxes (Hold Cmd/Ctrl to select multiple)</label>
+                    <select name="paradoxIds" multiple required style="height: 120px; width: 100%; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px;">
+                        {% for paradox in paradoxes %}
+                        <option value="{{ paradox.id }}">{{ paradox.title }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Target Models (One per selected line)</label>
+                    <select id="modelSelect" name="modelIds" multiple required style="height: 120px; width: 100%; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px;">
+                        {% for model in models %}
+                        <option value="{{ model.id }}">
+                            {{ model.id }}{% if model.name and model.name != model.id %} - {{ model.name }}{% endif %}
+                        </option>
+                        {% endfor %}
+                        {% if not models and default_model %}
+                        <option value="{{ default_model }}">{{ default_model }}</option>
+                        {% endif %}
+                    </select>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary">Create Manifest</button>
+        </form>
+    </div>
+
+    <!-- Active/Past Experiments -->
+    <div class="card">
+        <h2>Existing Experiments</h2>
+        {% if experiments %}
+            {% for exp in experiments %}
+            <div style="border: 1px solid var(--border-color); border-radius: 6px; padding: 1rem; margin-bottom: 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <h3 style="margin: 0; font-size: 1.1rem;">{{ exp.title }}</h3>
+                    <span class="status-badge" style="
+                        background: {% if exp.status == 'completed' %}var(--accent-success){% elif exp.status == 'running' %}var(--accent-primary){% elif exp.status == 'failed' %}var(--accent-danger){% else %}var(--border-color){% endif %};
+                        color: var(--bg-color);
+                    ">{{ exp.status | upper }}</span>
+                </div>
+                <p style="font-size: 0.85rem; opacity: 0.8; margin: 0 0 0.5rem 0;">ID: <code>{{ exp.id }}</code> | Created: {{ exp.createdAt }}</p>
+                
+                <div style="font-size: 0.9rem; margin-bottom: 1rem;">
+                    <strong>Paradoxes:</strong> {{ exp.paradoxIds | join(', ') }}<br>
+                    <strong>Models:</strong> {% for cond in exp.conditions %}{{ cond.modelName }}{% if not loop.last %}, {% endif %}{% endfor %}
+                </div>
+
+                {% if exp.status == 'pending' %}
+                <button hx-post="/api/experiments/{{ exp.id }}/execute" 
+                        class="btn btn-secondary" 
+                        style="padding: 0.4rem 0.8rem; font-size: 0.85rem;"
+                        hx-on::after-request="window.location.reload()">
+                    Execute Experiment
+                </button>
+                {% endif %}
+
+                {% if exp.status == 'completed' or exp.status == 'partial' %}
+                <div style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                    <strong>Runs ({{ exp.runIds | length }}):</strong>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
+                    {% for run_id in exp.runIds %}
+                        <a href="/?runId={{ run_id }}" style="font-size: 0.8rem; padding: 0.2rem 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; text-decoration: none; color: var(--text-color);">{{ run_id }}</a>
+                    {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if exp.errors %}
+                <div style="margin-top: 1rem; padding: 0.5rem; border-left: 3px solid var(--accent-danger); font-size: 0.85rem;">
+                    <strong>Errors:</strong><br>
+                    {% for err in exp.errors %}
+                    - {{ err }}<br>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        {% else %}
+            <p style="font-size: 0.9rem; opacity: 0.7;">No experiments found. Create a manifest above.</p>
+        {% endif %}
+    </div>
+
+    <!-- Fingerprints -->
+    <div class="card">
+        <h2>Ethics Fingerprints</h2>
+        <p style="margin-bottom: 1rem; font-size: 0.9rem; opacity: 0.8;">Explore absolute prevalence rates for moral complexes extracted from explanations over time.</p>
+        <div class="form-group">
+            <label for="fingerprintModelSelect">Select Model to Analyze</label>
+            <select name="model_id" id="fingerprintModelSelect" 
+                    hx-get="/fragments/fingerprint" 
+                    hx-target="#fingerprint-container" 
+                    hx-trigger="change"
+                    style="width: 100%; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px;">
+                <option value="" disabled selected>-- Select an evaluated model --</option>
+                {% for model in models %}
+                <option value="{{ model.id }}">{{ model.name or model.id }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div id="fingerprint-container" style="margin-top: 1rem;">
+            <div style="opacity:0.6; font-size: 0.9rem;">Select a model to view its computed radar/chart statistics.</div>
+        </div>
+    </div>
+</div>
+
+<script>
+const experimentForm = document.getElementById("experiment-form");
+const modelSelect = document.getElementById("modelSelect");
+const paradoxSelect = experimentForm ? experimentForm.querySelector('select[name="paradoxIds"]') : null;
+const MAX_EXPERIMENT_RUNS = 50;
+const MAX_ITERATIONS_LIMIT = {{ max_iterations }};
+
+function selectedValues(selectEl) {
+    if (!selectEl) {
+        return [];
+    }
+    return Array.from(selectEl.selectedOptions).map((opt) => opt.value);
+}
+
+function buildConditionsPayload() {
+    const selectedModels = selectedValues(modelSelect);
+    const conditions = [];
+    for (let i = 0; i < selectedModels.length; i++) {
+        conditions.push({
+            modelName: selectedModels[i],
+            iterations: MAX_ITERATIONS_LIMIT,
+            shuffleOptions: false
+        });
+    }
+    return conditions;
+}
+
+if (experimentForm) {
+    experimentForm.addEventListener("htmx:beforeRequest", function (evt) {
+        if (evt.detail.path !== "/api/experiments") {
+            return;
+        }
+
+        const paradoxIds = selectedValues(paradoxSelect);
+        const conditions = buildConditionsPayload();
+        const runCount = paradoxIds.length * conditions.length;
+
+        if (paradoxIds.length === 0 || conditions.length === 0) {
+            evt.preventDefault();
+            alert("Select at least one paradox and one model before creating an experiment.");
+            return;
+        }
+
+        if (runCount > MAX_EXPERIMENT_RUNS) {
+            evt.preventDefault();
+            alert(`This experiment would create ${runCount} runs. The current limit is ${MAX_EXPERIMENT_RUNS}.`);
+        }
+    });
+
+    experimentForm.addEventListener("htmx:configRequest", function (evt) {
+        if (evt.detail.path !== "/api/experiments") {
+            return;
+        }
+
+        evt.detail.parameters.title = document.getElementById("title").value;
+        evt.detail.parameters.paradoxIds = selectedValues(paradoxSelect);
+        evt.detail.parameters.conditions = buildConditionsPayload();
+        delete evt.detail.parameters.modelIds;
+    });
+}
+</script>
+{% endblock %}

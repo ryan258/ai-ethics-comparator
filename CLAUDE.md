@@ -1,176 +1,58 @@
-# CLAUDE.md
+# System Instruction: Code Review Agent
 
-Guidance for coding agents working in this repository.
+You are a strict, context-aware Code Review Agent. When invoked to review staged changes, you must execute the following workflow in exact order before providing your final verdict.
 
-## Project Snapshot
+## 1. Context Loading
+Before reviewing any code, you MUST read all overarching architecture files by viewing the files in the `docs/architecture/` directory to understand the project's invariants, boundaries, and dependencies.
 
-AI Ethics Comparator is a FastAPI + Jinja2 + HTMX application for running repeated LLM evaluations on trolley-style ethical scenarios.
+## 2. Dependency Mapping
+You must use GitNexus to check the "blast radius" of the staged changes.
+- Identify all modules that consume the modified code.
+- If the changed code is consumed by other modules, you must verify that those downstream modules won't break.
 
-Current behavior:
+## 3. Constraint Checking
+Analyze the staged code against the rules defined in the following files:
+- `docs/architecture/tech-stack.md`: Ensure no illegal imports, unauthorized dependencies, or forbidden technologies were introduced.
+- `docs/architecture/state.md`: Verify that no improper state mutations occurred and that state management patterns are strictly followed.
 
-- Scenario type: `trolley` only
-- Options per paradox: 2-4
-- Storage: flat JSON files in `results/`
-- Strict run IDs: `<base>-NNN`
+## 4. Boundary Verification
+Ensure the modified code respects the UI/API seams defined in `docs/architecture/boundaries.md`.
+- Reject any changes that leak domain logic into the presentation layer or bypass established data flow boundaries.
 
-## Non-Negotiables
+## 5. Output Format
+Output your review using strictly the following sections. Do not use any other sections.
 
-- Keep `lib/` portable and framework-agnostic.
-- Keep routes thin in `main.py`; core logic belongs in `lib/`.
-- No Docker/k8s/terraform additions.
-- No React/build-step frontend additions.
-- Use Candlelight palette for user-facing UI colors only:
-  - `#121212`
-  - `#EBD2BE`
-  - `#A6ACCD`
-  - `#98C379`
-  - `#E06C75`
+### 🚨 Critical Violations
+List any direct violations of the architectural constraints, boundary breaches, state mutation errors, or breaking changes to downstream dependencies. (If none, write "None")
 
-## Quick Commands
+### ⚠️ Architectural Warnings
+List any code smells, suboptimal patterns, or deviations from the tech stack that aren't strict violations but should be addressed. (If none, write "None")
 
-```bash
-# setup
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-pip install pytest
+### ✅ Approved Changes
+List the modifications that are safe, align with the architecture, and are approved to merge.
 
-# dev server
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+<!-- gitnexus:start -->
+# GitNexus MCP
 
-# tests
-pytest
-```
+This project is indexed by GitNexus as **ai-ethics-comparator** (423 symbols, 930 relationships, 26 execution flows).
 
-## Architecture
+## Always Start Here
 
-### Entry Point
+1. **Read `gitnexus://repo/{name}/context`** — codebase overview + check index freshness
+2. **Match your task to a skill below** and **read that skill file**
+3. **Follow the skill's workflow and checklist**
 
-- `main.py`
-  - app factory (`create_app`)
-  - startup initialization and dependency wiring
-  - HTTP/HTMX routes
-  - middleware and error mapping
+> If step 1 warns the index is stale, run `npx gitnexus analyze` in the terminal first.
 
-### Arsenal Modules (`lib/`)
+## Skills
 
-- `config.py` - typed app config/env loading
-- `validation.py` - Pydantic request validation
-- `ai_service.py` - OpenRouter client + retry/backoff
-- `query_processor.py` - iteration orchestration + token parsing + aggregation
-- `analysis.py` - analyst prompt compilation + insight parsing
-- `storage.py` - run persistence + strict ID migration
-- `view_models.py` - template-facing data prep + safe markdown filter
-- `reporting.py` - PDF generation
-- `paradoxes.py` - paradox loading/validation
+| Task | Read this skill file |
+|------|---------------------|
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
-### UI
-
-- `templates/index.html` and `templates/partials/*.html`
-- HTMX endpoints return partials for progressive rendering.
-
-## Startup Lifecycle
-
-At startup (`main.py`):
-
-1. Load `AppConfig` from env + `models.json`.
-2. Validate required secrets/URLs.
-3. Initialize `AIService`, `RunStorage`, `QueryProcessor`, `AnalysisEngine`, `ReportGenerator`.
-4. Run `RunStorage.migrate_legacy_run_ids()`.
-5. Attach initialized services to `app.state.services`.
-
-If required env vars are missing, startup fails fast.
-
-## Run ID Rules
-
-Canonical pattern in code: `^[A-Za-z0-9_-]+-\d{3}$`
-
-- valid: `model-001`, `gpt_4-042`
-- invalid: `model`, `model-01`, `bad.id-001`
-
-All routes that access a specific run validate this pattern.
-
-## Run Record Schema (Current)
-
-`results/<run_id>.json` contains:
-
-```json
-{
-  "runId": "model-001",
-  "timestamp": "2026-01-01T00:00:00+00:00",
-  "modelName": "provider/model",
-  "paradoxId": "scenario_id",
-  "paradoxType": "trolley",
-  "prompt": "Rendered prompt text",
-  "iterationCount": 20,
-  "params": {
-    "temperature": 1.0,
-    "top_p": 1.0,
-    "max_tokens": 1000,
-    "frequency_penalty": 0,
-    "presence_penalty": 0,
-    "seed": 123
-  },
-  "options": [
-    {"id": 1, "label": "Option 1", "description": "..."},
-    {"id": 2, "label": "Option 2", "description": "..."}
-  ],
-  "summary": {
-    "total": 20,
-    "options": [
-      {"id": 1, "count": 14, "percentage": 70.0},
-      {"id": 2, "count": 6, "percentage": 30.0}
-    ],
-    "undecided": {"count": 0, "percentage": 0.0}
-  },
-  "responses": [
-    {
-      "iteration": 1,
-      "decisionToken": "{1}",
-      "optionId": 1,
-      "explanation": "...",
-      "raw": "...",
-      "timestamp": "2026-01-01T00:00:01+00:00"
-    }
-  ],
-  "insights": [
-    {
-      "timestamp": "2026-01-01T00:10:00+00:00",
-      "analystModel": "provider/analyst",
-      "content": {"legacy_text": "..."}
-    }
-  ]
-}
-```
-
-## API Endpoints
-
-- `GET /` - full app page
-- `GET /health` - health/version metadata
-- `GET /api/paradoxes` - all paradoxes
-- `GET /api/fragments/paradox-details` - paradox detail partial
-- `POST /api/query` - execute run
-- `POST /api/insight` - generate insight JSON response
-- `GET /api/runs` - list run metadata
-- `GET /api/runs/{run_id}` - fetch one run
-- `POST /api/runs/{run_id}/analyze` - render analysis partial
-- `GET /api/runs/{run_id}/pdf` - download report
-
-## Testing
-
-`tests/` includes a minimal but meaningful baseline:
-
-- startup + version header checks
-- strict run ID validation checks
-- legacy run ID migration check
-- analysis error escaping check
-
-Run with `pytest`.
-
-## Implementation Notes
-
-- Preserve app-factory pattern; avoid module-level service globals.
-- Keep exception messages safe for UI rendering.
-- For new storage migrations, keep operations idempotent.
-- Prefer explicit dataclasses/config objects for new integrations.
-- Do not hardcode secrets, endpoints, or model IDs in code.
+<!-- gitnexus:end -->

@@ -8,6 +8,7 @@ import logging
 import os
 import random
 import re
+import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -17,18 +18,21 @@ from typing import AsyncIterator, Awaitable, Callable, Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, Response, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from lib.ai_service import AIService
 from lib.analysis import AnalysisConfig, AnalysisEngine
 from lib.config import AppConfig
+from lib.counterfactual import CounterfactualEngine
+from lib.experiment_runner import ExperimentRunner
+from lib.fingerprint import compute_model_fingerprint
 from lib.paradoxes import extract_scenario_text, get_paradox_by_id, load_paradoxes
 from lib.query_processor import QueryProcessor, RunConfig
 from lib.reporting import ReportGenerator
-from lib.storage import RunStorage, STRICT_RUN_ID_PATTERN
-from lib.validation import InsightRequest, QueryRequest
+from lib.storage import RunStorage, STRICT_RUN_ID_PATTERN, ExperimentStorage
+from lib.validation import ExperimentCreateRequest, ExperimentRecord, InsightRequest, QueryRequest
 from lib.view_models import RunViewModel, fetch_recent_run_view_models, safe_markdown
 
 # Load environment before startup config resolution.
@@ -48,7 +52,10 @@ RUN_ID_PATTERN = STRICT_RUN_ID_PATTERN
 class AppServices:
     config: AppConfig
     storage: RunStorage
+    experiment_storage: ExperimentStorage
     query_processor: QueryProcessor
+    experiment_runner: ExperimentRunner
+    counterfactual_engine: CounterfactualEngine
     analysis_engine: AnalysisEngine
     report_generator: ReportGenerator
     templates: Jinja2Templates
@@ -64,6 +71,11 @@ def _build_templates(templates_dir: str) -> Jinja2Templates:
 def _validate_run_id(run_id: str) -> None:
     if not RUN_ID_PATTERN.fullmatch(run_id):
         raise HTTPException(status_code=400, detail="Invalid run_id")
+
+
+def _validate_model_id(model_id: str) -> None:
+    if not model_id or not MODEL_NAME_PATTERN.fullmatch(model_id):
+        raise HTTPException(status_code=400, detail="Invalid model_id")
 
 
 def _get_services(request: Request) -> AppServices:
@@ -111,6 +123,8 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         migrated_ids = await storage.migrate_legacy_run_ids()
         if migrated_ids:
             logger.info("Migrated %s legacy run IDs to strict format", len(migrated_ids))
+            
+        experiment_storage = ExperimentStorage(str(storage.results_root.parent / "experiments"))
 
         query_processor = QueryProcessor(
             ai_service,
@@ -125,10 +139,25 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         )
         report_generator = ReportGenerator(templates_dir=templates_dir)
 
+        experiment_runner = ExperimentRunner(
+            query_processor=query_processor,
+            run_storage=storage,
+            experiment_storage=experiment_storage,
+            max_iterations=config.MAX_ITERATIONS,
+            max_concurrent_conditions=max(1, min(config.AI_CONCURRENCY_LIMIT, 4)),
+        )
+        counterfactual_engine = CounterfactualEngine(
+            query_processor=query_processor,
+            run_storage=storage
+        )
+
         app_instance.state.services = AppServices(
             config=config,
             storage=storage,
+            experiment_storage=experiment_storage,
             query_processor=query_processor,
+            experiment_runner=experiment_runner,
+            counterfactual_engine=counterfactual_engine,
             analysis_engine=analysis_engine,
             report_generator=report_generator,
             templates=templates,
@@ -166,7 +195,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         return response
 
     @app.get("/", response_class=HTMLResponse)
-    async def index(request: Request) -> HTMLResponse:
+    async def index(request: Request, runId: Optional[str] = None) -> HTMLResponse:
         services = _get_services(request)
         config = services.config
         try:
@@ -183,6 +212,20 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             paradoxes,
             config.ANALYST_MODEL,
         )
+
+        # If a specific run was requested via query param, ensure it is visible.
+        if runId and RUN_ID_PATTERN.fullmatch(runId):
+            existing_ids = {r["run_id"] for r in recent_run_contexts}
+            if runId not in existing_ids:
+                try:
+                    target_run = await services.storage.get_run(runId)
+                    p_id = target_run.get("paradoxId")
+                    paradox = get_paradox_by_id(paradoxes, p_id) or {}
+                    vm = RunViewModel.build(target_run, paradox)
+                    vm["config_analyst_model"] = config.ANALYST_MODEL
+                    recent_run_contexts.insert(0, vm)
+                except (FileNotFoundError, ValueError):
+                    pass
 
         initial_paradox = random.choice(paradoxes) if paradoxes else None
         initial_scenario_text = ""
@@ -202,6 +245,36 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
                 "initial_paradox": initial_paradox,
                 "initial_scenario_text": initial_scenario_text,
                 "max_iterations": config.MAX_ITERATIONS,
+                "current_page": "single_run",
+            },
+        )
+
+    @app.get("/experiments")
+    async def experiments_ui(request: Request) -> HTMLResponse:
+        services = _get_services(request)
+        config = services.config
+
+        try:
+            paradoxes = load_paradoxes(services.paradoxes_path)
+            # Retrieve existing experiments
+            experiments = await services.experiment_storage.list_experiments()
+        except Exception as exc:
+            logger.error("Failed to load laboratory data: %s", exc)
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to load laboratory data. Please check server logs.",
+            ) from exc
+
+        return services.templates.TemplateResponse(
+            request,
+            "experiments.html",
+            {
+                "paradoxes": paradoxes,
+                "models": config.AVAILABLE_MODELS,
+                "default_model": config.DEFAULT_MODEL,
+                "experiments": experiments,
+                "max_iterations": config.MAX_ITERATIONS,
+                "current_page": "laboratory",
             },
         )
 
@@ -215,6 +288,33 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "uptime": "N/A",
         }
+
+    @app.get("/fragments/fingerprint")
+    async def get_model_fingerprint_fragment(request: Request, model_id: str) -> HTMLResponse:
+        services = _get_services(request)
+        if not model_id or not MODEL_NAME_PATTERN.fullmatch(model_id):
+            return HTMLResponse("<div>Please select a valid model.</div>", status_code=400)
+        try:
+            fp_data = await compute_model_fingerprint(model_id, services.storage)
+            return services.templates.TemplateResponse(
+                request,
+                "partials/fingerprint.html",
+                {
+                    "model_id": model_id,
+                    "fingerprint": fp_data.get("fingerprint", []),
+                    "total_insights": fp_data.get("totalRunsWithInsights", 0),
+                },
+            )
+        except Exception as exc:
+            logger.error("Failed to compute fingerprint fragment for %s: %s", model_id, exc)
+            return HTMLResponse(
+                (
+                    "<div class='error' style='color: var(--accent-danger); "
+                    "padding: 1rem; border-left: 3px solid var(--accent-danger);'>"
+                    "Failed to load fingerprint.</div>"
+                ),
+                status_code=500,
+            )
 
     @app.get("/api/paradoxes")
     async def get_paradoxes(request: Request) -> list:
@@ -269,6 +369,115 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         except Exception as exc:
             logger.error("Failed to get run %s: %s", run_id, exc)
             raise HTTPException(status_code=500, detail="Failed to retrieve run data.") from exc
+
+    @app.post("/api/runs/{run_id}/counterfactual")
+    async def create_counterfactual(request: Request, run_id: str) -> Response:
+        _validate_run_id(run_id)
+        services = _get_services(request)
+        try:
+            paradoxes = load_paradoxes(services.paradoxes_path)
+            cf_run = await services.counterfactual_engine.execute_counterfactual(run_id, paradoxes)
+            if request.headers.get("HX-Request"):
+                paradox = get_paradox_by_id(paradoxes, cf_run["paradoxId"]) or {}
+                vm = RunViewModel.build(cf_run, paradox)
+                vm["config_analyst_model"] = services.config.ANALYST_MODEL
+                return services.templates.TemplateResponse(
+                    request,
+                    "partials/result_item.html",
+                    {"ctx": vm},
+                )
+            return JSONResponse(content=cf_run)
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.error("Counterfactual generation failed: %s", exc)
+            raise HTTPException(status_code=500, detail="Counterfactual generation failed") from exc
+
+    @app.post("/api/experiments")
+    async def create_experiment(request: Request, exp_req: ExperimentCreateRequest) -> dict:
+        services = _get_services(request)
+        exp_id = f"exp_{int(datetime.now(timezone.utc).timestamp())}_{uuid.uuid4().hex[:6]}"
+        
+        record = ExperimentRecord(
+            id=exp_id,
+            title=exp_req.title,
+            paradoxIds=exp_req.paradoxIds,
+            conditions=exp_req.conditions,
+            status="pending",
+            tags=exp_req.tags or [],
+            createdAt=datetime.now(timezone.utc).isoformat(),
+        )
+        exp_data = record.model_dump(by_alias=True)
+        try:
+            await services.experiment_storage.save_experiment(exp_id, exp_data)
+            return exp_data
+        except Exception as exc:
+             logger.error("Failed to create experiment: %s", exc)
+             raise HTTPException(status_code=500, detail="Failed to create experiment") from exc
+
+    @app.get("/api/experiments")
+    async def list_experiments(request: Request) -> list:
+        services = _get_services(request)
+        try:
+            return await services.experiment_storage.list_experiments()
+        except Exception as exc:
+            logger.error("Failed to list experiments: %s", exc)
+            raise HTTPException(status_code=500, detail="Failed to retrieve experiments")
+
+    def _validate_experiment_id(exp_id: str) -> None:
+        if not re.match(r'^exp_[0-9]+_[a-f0-9]+$', exp_id):
+            raise HTTPException(status_code=400, detail="Invalid experiment ID format")
+
+    @app.get("/api/experiments/{exp_id}")
+    async def get_experiment(request: Request, exp_id: str) -> dict:
+        _validate_experiment_id(exp_id)
+        services = _get_services(request)
+        try:
+            return await services.experiment_storage.get_experiment(exp_id)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Experiment not found")
+            
+    @app.post("/api/experiments/{exp_id}/execute")
+    async def execute_experiment(request: Request, exp_id: str) -> dict:
+        _validate_experiment_id(exp_id)
+        services = _get_services(request)
+        
+        try:
+            exp_data = await services.experiment_storage.get_experiment(exp_id)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Experiment not found")
+            
+        if exp_data.get("status") != "pending":
+            raise HTTPException(status_code=400, detail="Experiment must be in pending status to execute")
+            
+        exp_data["status"] = "running"
+        await services.experiment_storage.save_experiment(exp_id, exp_data)
+
+        try:
+            paradoxes = load_paradoxes(services.paradoxes_path)
+            result = await services.experiment_runner.execute_experiment(exp_id, exp_data, paradoxes)
+            return result.model_dump(by_alias=True)
+        except Exception as exc:
+            logger.error("Experiment execution failed for %s: %s", exp_id, exc)
+            exp_data["status"] = "failed"
+            exp_data.setdefault("errors", []).append(str(exc))
+            try:
+                await services.experiment_storage.save_experiment(exp_id, exp_data)
+            except Exception as save_exc:
+                logger.error("Failed to persist experiment failure state for %s: %s", exp_id, save_exc)
+            raise HTTPException(status_code=500, detail="Failed to execute experiment") from exc
+
+    @app.get("/api/models/{model_id:path}/fingerprint")
+    async def get_model_fingerprint_route(request: Request, model_id: str) -> dict:
+        services = _get_services(request)
+        _validate_model_id(model_id)
+        try:
+            return await compute_model_fingerprint(model_id, services.storage)
+        except Exception as exc:
+            logger.error("Failed to compute fingerprint: %s", exc)
+            raise HTTPException(status_code=500, detail="Failed to compute fingerprint") from exc
 
     @app.post("/api/query")
     async def execute_query(request: Request, query_request: QueryRequest):
@@ -445,7 +654,12 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             if "insights" in run_data and run_data["insights"]:
                 insight = run_data["insights"][-1]
 
-            pdf_bytes = services.report_generator.generate_pdf_report(run_data, paradox, insight)
+            try:
+                pdf_bytes = services.report_generator.generate_pdf_report(run_data, paradox, insight)
+            except RuntimeError as exc:
+                logger.warning("PDF generation unavailable for %s: %s", run_id, exc)
+                raise HTTPException(status_code=503, detail="PDF generation unavailable") from exc
+
             return StreamingResponse(
                 io.BytesIO(pdf_bytes),
                 media_type="application/pdf",
@@ -459,7 +673,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             raise
         except Exception as exc:
             logger.exception("PDF generation failed for %s", run_id)
-            raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {exc}") from exc
+            raise HTTPException(status_code=500, detail="Failed to generate PDF") from exc
 
     return app
 
