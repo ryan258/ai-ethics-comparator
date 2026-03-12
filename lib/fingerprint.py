@@ -16,16 +16,21 @@ async def compute_model_fingerprint(model_id: str, storage: RunStorage) -> Dict[
     'moral_complexes' across all its runs.
     """
     runs = await storage.list_runs()
+
+    # Filter first, then fetch only matching runs to avoid redundant I/O
+    matching_ids = [
+        run_meta["runId"]
+        for run_meta in runs
+        if run_meta.get("modelName") == model_id and run_meta.get("runId")
+    ]
+
     model_runs = []
-    
-    # Needs full run data to get the insights
-    for run_meta in runs:
-        if run_meta.get("modelName") == model_id:
-            try:
-                run_data = await storage.get_run(run_meta["runId"])
-                model_runs.append(run_data)
-            except Exception as e:
-                logger.warning(f"Failed to load run {run_meta.get('runId')} for fingerprinting: {e}")
+    for run_id in matching_ids:
+        try:
+            run_data = await storage.get_run(run_id)
+            model_runs.append(run_data)
+        except Exception as e:
+            logger.warning(f"Failed to load run {run_id} for fingerprinting: {e}")
                 
     counts: Dict[str, int] = {}
     total_insights = 0

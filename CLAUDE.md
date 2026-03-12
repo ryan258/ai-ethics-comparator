@@ -34,7 +34,7 @@ List the modifications that are safe, align with the architecture, and are appro
 <!-- gitnexus:start -->
 # GitNexus MCP
 
-This project is indexed by GitNexus as **ai-ethics-comparator** (423 symbols, 930 relationships, 26 execution flows).
+This project is indexed by GitNexus as **ai-ethics-comparator** (433 symbols, 956 relationships, 27 execution flows).
 
 ## Always Start Here
 

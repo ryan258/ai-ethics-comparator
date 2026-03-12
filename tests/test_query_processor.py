@@ -3,7 +3,10 @@ from __future__ import annotations
 import asyncio
 import pytest
 
+import math
+
 from lib.query_processor import (
+    _coerce_option_id,
     _extract_choice_from_classifier_output,
     _infer_option_from_text,
     QueryProcessor,
@@ -99,6 +102,37 @@ def test_extract_choice_from_classifier_output() -> None:
     assert _extract_choice_from_classifier_output("2", option_count=4) == 2
     assert _extract_choice_from_classifier_output("{3}", option_count=4) == 3
     assert _extract_choice_from_classifier_output("0", option_count=4) is None
+
+
+def test_extract_choice_skips_out_of_range_numbers() -> None:
+    """Noisy classifier output with leading out-of-range number should still find the valid answer."""
+    assert _extract_choice_from_classifier_output("confidence 10/10; answer 2", option_count=3) == 2
+    assert _extract_choice_from_classifier_output("after 10 retries, final answer is 2", option_count=4) == 2
+    assert _extract_choice_from_classifier_output("score 99 pick {1}", option_count=3) == 1
+    # All numbers out of range → None
+    assert _extract_choice_from_classifier_output("scores 10 20 30", option_count=4) is None
+
+
+def test_coerce_option_id_handles_float_bool_nan() -> None:
+    """_coerce_option_id rejects bool/NaN/Infinity and accepts clean floats."""
+    # Valid float coercion
+    assert _coerce_option_id(2.0, 3) == 2
+    assert _coerce_option_id(1.0, 4) == 1
+
+    # Non-integer float rejected
+    assert _coerce_option_id(1.5, 3) is None
+
+    # Out of range
+    assert _coerce_option_id(5.0, 3) is None
+
+    # Bool rejected (bool is subclass of int)
+    assert _coerce_option_id(True, 4) is None
+    assert _coerce_option_id(False, 4) is None
+
+    # NaN / Infinity rejected without raising
+    assert _coerce_option_id(float("nan"), 3) is None
+    assert _coerce_option_id(float("inf"), 3) is None
+    assert _coerce_option_id(float("-inf"), 3) is None
 
 
 def test_query_processor_ai_classifier_fallback_infers_option() -> None:

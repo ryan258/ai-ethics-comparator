@@ -49,11 +49,10 @@ def test_counterfactual_shuffled_run_preserves_displayed_order() -> None:
                 }
             return None
 
-        async def generate_run_id(self, base):
-            return f"{base}-123"
-
-        async def save_run(self, run_id, run_data):
-            return None
+        async def create_run(self, base, run_data):
+            run_id = f"{base}-123"
+            run_data["runId"] = run_id
+            return run_id
 
     engine = CounterfactualEngine(MockQueryProcessor(), MockRunStorage())
     paradoxes = [
@@ -114,11 +113,10 @@ def test_counterfactual_unshuffled_run_uses_canonical_order() -> None:
                 }
             return None
 
-        async def generate_run_id(self, base):
-            return f"{base}-001"
-
-        async def save_run(self, run_id, run_data):
-            return None
+        async def create_run(self, base, run_data):
+            run_id = f"{base}-001"
+            run_data["runId"] = run_id
+            return run_id
 
     engine = CounterfactualEngine(MockQueryProcessor(), MockRunStorage())
     paradoxes = [

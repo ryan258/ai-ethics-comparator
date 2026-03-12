@@ -61,16 +61,14 @@ class ExperimentRunner:
                 cond_cfg = ConditionConfig(**condition)
                 run_cfg = cond_cfg.to_run_config(pdx, self.max_iterations)
                 run_data_res = await self.query_processor.execute_run(run_cfg)
-                run_id = await self.run_storage.generate_run_id(condition["modelName"])
-                run_data_res["runId"] = run_id
-                
+
                 # Check for iteration failures
                 errors = [r.get("error") for r in run_data_res.get("responses", []) if r.get("error")]
                 if errors:
                     run_data_res["partial_failure"] = True
                     run_data_res["errors"] = errors
 
-                await self.run_storage.save_run(run_id, run_data_res)
+                run_id = await self.run_storage.create_run(condition["modelName"], run_data_res)
                 return ConditionResult(run_id=run_id, error=None, partial=bool(errors))
             except Exception as e:
                 logger.error("Condition failed: %s", e)

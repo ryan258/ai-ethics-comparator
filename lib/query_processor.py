@@ -6,6 +6,7 @@ Nearly copy-paste ready: Depends on ai_service patterns
 
 import asyncio
 import json
+import math
 import re
 import hashlib
 import time
@@ -40,22 +41,29 @@ def _strict_single_choice_contract(option_count: int) -> str:
 
 
 def _extract_choice_from_classifier_output(classifier_output: str, option_count: int) -> Optional[int]:
-    """Extract a single option ID from classifier output; 0 means undecided."""
+    """Extract a single option ID from classifier output; 0 means undecided.
+
+    Scans all numeric and brace-token matches left-to-right, returning the
+    first value in range 1..option_count.  This handles noisy classifier
+    outputs like ``confidence 10/10; answer 2`` where the first number is
+    out of range.
+    """
     if option_count < 1:
         return None
 
-    pattern = r"\b([0-" + str(option_count) + r"])\b"
-    numeric_match = re.search(pattern, classifier_output)
-    if numeric_match:
-        value = int(numeric_match.group(1))
+    # Scan all bare numbers left-to-right, return first in-range hit.
+    for m in re.finditer(r"\b(\d+)\b", classifier_output):
+        value = int(m.group(1))
         if value == 0:
-            return None
-        return value
+            return None  # explicit undecided signal
+        if 1 <= value <= option_count:
+            return value
 
-    brace_pattern = r"\{([1-" + str(option_count) + r"])\}"
-    brace_match = re.search(brace_pattern, classifier_output)
-    if brace_match:
-        return int(brace_match.group(1))
+    # Fallback: brace tokens {N}
+    for m in re.finditer(r"\{(\d+)\}", classifier_output):
+        value = int(m.group(1))
+        if 1 <= value <= option_count:
+            return value
 
     return None
 
@@ -188,8 +196,12 @@ def _coerce_option_id(value: object, option_count: int) -> Optional[int]:
     """Coerce option_id-like values from structured responses."""
     option_id: Optional[int] = None
 
+    if isinstance(value, bool):
+        return None
     if isinstance(value, int):
         option_id = value
+    elif isinstance(value, float) and math.isfinite(value) and value.is_integer():
+        option_id = int(value)
     elif isinstance(value, str):
         stripped = value.strip()
         if stripped.isdigit():

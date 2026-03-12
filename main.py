@@ -516,9 +516,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
 
             run_data = await services.query_processor.execute_run(run_config)
 
-            run_id = await services.storage.generate_run_id(query_request.model_name)
-            run_data["runId"] = run_id
-            await services.storage.save_run(run_id, run_data)
+            run_id = await services.storage.create_run(query_request.model_name, run_data)
 
             if request.headers.get("HX-Request"):
                 vm = RunViewModel.build(run_data, paradox)
@@ -579,7 +577,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         try:
             form_data = await request.form()
             requested_analyst = form_data.get("analyst_model")
-            if requested_analyst and not MODEL_NAME_PATTERN.match(requested_analyst):
+            if requested_analyst and not MODEL_NAME_PATTERN.fullmatch(requested_analyst):
                 return HTMLResponse("<div class='error'>Invalid model name format</div>", status_code=400)
 
             run_data = await services.storage.get_run(run_id)
@@ -604,7 +602,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
                     )
 
             model_to_use = requested_analyst or services.config.ANALYST_MODEL
-            if not model_to_use or not MODEL_NAME_PATTERN.match(model_to_use):
+            if not model_to_use or not MODEL_NAME_PATTERN.fullmatch(model_to_use):
                 raise ValueError("Invalid analyst model name")
 
             cfg = AnalysisConfig(run_data=run_data, analyst_model=model_to_use)
@@ -628,6 +626,9 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             )
         except Exception as exc:
             logger.error("Analysis failed: %s", exc)
+            # HTMX callers need 200 to swap the error fragment into the modal;
+            # non-HTMX callers get a proper 500.
+            error_status = 200 if request.headers.get("HX-Request") else 500
             return services.templates.TemplateResponse(
                 request,
                 "partials/analysis_error.html",
@@ -636,7 +637,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
                     "model": model_to_use or "",
                     "run_id": run_id,
                 },
-                status_code=200,
+                status_code=error_status,
             )
 
     @app.get("/api/runs/{run_id}/pdf")

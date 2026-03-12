@@ -121,18 +121,18 @@ class AnalysisEngine:
 
         # Try to parse as JSON (New Dashboard)
         try:
-            # Enhanced JSON extraction (balanced brace counting) suggested by review
             def extract_json_object(text: str) -> Optional[str]:
-                """Extract first complete JSON object from text."""
-                brace_count = 0
-                start_idx = text.find('{')
-                if start_idx == -1: return None
-
-                for i, char in enumerate(text[start_idx:], start=start_idx):
-                    if char == '{': brace_count += 1
-                    elif char == '}': 
-                        brace_count -= 1
-                        if brace_count == 0: return text[start_idx:i+1]
+                """Extract first complete JSON object from text using json.JSONDecoder."""
+                decoder = json.JSONDecoder()
+                for idx, char in enumerate(text):
+                    if char != '{':
+                        continue
+                    try:
+                        obj, end = decoder.raw_decode(text[idx:])
+                        if isinstance(obj, dict):
+                            return text[idx:idx + end]
+                    except json.JSONDecodeError:
+                        continue
                 return None
 
             json_str = extract_json_object(raw_content)

@@ -14,8 +14,8 @@
 
 ### `RunStorage.results_root: Path` (storage.py:23)
 - **Scope**: filesystem directory `results/`
-- **Mutation**: `save_run()`, `update_run()`, `generate_run_id()`, `migrate_legacy_run_ids()`
-- **Concurrency**: `generate_run_id` uses POSIX atomic file creation — safe under concurrency
+- **Mutation**: `save_run()`, `create_run()`, `migrate_legacy_run_ids()`
+- **Concurrency**: `create_run` prefers POSIX atomic `os.link`; filesystems without hard links fall back to `open('x')` reservation + replace
 - **Invariant**: every file MUST match `<strict_run_id>.json` after migration
 
 ### `ExperimentStorage.experiments_root: Path` (storage.py:335)

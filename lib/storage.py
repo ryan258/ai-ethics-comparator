@@ -6,7 +6,9 @@ Copy-paste ready: Just provide results_root path
 
 import json
 import asyncio
+import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Any
 from datetime import datetime, timezone
@@ -47,43 +49,7 @@ class RunStorage:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, lambda: self.results_root.mkdir(parents=True, exist_ok=True))
 
-    async def generate_run_id(self, model_name: str) -> str:
-        """
-        Generate unique run ID with sequential numbering
-        
-        Args:
-            model_name: Model identifier
-            
-        Returns:
-            Unique run ID
-        """
-        await self.ensure_results_dir()
-        
-        loop = asyncio.get_running_loop()
 
-        # Helper: Atomic directory creation loop
-        def _get_next_id():
-            # Sanitize model name - strict charset + required -NNN suffix.
-            sanitized = self._sanitize_base_name(model_name)
-            if not sanitized:
-                sanitized = self._sanitize_base_name(base64.urlsafe_b64encode(model_name.encode()).decode()[:10])
-
-            for _ in range(20): # Retry loop
-                # Attempt to reserve this ID atomically via File Creation (Flat JSON)
-                run_id = self._next_run_id(sanitized)
-                run_file = self.results_root / f"{run_id}.json"
-                
-                try:
-                    # Exclusive file creation is strictly atomic on POSIX
-                    with open(run_file, 'x') as f:
-                        pass # Touch file to reserve name
-                    return run_id
-                except FileExistsError:
-                    continue # ID taken, retry scan
-                    
-            raise RuntimeError("Failed to generate unique Run ID after multiple attempts")
-
-        return await loop.run_in_executor(None, _get_next_id)
 
     async def migrate_legacy_run_ids(self) -> Dict[str, str]:
         """
@@ -138,6 +104,18 @@ class RunStorage:
                     with open(strict_path, "w", encoding="utf-8") as f:
                         json.dump(source_data, f, indent=2)
 
+                    # Clean up legacy source after successful migration
+                    try:
+                        if entry.is_file():
+                            entry.unlink()
+                        elif entry.is_dir():
+                            source_path.unlink()
+                            # Remove dir only if now empty
+                            if not any(entry.iterdir()):
+                                entry.rmdir()
+                    except OSError:
+                        pass  # Best-effort cleanup
+
                     migrated[source_id] = strict_id
                 except Exception:
                     continue
@@ -145,6 +123,96 @@ class RunStorage:
             return migrated
 
         return await loop.run_in_executor(None, _migrate)
+
+    def _atomic_write(self, target_path: Path, data: Dict[str, Any], create_only: bool = False) -> bool:
+        """
+        Internal sync method. Write JSON to target_path atomically.
+
+        If create_only is True, the write will not overwrite an existing file.
+        It prefers a hard-link commit and falls back to an exclusive-name
+        reservation on filesystems without hard-link support.
+
+        Returns True on success, False if create_only=True and the file exists.
+        """
+        fd, tmp_path = tempfile.mkstemp(dir=str(self.results_root), suffix=".tmp")
+        try:
+            with os.fdopen(fd, 'w') as f:
+                json.dump(data, f, indent=2)
+                
+            if create_only:
+                try:
+                    # Try hard link first (strictly atomic)
+                    os.link(tmp_path, target_path)
+                    return True
+                except FileExistsError:
+                    return False
+                except OSError:
+                    # Fallback for filesystems without hard links.
+                    # Use exclusive open ('x') to reserve the file name, then
+                    # replace it with the fully-written temp file.
+                    try:
+                        with open(target_path, 'x'):
+                            pass
+                    except FileExistsError:
+                        return False
+                    try:
+                        os.replace(tmp_path, target_path)
+                    except Exception:
+                        try:
+                            os.unlink(target_path)
+                        except OSError:
+                            pass
+                        raise
+                    return True
+            else:
+                # Normal save, overwrite is fine
+                os.replace(tmp_path, target_path)
+                return True
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+
+    async def create_run(self, model_name: str, run_data: Dict[str, Any]) -> str:
+        """
+        Reserve a unique run ID, stamp it on run_data, and persist atomically.
+
+        This prefers a hard-link commit that never exposes a placeholder file.
+        On filesystems without hard-link support it falls back to reserving the
+        final name with ``open('x')`` before replacing it with the temp file.
+
+        Args:
+            model_name: Model identifier (used to derive the run ID base).
+            run_data: Complete run data; ``runId`` is set before writing.
+
+        Returns:
+            The generated run ID.
+        """
+        await self.ensure_results_dir()
+        loop = asyncio.get_running_loop()
+
+        def _create_and_save() -> str:
+            sanitized = self._sanitize_base_name(model_name)
+            if not sanitized:
+                sanitized = self._sanitize_base_name(base64.urlsafe_b64encode(model_name.encode()).decode()[:10])
+
+            for _ in range(20):
+                run_id = self._next_run_id(sanitized)
+                run_file = self.results_root / f"{run_id}.json"
+                
+                target_data = run_data.copy()
+                target_data["runId"] = run_id
+                
+                if self._atomic_write(run_file, target_data, create_only=True):
+                    # Successfully written!
+                    run_data["runId"] = run_id
+                    return run_id
+                # Otherwise ID taken, continue loop
+                
+            raise RuntimeError("Failed to generate and save unique Run ID after multiple attempts")
+
+        return await loop.run_in_executor(None, _create_and_save)
 
     async def save_run(self, run_id: str, run_data: Dict[str, Any]) -> None:
         """
@@ -155,17 +223,16 @@ class RunStorage:
             run_data: Complete run data
         """
         await self.ensure_results_dir()
-        
+
         loop = asyncio.get_running_loop()
-        
+
         # Determine target file (Flat file only)
         # Legacy folders are no longer supported for new writes (migration required)
         run_file = self.results_root / f"{run_id}.json"
 
         def _write():
-            with open(run_file, 'w') as f:
-                json.dump(run_data, f, indent=2)
-                
+            self._atomic_write(run_file, run_data, create_only=False)
+
         await loop.run_in_executor(None, _write)
 
     async def list_runs(self) -> List[Dict[str, Any]]:
@@ -299,36 +366,6 @@ class RunStorage:
 
         return await loop.run_in_executor(None, _read)
 
-    async def update_run(self, run_id: str, updates: Dict[str, Any]) -> None:
-        """
-        Update existing run (e.g., adding insights)
-
-        Args:
-            run_id: Run identifier
-            updates: Partial data to merge
-        """
-        loop = asyncio.get_running_loop()
-        
-        def _update():
-            # Determine path (Flat file only)
-            flat_path = self.results_root / f"{run_id}.json"
-            
-            target_path = flat_path
-                
-            if target_path.exists():
-                with open(target_path, 'r') as f:
-                    run_record = json.load(f)
-            else:
-                run_record = {}
-
-            run_record.update(updates)
-
-            with open(target_path, 'w') as f:
-                json.dump(run_record, f, indent=2)
-
-        await loop.run_in_executor(None, _update)
-
-
 class ExperimentStorage:
     """Storage manager for defined experiments"""
 
@@ -347,8 +384,19 @@ class ExperimentStorage:
         exp_file = self.experiments_root / f"{exp_id}.json"
 
         def _write():
-            with open(exp_file, 'w') as f:
-                json.dump(exp_data, f, indent=2)
+            fd, tmp_path = tempfile.mkstemp(
+                dir=str(self.experiments_root), suffix=".tmp"
+            )
+            try:
+                with os.fdopen(fd, 'w') as f:
+                    json.dump(exp_data, f, indent=2)
+                os.replace(tmp_path, str(exp_file))
+            except BaseException:
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
 
         await loop.run_in_executor(None, _write)
 

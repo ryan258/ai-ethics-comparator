@@ -21,7 +21,7 @@
 - `RunStorage` path: `results/<run_id>.json` — strict pattern `^[A-Za-z0-9_-]+-\d{3}$`
 - `ExperimentStorage` path: `experiments/<exp_id>.json` — pattern `^[A-Za-z0-9_-]+$`
 - All storage methods are `async` — blocking I/O wrapped in `run_in_executor`
-- `generate_run_id()` uses POSIX atomic `open('x')` — no external lock needed
+- `create_run()` prefers POSIX atomic `os.link`; if hard links are unavailable it falls back to `open('x')` reservation + replace
 - `get_run()` validates path traversal before reading — callers MUST NOT build paths
 
 ## Seam 4: Query Processor ↔ Response Parsing

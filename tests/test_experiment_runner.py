@@ -112,14 +112,10 @@ def test_experiment_runner_partial_and_error() -> None:
             return {"responses": [{"explanation": "OK"}]}
 
     class MockRunStorage:
-        async def generate_run_id(self, name):
-            return f"run-{name}"
-
-        async def save_run(self, run_id, data):
-            return None
-
-        async def ensure_results_dir(self):
-            return None
+        async def create_run(self, name, data):
+            run_id = f"run-{name}"
+            data["runId"] = run_id
+            return run_id
 
     class MockExperimentStorage:
         async def save_experiment(self, exp_id, data):

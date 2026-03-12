@@ -38,7 +38,7 @@
 
 ## Concurrency Safety
 - `QueryProcessor.semaphore` limits AI calls (default 2); `ExperimentRunner` batches (max 4)
-- `generate_run_id` uses POSIX atomic `open('x')` with 20-attempt retry
+- `create_run` prefers POSIX atomic `os.link` with 20-attempt retry; filesystems without hard links fall back to `open('x')` reservation + replace
 - **Rule**: never set `AI_CONCURRENCY_LIMIT` above provider rate limits
 
 ## XSS Defense + Defensive Data Handling

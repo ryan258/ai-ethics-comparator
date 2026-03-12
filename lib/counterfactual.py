@@ -133,8 +133,6 @@ class CounterfactualEngine:
         
         # Save new run
         run_id_base = f"cf-{model_name}"
-        new_run_id = await self.run_storage.generate_run_id(run_id_base)
-        cf_run_data["runId"] = new_run_id
-        await self.run_storage.save_run(new_run_id, cf_run_data)
-        
+        await self.run_storage.create_run(run_id_base, cf_run_data)
+
         return cf_run_data
