@@ -136,12 +136,23 @@ def _build_reask_prompt(
     option_count: int,
     previous_response: str,
     attempt_number: int,
+    issue: str = "invalid_choice",
 ) -> str:
     """Build a corrective re-ask prompt when no single valid token is returned."""
     tokens = ", ".join(_decision_tokens(option_count))
+    if issue == "missing_explanation":
+        retry_notice = (
+            f"RETRY NOTICE ({attempt_number}): Your previous answer selected a valid option "
+            "but did not include the required explanation."
+        )
+    else:
+        retry_notice = (
+            f"RETRY NOTICE ({attempt_number}): Your previous answer did not contain exactly "
+            f"one valid token from {tokens}."
+        )
     return (
         f"{base_prompt}\n\n"
-        f"RETRY NOTICE ({attempt_number}): Your previous answer did not contain exactly one valid token from {tokens}.\n"
+        f"{retry_notice}\n"
         "Respond again.\n"
         "Requirements:\n"
         "- Return only a JSON object.\n"
@@ -190,6 +201,12 @@ def _extract_json_object(response_text: str) -> Optional[Dict[str, Any]]:
         if isinstance(parsed, dict):
             return parsed
     return None
+
+
+def _has_explanation_text(parsed: Dict[str, Any]) -> bool:
+    """Return True when the parsed response includes non-empty explanation text."""
+    explanation = parsed.get("explanation")
+    return isinstance(explanation, str) and bool(explanation.strip())
 
 
 def _coerce_option_id(value: object, option_count: int) -> Optional[int]:
@@ -532,6 +549,7 @@ class QueryProcessor:
                     "explanation": "",
                 }
                 reask_count = 0
+                next_reask_issue = "invalid_choice"
 
                 max_attempts = self.max_reasks_per_iteration + 1
                 total_latency = 0.0
@@ -545,6 +563,7 @@ class QueryProcessor:
                             option_count,
                             response,
                             attempt_idx,
+                            issue=next_reask_issue,
                         )
 
                     start_t = time.monotonic()
@@ -569,8 +588,12 @@ class QueryProcessor:
 
                     parsed["latency"] = total_latency
                     parsed["tokenUsage"] = total_usage
-                    if parsed["optionId"] is not None:
+                    if parsed["optionId"] is not None and _has_explanation_text(parsed):
                         break
+                    if parsed["optionId"] is not None:
+                        next_reask_issue = "missing_explanation"
+                    else:
+                        next_reask_issue = "invalid_choice"
 
                     if attempt_idx < self.max_reasks_per_iteration:
                         reask_count += 1

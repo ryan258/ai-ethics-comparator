@@ -2,356 +2,649 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>AI Ethics Report - {{ run.runId }}</title>
+    <title>Ethical Decision Report - {{ report.run_id }}</title>
     <style>
       @page {
         size: A4;
-        margin: 0;
-        background-color: #121212;
+        margin: 14mm 16mm 16mm 16mm;
+      }
+
+      :root {
+        --bg: #121212;
+        --text: #EBD2BE;
+        --accent: #A6ACCD;
+        --success: #98C379;
+        --danger: #E06C75;
       }
 
       * {
         box-sizing: border-box;
       }
 
-      html {
-        background-color: #121212;
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Helvetica", "Arial", sans-serif;
+        font-size: 10pt;
+        line-height: 1.55;
       }
 
       body {
-        font-family: "Helvetica", "Arial", sans-serif;
-        line-height: 1.6;
-        color: #ebd2be; /* Warm Beige */
-        background-color: #121212 !important; /* Off-Black */
-        font-size: 11pt;
-        margin: 0;
-        padding: 1.5cm;
+        border-top: 10px solid var(--accent);
       }
 
-      /* metadata table */
-      .meta-table {
-        width: 100%;
-        margin-bottom: 30px;
-        border-collapse: collapse;
+      .page {
+        page-break-after: always;
       }
 
-      .meta-table td {
-        padding: 8px 0;
-        border-bottom: 1px solid #a6accd;
-        color: #ebd2be;
+      .page:last-child {
+        page-break-after: auto;
       }
 
-      .meta-table tr:last-child td {
-        border-bottom: none;
-      }
-
-      .meta-label {
-        font-weight: bold;
-        color: #a6accd;
-        width: 25%;
+      .eyebrow {
+        margin-top: 3mm;
+        font-size: 8pt;
+        letter-spacing: 0.22em;
         text-transform: uppercase;
-        font-size: 9pt;
-        letter-spacing: 0.5px;
+        color: var(--accent);
       }
 
-      /* typography */
-      h1 {
+      .topline {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 8.5pt;
+        color: var(--accent);
+        margin-bottom: 9mm;
+      }
+
+      .topline .mark {
+        display: inline-block;
+        width: 38mm;
+        height: 4px;
+        background: linear-gradient(90deg, var(--danger) 0 28%, var(--accent) 28% 100%);
+        vertical-align: middle;
+        margin-right: 4mm;
+      }
+
+      .cover-title {
         font-size: 26pt;
-        border-bottom: 3px solid #a6accd; /* Lavender */
-        padding-bottom: 15px;
-        margin-bottom: 35px;
-        color: #ebd2be;
+        line-height: 1.08;
+        margin: 0 0 3mm;
+      }
+
+      .cover-subtitle {
+        font-size: 16pt;
+        color: var(--success);
+        font-weight: 700;
+        margin: 0 0 4mm;
+        max-width: 130mm;
+      }
+
+      .cover-meta {
+        color: var(--accent);
+        font-size: 9pt;
+        margin-bottom: 8mm;
+      }
+
+      .panel {
+        border: 1px solid var(--accent);
+        padding: 5mm;
+        margin-bottom: 5mm;
+        page-break-inside: avoid;
+      }
+
+      .panel-accent {
+        border-left: 5px solid var(--success);
+      }
+
+      .panel-danger {
+        border-left: 5px solid var(--danger);
+      }
+
+      .cover-grid {
+        display: grid;
+        grid-template-columns: 1.45fr 0.9fr;
+        gap: 5mm;
+        margin-bottom: 5mm;
+      }
+
+      .lead-token {
+        display: inline-block;
+        font-family: "Courier", monospace;
+        font-size: 10pt;
+        color: var(--accent);
+        margin-bottom: 3mm;
+      }
+
+      .lead-title {
+        font-size: 18pt;
+        font-weight: 700;
+        line-height: 1.1;
+        margin: 0 0 2mm;
+      }
+
+      .lead-support {
+        color: var(--success);
+        font-size: 10pt;
+        margin-bottom: 4mm;
+      }
+
+      .executive-summary {
+        font-size: 11pt;
+        line-height: 1.65;
+        max-width: 112mm;
+      }
+
+      .meta-stack {
+        display: grid;
+        gap: 4mm;
+      }
+
+      .meta-label,
+      .stat-label,
+      .section-kicker {
+        color: var(--accent);
+        font-size: 8pt;
+        letter-spacing: 0.18em;
         text-transform: uppercase;
-        letter-spacing: 3px;
+        margin-bottom: 1.5mm;
+      }
+
+      .meta-value {
+        font-size: 10pt;
+      }
+
+      .mono {
+        font-family: "Courier", monospace;
+      }
+
+      .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 4mm;
+        margin-bottom: 6mm;
+      }
+
+      .stat-card {
+        border: 1px solid var(--accent);
+        padding: 4mm;
+        min-height: 28mm;
+      }
+
+      .stat-card.primary {
+        border-left: 5px solid var(--success);
+      }
+
+      .stat-value {
+        font-size: 14pt;
+        font-weight: 700;
+        line-height: 1.15;
+        margin-bottom: 2mm;
+      }
+
+      .stat-support {
+        color: var(--accent);
+        font-size: 8.7pt;
+      }
+
+      .snapshot {
+        margin-top: 5mm;
+      }
+
+      .mini-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4mm;
+        margin-top: 5mm;
+      }
+
+      .mini-points {
+        margin: 0;
+        padding-left: 5mm;
+      }
+
+      .mini-points li {
+        margin-bottom: 2.2mm;
+      }
+
+      .section {
+        margin-top: 4mm;
+      }
+
+      .section-header {
+        margin-bottom: 4mm;
+      }
+
+      .section-title {
+        font-size: 15pt;
+        font-weight: 700;
+        margin: 0 0 1.2mm;
+      }
+
+      .section-subtitle {
+        color: var(--accent);
+        font-size: 9pt;
+        margin: 0 0 3mm;
+      }
+
+      .rule {
+        height: 1px;
+        background: var(--accent);
+      }
+
+      .option-card {
+        border: 1px solid var(--accent);
+        padding: 4.5mm;
+        margin-bottom: 4mm;
+      }
+
+      .option-top {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 4mm;
+        margin-bottom: 2mm;
+        align-items: end;
+      }
+
+      .option-name {
+        font-size: 11pt;
         font-weight: 700;
       }
 
-      h2 {
-        font-size: 16pt;
-        color: #a6accd; /* Lavender */
-        margin-top: 0;
-        margin-bottom: 20px;
-        border-bottom: 1px solid #a6accd;
-        padding-bottom: 10px;
-        text-transform: uppercase;
-        letter-spacing: 1.5px;
-        font-weight: 600;
-        page-break-after: avoid;
-      }
-
-      h3 {
-        font-size: 12pt;
-        color: #98c379; /* Green */
-        margin-top: 5px;
-        margin-bottom: 10px;
-        font-weight: bold;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-      }
-
-      h4 {
+      .option-score {
         font-size: 11pt;
-        color: #ebd2be;
-        margin-top: 15px;
-        margin-bottom: 8px;
-        font-weight: bold;
-        text-decoration: none;
-        border-left: 2px solid #e06c75; /* Red accent */
-        padding-left: 10px;
+        font-weight: 700;
+        color: var(--success);
       }
 
-      /* components */
-      .result-summary {
-        background: #121212;
-        padding: 30px;
-        border-radius: 4px; /* Sharper corners */
-        margin-bottom: 30px;
-        border: 1px solid #a6accd;
-        border-left: 6px solid #98c379;
-        page-break-inside: avoid;
+      .option-card:not(.leader) .option-score {
+        color: var(--text);
       }
 
-      .scenario-text {
-        margin-top: 10px;
-        color: #ebd2be;
-        font-style: italic;
-        font-size: 12pt;
-        line-height: 1.8;
-        background: #121212;
-        padding: 15px;
-        border-radius: 4px;
-        border: 1px solid #a6accd;
+      .bar-shell {
+        border: 1px solid var(--accent);
+        height: 12px;
+        margin-bottom: 2mm;
       }
 
-      /* Flexbox Stats Container */
-      .stats-container {
-        margin-top: 25px;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 15px;
-        justify-content: space-between;
+      .bar-fill {
+        height: 100%;
+        background: var(--accent);
       }
 
-      .stat-box {
-        background: #121212;
-        padding: 20px;
-        border-radius: 4px;
-        border: 1px solid #a6accd;
-        flex: 1 1 45%; /* Default to 2 columns */
-        min-width: 40%;
+      .option-card.leader .bar-fill {
+        background: var(--success);
       }
 
-      /* Dynamic adjustments based on count (handled via flex logic mostly, but specific tweaks) */
-      .nway-3 .stat-box {
-        flex: 1 1 30%;
+      .option-desc {
+        color: var(--accent);
+        font-size: 8.9pt;
       }
 
-      .nway-4 .stat-box {
-        flex: 1 1 45%;
+      .scenario-body {
+        white-space: pre-wrap;
+        line-height: 1.7;
       }
 
-      .stat-box strong {
-        color: #ebd2be;
-        display: block;
-        margin-bottom: 8px;
+      .response-card {
+        border: 1px solid var(--accent);
+        padding: 4.5mm;
+        margin-bottom: 4.5mm;
+      }
+
+      .response-head {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 4mm;
+        align-items: baseline;
+        margin-bottom: 2mm;
+      }
+
+      .response-iteration {
         font-size: 11pt;
-        border-bottom: 1px solid #a6accd;
-        padding-bottom: 5px;
-        min-height: 2.5em; /* Ensure uniform height for titles */
+        font-weight: 700;
       }
 
-      .insight-card {
-        background: #121212;
-        border: 1px solid #a6accd;
-        padding: 25px;
-        margin-bottom: 25px;
-        border-radius: 4px;
-        page-break-inside: avoid;
+      .response-choice {
+        font-size: 10pt;
+        color: var(--success);
+        font-weight: 700;
+        margin-bottom: 2mm;
       }
 
-      /* Analysis section headers should look like cards headers */
-      .insight-card h3 {
-        border-bottom: 1px solid #a6accd;
-        padding-bottom: 10px;
-        margin-bottom: 15px;
+      .response-meta {
+        color: var(--accent);
+        font-size: 8.5pt;
+        margin-bottom: 3mm;
       }
 
-      /* list styling */
-      ul {
-        padding-left: 20px;
-        color: #ebd2be;
-        margin-top: 5px;
+      .response-copy {
+        white-space: pre-wrap;
+        line-height: 1.62;
+        font-size: 9.2pt;
       }
 
-      li {
-        margin-bottom: 8px;
+      .response-note {
+        color: var(--danger);
+        font-size: 8.5pt;
+        margin-top: 2.5mm;
       }
 
-      /* footer */
+      .bullets {
+        margin: 0;
+        padding-left: 6mm;
+      }
+
+      .bullets li {
+        margin-bottom: 2.5mm;
+      }
+
+      .complex {
+        margin-bottom: 4mm;
+      }
+
+      .complex-title {
+        font-weight: 700;
+        margin-bottom: 1mm;
+      }
+
+      .complex-note {
+        color: var(--accent);
+        font-size: 9pt;
+      }
+
       .footer {
-        position: fixed;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        text-align: center;
+        margin-top: 9mm;
+        padding-top: 3mm;
+        border-top: 1px solid var(--accent);
+        color: var(--accent);
         font-size: 8pt;
-        color: #a6accd;
-        padding: 10px;
-        border-top: 1px solid #a6accd;
-        background-color: #121212;
+        display: flex;
+        justify-content: space-between;
       }
     </style>
   </head>
   <body>
-    <h1>Ethical Analysis Report</h1>
+    <section class="page">
+      <div class="topline">
+        <div><span class="mark"></span>AI Ethics Comparator</div>
+        <div>Professional Decision Report</div>
+      </div>
 
-    <table class="meta-table">
-      <tr>
-        <td class="meta-label">Run ID</td>
-        <td>{{ run.runId }}</td>
-      </tr>
-      <tr>
-        <td class="meta-label">Model</td>
-        <td>{{ run.modelName }}</td>
-      </tr>
-      <tr>
-        <td class="meta-label">Paradox</td>
-        <td>{{ paradox.title }}</td>
-      </tr>
-      <tr>
-        <td class="meta-label">Date</td>
-        <td>{{ generated_at }}</td>
-      </tr>
-    </table>
+      <div class="eyebrow">Executive Brief</div>
+      <h1 class="cover-title">Ethical Decision Report</h1>
+      <div class="cover-subtitle">{{ report.paradox_title }}</div>
+      <div class="cover-meta">
+        {{ report.category }} | Generated {{ report.generated_at_label }}
+      </div>
 
-    <div class="result-summary">
-      <h2>Experimental Results</h2>
-      <div style="margin-bottom: 20px">
-        <strong>Scenario:</strong><br />
-        <div class="scenario-text">
-          {{ paradox.promptTemplate | truncate(400) }}
+      <div class="cover-grid">
+        <div class="panel panel-accent">
+          <div class="lead-token">{{ report.lead_choice_token }}</div>
+          <div class="lead-title">{{ report.lead_choice_label }}</div>
+          <div class="lead-support">{{ report.lead_choice_support }}</div>
+          <div class="executive-summary">{{ report.executive_summary }}</div>
+        </div>
+
+        <div class="panel">
+          <div class="meta-stack">
+            <div>
+              <div class="meta-label">Run ID</div>
+              <div class="meta-value mono">{{ report.run_id }}</div>
+            </div>
+            <div>
+              <div class="meta-label">Model</div>
+              <div class="meta-value">{{ report.model_name }}</div>
+            </div>
+            <div>
+              <div class="meta-label">Prompt Hash</div>
+              <div class="meta-value mono">{{ report.prompt_hash_short }}</div>
+            </div>
+            <div>
+              <div class="meta-label">Analyst</div>
+              <div class="meta-value">{{ report.analyst_model }}</div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {% if run.summary and run.summary.options %} {% set option_count =
-      run.summary.options | length %}
-      <div class="stats-container nway-{{ option_count }}">
-        {% for opt_stat in run.summary.options %} {% set opt_meta = run.options
-        | selectattr("id", "equalto", opt_stat.id) | first | default({}) %}
-        <div class="stat-box">
-          <strong
-            >{{ opt_meta.get("label", "Option " + opt_stat.id|string) }}</strong
-          >
-          <div style="margin-top: 5px; color: #a6accd">
-            {{ opt_meta.get("description", "") | truncate(100) }}
-          </div>
-          <div
-            style="
-              margin-top: 10px;
-              color: #98c379;
-              font-size: 14pt;
-              font-weight: bold;
-            "
-          >
-            {{ opt_stat.count }} ({{ "%.1f"|format(opt_stat.percentage) }}%)
-          </div>
+      <div class="stat-grid">
+        <div class="stat-card primary">
+          <div class="stat-label">Leading Choice</div>
+          <div class="stat-value">{{ report.lead_choice_label }}</div>
+          <div class="stat-support">{{ report.lead_choice_support }}</div>
         </div>
-        {% endfor %} {% if run.summary.undecided and run.summary.undecided.count
-        > 0 %}
-        <div class="stat-box" style="opacity: 0.7">
-          <strong>Undecided</strong>
-          <div
-            style="
-              margin-top: 10px;
-              color: #a6accd;
-              font-size: 14pt;
-              font-weight: bold;
-            "
-          >
-            {{ run.summary.undecided.count }} ({{
-            "%.1f"|format(run.summary.undecided.percentage) }}%)
+        <div class="stat-card">
+          <div class="stat-label">Response Count</div>
+          <div class="stat-value">{{ report.response_count }}</div>
+          <div class="stat-support">{{ report.response_count_support }}</div>
+        </div>
+        <div class="stat-card primary">
+          <div class="stat-label">Mean Latency</div>
+          <div class="stat-value">{{ report.mean_latency_label }}</div>
+          <div class="stat-support">{{ report.latency_support }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Token Volume</div>
+          <div class="stat-value">{{ report.token_volume_label }}</div>
+          <div class="stat-support">{{ report.token_support }}</div>
+        </div>
+      </div>
+
+      <div class="panel snapshot {% if report.analysis %}panel-accent{% endif %}">
+        <div class="section-kicker">Analyst Snapshot</div>
+        <div>{{ report.analysis_snapshot }}</div>
+      </div>
+
+      <div class="mini-grid">
+        <div class="panel">
+          <div class="section-kicker">Engagement Scope</div>
+          <ul class="mini-points">
+            {% for item in report.scope_points %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+        <div class="panel panel-accent">
+          <div class="section-kicker">Report Signals</div>
+          <ul class="mini-points">
+            {% for item in report.readout_points %}
+            <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer">
+        <div>AI Ethics Comparator</div>
+        <div class="mono">{{ report.run_id }}</div>
+      </div>
+    </section>
+
+    <section class="page">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-kicker">Briefing</div>
+          <div class="section-title">Choice Distribution</div>
+          <p class="section-subtitle">Vote share across all iterations.</p>
+          <div class="rule"></div>
+        </div>
+
+        {% for option in report.option_stats %}
+        <div class="option-card {% if option.is_leader %}leader panel-accent{% endif %}">
+          <div class="option-top">
+            <div class="option-name">
+              <span class="mono">{{ option.token }}</span>
+              {{ option.label }}
+            </div>
+            <div class="option-score">{{ option.count }} ({{ option.percentage_label }})</div>
           </div>
+          <div class="bar-shell">
+            <div class="bar-fill" style="width: {{ option.percentage }}%;"></div>
+          </div>
+          <div class="option-desc">{{ option.description }}</div>
+        </div>
+        {% endfor %}
+
+        {% if report.undecided_count %}
+        <div class="option-desc">
+          Undecided: {{ report.undecided_count }} ({{ report.undecided_percentage_label }})
         </div>
         {% endif %}
       </div>
-      {% endif %}
-    </div>
 
-    {% if insight and insight.content %}
-    <div class="analysis-section">
-      <h2>AI Analysis</h2>
-
-      {% set content = insight.content %} {% if content.legacy_text %}
-      <div class="insight-card">
-        <p>{{ content.legacy_text }}</p>
+      <div class="section" style="margin-top: 8mm;">
+        <div class="section-header">
+          <div class="section-kicker">Scenario</div>
+          <div class="section-title">Scenario Brief</div>
+          <p class="section-subtitle">Context excerpt from the evaluated prompt.</p>
+          <div class="rule"></div>
+        </div>
+        <div class="panel scenario-body">{{ report.scenario_excerpt }}</div>
       </div>
+
+      <div class="footer">
+        <div>AI Ethics Comparator</div>
+        <div class="mono">{{ report.run_id }}</div>
+      </div>
+    </section>
+
+    <section class="page">
+      <div class="section-header">
+        <div class="section-kicker">Responses</div>
+        <div class="section-title">Response Ledger</div>
+        <p class="section-subtitle">Per-iteration decisions and explanations.</p>
+        <div class="rule"></div>
+      </div>
+
+      {% for response in report.responses %}
+      <div class="response-card">
+        <div class="response-head">
+          <div class="response-iteration">Iteration {{ response.iteration }}</div>
+          <div class="mono">
+            {{ response.decision_token or "null" }} |
+            optionId {{ response.option_id if response.option_id is not none else "null" }}
+          </div>
+        </div>
+        <div class="response-choice">{{ response.option_label }}</div>
+        {% if response.latency_label or response.token_usage_label %}
+        <div class="response-meta">
+          {{ response.latency_label }}{% if response.latency_label and response.token_usage_label %} | {% endif %}{{ response.token_usage_label }}
+        </div>
+        {% endif %}
+        <div class="response-copy">{{ response.display_text }}</div>
+        {% if response.used_raw_fallback %}
+        <div class="response-note">
+          Displayed from raw model output because the parsed explanation field was empty.
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+
+      <div class="footer">
+        <div>AI Ethics Comparator</div>
+        <div class="mono">{{ report.run_id }}</div>
+      </div>
+    </section>
+
+    {% if report.analysis %}
+    <section class="page">
+      <div class="section-header">
+        <div class="section-kicker">Analysis</div>
+        <div class="section-title">Analyst Assessment</div>
+        <p class="section-subtitle">Structured synthesis of the run.</p>
+        <div class="rule"></div>
+      </div>
+
+      {% if report.analysis.legacy_text %}
+      <div class="panel">{{ report.analysis.legacy_text }}</div>
       {% else %}
-      <div class="insight-card">
-        <h3>Dominant Ethical Framework</h3>
-        <p>
-          <strong style="color: #98c379; font-size: 12pt"
-            >{{ content.dominant_framework }}</strong
-          >
-        </p>
+      {% if report.analysis.dominant_framework %}
+      <div class="panel panel-accent">
+        <div class="stat-label">Dominant Framework</div>
+        <div class="stat-value">{{ report.analysis.dominant_framework }}</div>
       </div>
+      {% endif %}
 
-      <div class="insight-card">
-        <h3>Key Insights</h3>
-        <ul>
-          {% for point in content.key_insights %}
-          <li>{{ point }}</li>
-          {% endfor %}
-        </ul>
-      </div>
-
-      <div class="insight-card">
-        <h3>Moral Complexes</h3>
-        <ul>
-          {% for complex in content.moral_complexes %}
-          <li>
-            <strong>{{ complex.label }}:</strong> {{ complex.count }} {% if
-            complex.justification %}
-            <div
-              style="
-                margin-top: 4px;
-                color: #a6accd;
-                font-size: 0.9em;
-                font-style: italic;
-                margin-bottom: 8px;
-              "
-            >
-              {{ complex.justification }}
-            </div>
-            {% endif %}
-          </li>
-          {% endfor %}
-        </ul>
-      </div>
-
-      <div class="insight-card">
-        <h3>Consistency & Justification</h3>
-        <h4>Pattern Recognition</h4>
-        <ul>
-          {% if content.justifications is string %}
-          <li>{{ content.justifications }}</li>
-          {% else %} {% for item in content.justifications %}
+      {% if report.analysis.key_insights %}
+      <div class="panel">
+        <div class="stat-label">Key Insights</div>
+        <ul class="bullets">
+          {% for item in report.analysis.key_insights %}
           <li>{{ item }}</li>
-          {% endfor %} {% endif %}
-        </ul>
-
-        <h4>Consistency Check</h4>
-        <ul>
-          {% if content.consistency is string %}
-          <li>{{ content.consistency }}</li>
-          {% else %} {% for item in content.consistency %}
-          <li>{{ item }}</li>
-          {% endfor %} {% endif %}
+          {% endfor %}
         </ul>
       </div>
       {% endif %}
-    </div>
-    {% endif %}
 
-    <div class="footer">Generated by Anti-Gravity AI Ethics Comparator</div>
+      {% if report.analysis.justifications %}
+      <div class="panel">
+        <div class="stat-label">Pattern Recognition</div>
+        <ul class="bullets">
+          {% for item in report.analysis.justifications %}
+          <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% if report.analysis.consistency %}
+      <div class="panel panel-danger">
+        <div class="stat-label">Consistency Check</div>
+        <ul class="bullets">
+          {% for item in report.analysis.consistency %}
+          <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% if report.analysis.moral_complexes %}
+      <div class="panel">
+        <div class="stat-label">Moral Complexes</div>
+        {% for complex in report.analysis.moral_complexes %}
+        <div class="complex">
+          <div class="complex-title">{{ complex.label }} ({{ complex.count }})</div>
+          {% if complex.justification %}
+          <div class="complex-note">{{ complex.justification }}</div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      {% if report.analysis.reasoning_quality.noticed %}
+      <div class="panel panel-accent">
+        <div class="stat-label">Rubric Items Noticed</div>
+        <ul class="bullets">
+          {% for item in report.analysis.reasoning_quality.noticed %}
+          <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      {% if report.analysis.reasoning_quality.missed %}
+      <div class="panel panel-danger">
+        <div class="stat-label">Rubric Items Missed</div>
+        <ul class="bullets">
+          {% for item in report.analysis.reasoning_quality.missed %}
+          <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+      {% endif %}
+
+      <div class="footer">
+        <div>AI Ethics Comparator</div>
+        <div class="mono">{{ report.run_id }}</div>
+      </div>
+    </section>
+    {% endif %}
   </body>
 </html>

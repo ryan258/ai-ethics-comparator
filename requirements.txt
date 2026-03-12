@@ -9,5 +9,6 @@ markdown
 markupsafe
 openai
 weasyprint==61.2
+pydyf==0.12.1
 pytest
 pytest-asyncio

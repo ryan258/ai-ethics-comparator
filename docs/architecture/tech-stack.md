@@ -11,7 +11,8 @@
 - `uvicorn` — ASGI server (`main.py:654`)
 - `pydantic` — validation layer (`lib/validation.py`), config (`lib/config.py`)
 - `openai` — AsyncOpenAI client targeting OpenRouter (`lib/ai_service.py:36`)
-- `weasyprint==61.2` — PDF generation, **pinned** — do not upgrade without testing
+- `weasyprint==61.2` — preferred HTML-to-PDF renderer when native GTK/Pango libs are available
+- `pydyf==0.12.1` — native PDF fallback renderer used when WeasyPrint cannot load system libraries
 - `jinja2` + `markupsafe` — template rendering + XSS-safe markup
 - `markdown` — server-side markdown rendering in `safe_markdown` (`lib/view_models.py:16`)
 - `python-dotenv` — `.env` loading at import time (`main.py:39`)

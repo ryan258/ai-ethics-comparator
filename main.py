@@ -664,7 +664,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             return StreamingResponse(
                 io.BytesIO(pdf_bytes),
                 media_type="application/pdf",
-                headers={"Content-Disposition": f"attachment; filename=report_{run_id}.pdf"},
+                headers={"Content-Disposition": f"inline; filename=report_{run_id}.pdf"},
             )
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail=f"Run '{run_id}' not found")
