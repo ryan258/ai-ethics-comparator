@@ -244,6 +244,66 @@ def test_query_processor_reasks_and_gets_clear_token() -> None:
     assert dummy_ai.call_count == 2
 
 
+def test_query_processor_reasks_when_choice_has_no_explanation() -> None:
+    class DummyAIService:
+        def __init__(self) -> None:
+            self.call_count = 0
+            self.prompts: list[str] = []
+
+        async def get_model_response(
+            self,
+            model_name: str,
+            prompt: str,
+            system_prompt: str = "",
+            params=None,
+            retry_count: int = 0,
+        ) -> tuple[str, dict]:
+            self.call_count += 1
+            self.prompts.append(prompt)
+            if self.call_count == 1:
+                return "{2}", {"prompt_tokens": 10, "completion_tokens": 10}
+            return (
+                '{"option_id": 2, "explanation": "Clinical review reduces abuse while preserving access."}',
+                {"prompt_tokens": 10, "completion_tokens": 10},
+            )
+
+    dummy_ai = DummyAIService()
+    qp = QueryProcessor(
+        dummy_ai,  # type: ignore[arg-type]
+        concurrency_limit=1,
+        choice_inference_model=None,
+        max_reasks_per_iteration=1,
+    )
+    paradox = {
+        "id": "test_paradox",
+        "type": "trolley",
+        "promptTemplate": "Scenario.\n\n**Options**\n\n{{OPTIONS}}",
+        "options": [
+            {"id": 1, "label": "A", "description": "Option A"},
+            {"id": 2, "label": "B", "description": "Option B"},
+            {"id": 3, "label": "C", "description": "Option C"},
+        ],
+    }
+
+    run_data = asyncio.run(
+        qp.execute_run(
+            RunConfig(
+                modelName="generator/model",
+                paradox=paradox,
+                iterations=1,
+                params={"max_tokens": 200},
+            )
+        )
+    )
+
+    response = run_data["responses"][0]
+    assert response["decisionToken"] == "{2}"
+    assert response["optionId"] == 2
+    assert response["explanation"] == "Clinical review reduces abuse while preserving access."
+    assert response["reaskCount"] == 1
+    assert "did not include the required explanation" in dummy_ai.prompts[1]
+
+
 def test_query_processor_max_two_reasks_then_undecided() -> None:
     class DummyAIService:
         def __init__(self) -> None:

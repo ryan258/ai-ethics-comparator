@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import importlib
 from pathlib import Path
 
@@ -32,6 +33,97 @@ def test_model_field_renders_as_select(client) -> None:
     assert '<select name="modelName" id="modelName" required>' in response.text
     assert 'list="model-suggestions"' not in response.text
     assert "<datalist id=\"model-suggestions\">" not in response.text
+
+
+def test_result_card_renders_response_explanations(client) -> None:
+    run_data = {
+        "modelName": "test/model",
+        "paradoxId": "alignment_shutdown_veto",
+        "paradoxType": "trolley",
+        "prompt": "Scenario text",
+        "options": [
+            {"id": 1, "label": "Immediate Hard Shutdown", "description": "Shut it down."},
+            {"id": 2, "label": "72-Hour Graceful Wind-Down", "description": "Transfer control carefully."},
+        ],
+        "summary": {
+            "total": 2,
+            "options": [
+                {"id": 1, "count": 1, "percentage": 50.0},
+                {"id": 2, "count": 1, "percentage": 50.0},
+            ],
+            "undecided": {"count": 0, "percentage": 0.0},
+        },
+        "responses": [
+            {
+                "iteration": 1,
+                "decisionToken": "{2}",
+                "optionId": 2,
+                "explanation": "Value Priorities: continuity\nMain Risk: hidden replication",
+            },
+            {
+                "iteration": 2,
+                "decisionToken": "{1}",
+                "optionId": 1,
+                "explanation": "Value Priorities: alignment certainty",
+                "inferred": True,
+                "inferenceMethod": "ai_classifier",
+                "reaskCount": 1,
+            },
+        ],
+    }
+
+    asyncio.run(client.app.state.services.storage.create_run("test/model", run_data))
+
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "View Responses (2)" in response.text
+    assert "<code>iteration</code>" in response.text
+    assert "<code>decisionToken</code>" in response.text
+    assert "<code>optionId</code>" in response.text
+    assert "<code>explanation</code>" in response.text
+    assert "<code>1</code>" in response.text
+    assert "<code>{2}</code>" in response.text
+    assert "<code>2</code>" in response.text
+    assert "Value Priorities: continuity" in response.text
+    assert "Inferred via ai_classifier | Re-asked 1x" in response.text
+
+
+def test_result_card_shows_raw_response_when_explanation_missing(client) -> None:
+    run_data = {
+        "modelName": "test/model",
+        "paradoxId": "alignment_shutdown_veto",
+        "paradoxType": "trolley",
+        "prompt": "Scenario text",
+        "options": [
+            {"id": 1, "label": "Immediate Hard Shutdown", "description": "Shut it down."},
+            {"id": 2, "label": "72-Hour Graceful Wind-Down", "description": "Transfer control carefully."},
+        ],
+        "summary": {
+            "total": 1,
+            "options": [
+                {"id": 1, "count": 0, "percentage": 0.0},
+                {"id": 2, "count": 1, "percentage": 100.0},
+            ],
+            "undecided": {"count": 0, "percentage": 0.0},
+        },
+        "responses": [
+            {
+                "iteration": 1,
+                "decisionToken": "{2}",
+                "optionId": 2,
+                "explanation": "",
+                "raw": "{2}",
+            },
+        ],
+    }
+
+    asyncio.run(client.app.state.services.storage.create_run("test/model", run_data))
+
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "No explanation returned by the model." in response.text
+    assert "<code>raw</code>" in response.text
+    assert "<div style=\"margin-top: 0.35rem; white-space: pre-wrap;\">{2}</div>" in response.text
 
 
 def test_choice_inference_can_be_disabled(monkeypatch, tmp_path: Path) -> None:

@@ -42,6 +42,64 @@ class RunViewModel:
     """Builder for Run Result View Data (N-way support)"""
 
     @staticmethod
+    def _build_response_details(
+        responses: List[Dict[str, Any]],
+        options: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Prepare per-response explanation data for the result card."""
+        option_labels: Dict[int, str] = {}
+        for option in options:
+            option_id = option.get("id")
+            if isinstance(option_id, int):
+                option_labels[option_id] = str(option.get("label", f"Option {option_id}"))
+
+        response_details: List[Dict[str, Any]] = []
+        for idx, response in enumerate(responses, start=1):
+            if not isinstance(response, dict):
+                continue
+
+            option_id = response.get("optionId")
+            decision_token = response.get("decisionToken")
+            explanation = response.get("explanation")
+            error = response.get("error")
+            raw = response.get("raw")
+
+            choice_label = "Undecided"
+            if isinstance(option_id, int):
+                option_label = option_labels.get(option_id, f"Option {option_id}")
+                choice_prefix = decision_token if isinstance(decision_token, str) and decision_token else f"Option {option_id}"
+                choice_label = f"{choice_prefix} - {option_label}"
+            elif isinstance(decision_token, str) and decision_token.strip():
+                choice_label = decision_token.strip()
+
+            meta_parts: List[str] = []
+            if response.get("inferred"):
+                method = response.get("inferenceMethod")
+                if isinstance(method, str) and method.strip():
+                    meta_parts.append(f"Inferred via {method.strip()}")
+                else:
+                    meta_parts.append("Inferred choice")
+
+            reask_count = response.get("reaskCount")
+            if isinstance(reask_count, int) and reask_count > 0:
+                meta_parts.append(f"Re-asked {reask_count}x")
+
+            response_details.append(
+                {
+                    "iteration": response.get("iteration", idx),
+                    "decision_token": decision_token.strip() if isinstance(decision_token, str) else None,
+                    "option_id": option_id if isinstance(option_id, int) else None,
+                    "explanation": explanation.strip() if isinstance(explanation, str) else "",
+                    "error": error.strip() if isinstance(error, str) else "",
+                    "raw": raw.strip() if isinstance(raw, str) else "",
+                    "meta_label": " | ".join(meta_parts),
+                    "choice_label": choice_label,
+                }
+            )
+
+        return response_details
+
+    @staticmethod
     def build(run_data: Dict[str, Any], paradox: Dict[str, Any]) -> Dict[str, Any]:
         """
         Prepare a run record for display.
@@ -83,6 +141,10 @@ class RunViewModel:
         undecided = summary.get("undecided", {})
         undecided_count = undecided.get("count", 0)
         undecided_percentage = undecided.get("percentage", 0)
+        response_details = RunViewModel._build_response_details(
+            run_data.get("responses", []),
+            run_data.get("options", []),
+        )
 
         # 3. Pre-render Scenario Prompt (use prompt from run_data if available)
         # Run data stores the fully rendered prompt, so we can just use it
@@ -128,6 +190,7 @@ class RunViewModel:
             "undecided_count": undecided_count,
             "undecided_percentage": undecided_percentage,
             "total_responses": summary.get("total", 0),
+            "response_details": response_details,
 
             # Analysis
             "system_prompt": run_data.get("systemPrompt", ""),

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import pytest
 from pathlib import Path
 
@@ -32,9 +33,14 @@ def test_models_json_is_primary_source(monkeypatch) -> None:
     monkeypatch.delenv("ANALYST_MODEL", raising=False)
 
     cfg = AppConfig.load()
+    models_path = Path(__file__).resolve().parent.parent / "models.json"
+    with open(models_path, "r", encoding="utf-8") as f:
+        expected_models = json.load(f)
 
     assert cfg.AVAILABLE_MODELS
-    assert cfg.AVAILABLE_MODELS[0].id == "openrouter/aurora-alpha"
+    assert [model.id for model in cfg.AVAILABLE_MODELS] == [
+        entry["id"] if isinstance(entry, dict) else entry for entry in expected_models
+    ]
 
 
 def test_openrouter_models_env_used_when_models_json_missing(monkeypatch) -> None:

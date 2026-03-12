@@ -1,15 +1,15 @@
 [
   {
-    "id": "openrouter/aurora-alpha",
-    "name": "openrouter/aurora-alpha"
+    "id": "openrouter/hunter-alpha",
+    "name": "openrouter/hunter-alpha"
+  },
+  {
+    "id": "openrouter/healer-alpha",
+    "name": "openrouter/healer-alpha"
   },
   {
     "id": "nvidia/nemotron-3-nano-30b-a3b:free",
     "name": "nvidia/nemotron-3-nano-30b-a3b:free"
-  },
-  {
-    "id": "sourceful/riverflow-v2-pro",
-    "name": "sourceful/riverflow-v2-pro"
   },
   {
     "id": "stepfun/step-3.5-flash:free",

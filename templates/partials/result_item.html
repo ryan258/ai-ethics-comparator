@@ -64,6 +64,57 @@
       {% endif %}
     </div>
     {% endif %}
+    {% if ctx.response_details %}
+    <details style="margin-top: 1rem;">
+      <summary class="summary-toggle">
+        View Responses ({{ ctx.response_details|length }})
+      </summary>
+      <div style="margin-top: 0.75rem; display: grid; gap: 0.75rem;">
+        {% for response in ctx.response_details %}
+        <div class="scenario-box" style="margin-bottom: 0;">
+          <div style="display: grid; gap: 0.5rem;">
+            <div>
+              <strong><code>iteration</code>:</strong>
+              <code>{{ response.iteration }}</code>
+            </div>
+            <div>
+              <strong><code>decisionToken</code>:</strong>
+              <code>{{ response.decision_token if response.decision_token is not none else "null" }}</code>
+            </div>
+            <div>
+              <strong><code>optionId</code>:</strong>
+              <code>{{ response.option_id if response.option_id is not none else "null" }}</code>
+            </div>
+            <div>
+              <strong><code>explanation</code>:</strong>
+              {% if response.explanation %}
+              <div style="margin-top: 0.35rem; white-space: pre-wrap;">{{ response.explanation }}</div>
+              {% else %}
+              <div style="margin-top: 0.35rem; opacity: 0.8;">No explanation returned by the model.</div>
+              {% endif %}
+            </div>
+          </div>
+          {% if response.meta_label %}
+          <div style="margin-top: 0.4rem; font-size: 0.75rem; color: var(--accent-primary); opacity: 0.9;">
+            {{ response.meta_label }}
+          </div>
+          {% endif %}
+          {% if response.raw %}
+          <div style="margin-top: 0.6rem;">
+            <strong><code>raw</code>:</strong>
+            <div style="margin-top: 0.35rem; white-space: pre-wrap;">{{ response.raw }}</div>
+          </div>
+          {% endif %}
+          {% if response.error %}
+          <div style="margin-top: 0.6rem; color: var(--accent-danger); white-space: pre-wrap;">
+            <strong><code>error</code>:</strong> {{ response.error }}
+          </div>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </details>
+    {% endif %}
     <div class="result-id">Run ID: {{ ctx.run_id }}</div>
   </div>
 
