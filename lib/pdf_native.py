@@ -84,7 +84,10 @@ class NativePdfReportRenderer:
 
     def render(self) -> bytes:
         """Render the report to PDF bytes."""
-        page_methods = [self._draw_cover_page, self._draw_briefing_page]
+        page_methods = [self._draw_cover_page]
+        if isinstance(self.report.get("narrative"), dict):
+            page_methods.append(self._draw_narrative)
+        page_methods.append(self._draw_briefing_page)
         if self.report.get("responses"):
             page_methods.append(self._draw_responses)
         if isinstance(self.report.get("analysis"), dict):
@@ -457,6 +460,54 @@ class NativePdfReportRenderer:
                 max_lines=3,
             )
             y += 30
+
+    def _draw_narrative(self) -> None:
+        """Draw the AI-generated narrative synthesis page."""
+        narrative = self.report.get("narrative")
+        if not isinstance(narrative, dict):
+            return
+
+        self._section_heading("Analyst Narrative", "AI-generated interpretive synthesis of findings.")
+
+        sections = [
+            ("Executive Narrative", narrative.get("executive_narrative", ""), PALETTE["success"]),
+            ("Response Arc", narrative.get("response_arc", ""), None),
+            ("Scenario Commentary", narrative.get("scenario_commentary", ""), None),
+            ("Deployment Implications", narrative.get("implications", ""), PALETTE["danger"]),
+        ]
+
+        for title, text, accent in sections:
+            text = _clean_text(text)
+            if not text:
+                continue
+            lines = self._wrap_text(text, self.CONTENT_WIDTH - 32, font="Body", size=10)
+            panel_height = max(60.0, (len(lines) * 13.5) + 42)
+            self._new_page_if_needed(panel_height + 14)
+            self._card(
+                self.MARGIN_X,
+                self.current_y,
+                self.CONTENT_WIDTH,
+                panel_height,
+                accent_bar=accent,
+            )
+            self._draw_text(
+                title.upper(),
+                self.MARGIN_X + 16,
+                self.current_y + 14,
+                font="BodyBold",
+                size=8,
+                color=PALETTE["accent"],
+            )
+            self._draw_wrapped_lines(
+                lines,
+                self.MARGIN_X + 16,
+                self.current_y + 30,
+                font="Body",
+                size=10,
+                color=PALETTE["text"],
+                leading=1.55,
+            )
+            self.current_y += panel_height + 10
 
     def _draw_briefing_page(self) -> None:
         self._section_heading("Choice Distribution", "Vote share across all iterations.")

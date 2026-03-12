@@ -30,6 +30,7 @@ from lib.experiment_runner import ExperimentRunner
 from lib.fingerprint import compute_model_fingerprint
 from lib.paradoxes import extract_scenario_text, get_paradox_by_id, load_paradoxes
 from lib.query_processor import QueryProcessor, RunConfig
+from lib.report_writer import ReportWriterAgent, NarrativeConfig
 from lib.reporting import ReportGenerator
 from lib.storage import RunStorage, STRICT_RUN_ID_PATTERN, ExperimentStorage
 from lib.validation import ExperimentCreateRequest, ExperimentRecord, InsightRequest, QueryRequest
@@ -57,6 +58,7 @@ class AppServices:
     experiment_runner: ExperimentRunner
     counterfactual_engine: CounterfactualEngine
     analysis_engine: AnalysisEngine
+    report_writer: ReportWriterAgent
     report_generator: ReportGenerator
     templates: Jinja2Templates
     paradoxes_path: Path
@@ -90,6 +92,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
     templates = _build_templates(templates_dir)
     paradoxes_path = Path(__file__).parent / "paradoxes.json"
     analysis_prompt_path = Path(__file__).parent / templates_dir / "analysis_prompt.txt"
+    report_writer_prompt_path = Path(__file__).parent / templates_dir / "report_writer_prompt.txt"
 
     if config_override is not None:
         app_title = config_override.APP_NAME
@@ -137,6 +140,10 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             ai_service,
             prompt_template_path=analysis_prompt_path,
         )
+        report_writer = ReportWriterAgent(
+            ai_service,
+            prompt_template_path=report_writer_prompt_path,
+        )
         report_generator = ReportGenerator(templates_dir=templates_dir)
 
         experiment_runner = ExperimentRunner(
@@ -159,6 +166,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             experiment_runner=experiment_runner,
             counterfactual_engine=counterfactual_engine,
             analysis_engine=analysis_engine,
+            report_writer=report_writer,
             report_generator=report_generator,
             templates=templates,
             paradoxes_path=paradoxes_path,
@@ -655,8 +663,36 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             if "insights" in run_data and run_data["insights"]:
                 insight = run_data["insights"][-1]
 
+            # Generate AI narrative (or use cached version)
+            narrative = None
+            cached_narrative = run_data.get("narrative")
+            if isinstance(cached_narrative, dict) and any(cached_narrative.values()):
+                narrative = cached_narrative
+            else:
+                writer_model = services.config.ANALYST_MODEL
+                if writer_model:
+                    try:
+                        narrative = await services.report_writer.generate_narrative(
+                            run_data,
+                            paradox,
+                            insight,
+                            NarrativeConfig(model=writer_model),
+                        )
+                        # Cache the narrative in run data for future downloads
+                        if any(narrative.values()):
+                            run_data["narrative"] = narrative
+                            await services.storage.save_run(run_id, run_data)
+                    except Exception as narr_exc:
+                        logger.warning(
+                            "Report narrative generation failed for %s, proceeding without: %s",
+                            run_id,
+                            narr_exc,
+                        )
+
             try:
-                pdf_bytes = services.report_generator.generate_pdf_report(run_data, paradox, insight)
+                pdf_bytes = services.report_generator.generate_pdf_report(
+                    run_data, paradox, insight, narrative
+                )
             except RuntimeError as exc:
                 logger.warning("PDF generation unavailable for %s: %s", run_id, exc)
                 raise HTTPException(status_code=503, detail="PDF generation unavailable") from exc

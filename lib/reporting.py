@@ -100,9 +100,10 @@ class ReportGenerator:
         run_data: Dict[str, Any],
         paradox: Dict[str, Any],
         insight: Optional[Dict[str, Any]] = None,
+        narrative: Optional[Dict[str, str]] = None,
     ) -> bytes:
         """Generate PDF bytes using WeasyPrint when possible, else native fallback."""
-        report = self._build_report_context(run_data, paradox, insight)
+        report = self._build_report_context(run_data, paradox, insight, narrative)
 
         if HTML is not None and self.env is not None and self.html_template_available:
             try:
@@ -129,6 +130,7 @@ class ReportGenerator:
         run_data: Dict[str, Any],
         paradox: Dict[str, Any],
         insight: Optional[Dict[str, Any]],
+        narrative: Optional[Dict[str, str]] = None,
     ) -> Dict[str, Any]:
         options = run_data.get("options", [])
         option_lookup = {
@@ -263,6 +265,19 @@ class ReportGenerator:
         if not analysis_snapshot:
             analysis_snapshot = "Analyst synthesis is pending for this run."
 
+        # Use AI-generated narrative if available; fall back to mechanical summary.
+        has_narrative = isinstance(narrative, dict) and any(
+            narrative.get(k) for k in ("executive_narrative", "response_arc", "implications", "scenario_commentary")
+        )
+        narrative_ctx: Optional[Dict[str, str]] = None
+        if has_narrative:
+            narrative_ctx = {
+                "executive_narrative": str(narrative.get("executive_narrative", "") or "").strip(),
+                "response_arc": str(narrative.get("response_arc", "") or "").strip(),
+                "implications": str(narrative.get("implications", "") or "").strip(),
+                "scenario_commentary": str(narrative.get("scenario_commentary", "") or "").strip(),
+            }
+
         executive_summary = (
             f"Across {response_count} iterations, {lead_choice_label} led with {lead_choice_support.lower()} "
             f"Mean latency was {f'{mean_latency:.2f}s' if response_count else 'n/a'}, and the run consumed "
@@ -328,4 +343,5 @@ class ReportGenerator:
             ),
             "responses": responses,
             "analysis": analysis_context,
+            "narrative": narrative_ctx,
         }

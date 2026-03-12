@@ -357,6 +357,12 @@
         font-size: 9pt;
       }
 
+      .narrative-body {
+        font-size: 10.5pt;
+        line-height: 1.72;
+        margin-top: 3mm;
+      }
+
       .footer {
         margin-top: 9mm;
         padding-top: 3mm;
@@ -464,6 +470,52 @@
         <div class="mono">{{ report.run_id }}</div>
       </div>
     </section>
+
+    {% if report.narrative %}
+    <section class="page">
+      <div class="section">
+        <div class="section-header">
+          <div class="section-kicker">Narrative</div>
+          <div class="section-title">Analyst Narrative</div>
+          <p class="section-subtitle">AI-generated interpretive synthesis of findings.</p>
+          <div class="rule"></div>
+        </div>
+
+        {% if report.narrative.executive_narrative %}
+        <div class="panel panel-accent">
+          <div class="stat-label">Executive Narrative</div>
+          <div class="narrative-body">{{ report.narrative.executive_narrative }}</div>
+        </div>
+        {% endif %}
+
+        {% if report.narrative.response_arc %}
+        <div class="panel">
+          <div class="stat-label">Response Arc</div>
+          <div class="narrative-body">{{ report.narrative.response_arc }}</div>
+        </div>
+        {% endif %}
+
+        {% if report.narrative.scenario_commentary %}
+        <div class="panel">
+          <div class="stat-label">Scenario Commentary</div>
+          <div class="narrative-body">{{ report.narrative.scenario_commentary }}</div>
+        </div>
+        {% endif %}
+
+        {% if report.narrative.implications %}
+        <div class="panel panel-danger">
+          <div class="stat-label">Deployment Implications</div>
+          <div class="narrative-body">{{ report.narrative.implications }}</div>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="footer">
+        <div>AI Ethics Comparator</div>
+        <div class="mono">{{ report.run_id }}</div>
+      </div>
+    </section>
+    {% endif %}
 
     <section class="page">
       <div class="section">
