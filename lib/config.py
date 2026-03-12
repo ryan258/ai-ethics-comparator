@@ -93,7 +93,7 @@ class AppConfig(BaseModel):
     )
     
     # Limits
-    MAX_ITERATIONS: int = int(os.getenv("MAX_ITERATIONS", "20"))
+    MAX_ITERATIONS: int = int(os.getenv("MAX_ITERATIONS", "50"))
 
     # URLs (required - no hardcoded defaults)
     APP_BASE_URL: Optional[str] = Field(default_factory=lambda: os.getenv("APP_BASE_URL"))

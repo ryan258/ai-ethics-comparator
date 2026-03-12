@@ -48,7 +48,7 @@ APP_NAME="AI Ethics Comparator"
 # optional overrides
 ANALYST_MODEL=provider/model-name
 DEFAULT_MODEL=provider/model-name
-MAX_ITERATIONS=20
+MAX_ITERATIONS=50
 AI_CONCURRENCY_LIMIT=2
 AI_MAX_RETRIES=5
 AI_RETRY_DELAY=2
