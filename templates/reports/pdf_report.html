@@ -2,701 +2,719 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <title>Ethical Decision Report - {{ report.run_id }}</title>
+    <title>Ethical Decision Report — {{ report.run_id }}</title>
     <style>
       @page {
         size: A4;
-        margin: 14mm 16mm 16mm 16mm;
+        margin: 18mm 20mm 20mm 20mm;
       }
 
       :root {
         --bg: #121212;
+        --bg-raised: #181818;
         --text: #EBD2BE;
+        --text-dim: #a89882;
         --accent: #A6ACCD;
         --success: #98C379;
         --danger: #E06C75;
+        --rule: rgba(166, 172, 205, 0.22);
+        --rule-mid: rgba(166, 172, 205, 0.40);
       }
 
-      * {
-        box-sizing: border-box;
+      /* Phase 4: Light theme override */
+      {% if report.theme == "light" %}
+      :root {
+        --bg: #FFFFFF;
+        --bg-raised: #F3F4F6;
+        --text: #1A1A1A;
+        --text-dim: #6B7280;
+        --accent: #6B7280;
+        --success: #059669;
+        --danger: #DC2626;
+        --rule: rgba(107, 114, 128, 0.18);
+        --rule-mid: rgba(107, 114, 128, 0.35);
       }
+      {% endif %}
 
-      html,
-      body {
-        margin: 0;
-        padding: 0;
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      html, body {
         background: var(--bg);
         color: var(--text);
-        font-family: "Helvetica", "Arial", sans-serif;
-        font-size: 10pt;
-        line-height: 1.55;
+        font-family: "Helvetica Neue", "Helvetica", "Arial", sans-serif;
+        font-size: 9.5pt;
+        line-height: 1.62;
       }
 
-      body {
-        border-top: 10px solid var(--accent);
-      }
+      .page { page-break-after: always; }
+      .page:last-child { page-break-after: auto; }
 
-      .page {
-        page-break-after: always;
-      }
+      /* ── Typography ───────────────────────────── */
 
-      .page:last-child {
-        page-break-after: auto;
-      }
-
-      .eyebrow {
-        margin-top: 3mm;
-        font-size: 8pt;
-        letter-spacing: 0.22em;
+      .kicker {
+        font-size: 7pt;
+        font-weight: 700;
+        letter-spacing: 0.28em;
         text-transform: uppercase;
         color: var(--accent);
       }
 
-      .topline {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        font-size: 8.5pt;
-        color: var(--accent);
-        margin-bottom: 9mm;
-      }
-
-      .topline .mark {
-        display: inline-block;
-        width: 38mm;
-        height: 4px;
-        background: linear-gradient(90deg, var(--danger) 0 28%, var(--accent) 28% 100%);
-        vertical-align: middle;
-        margin-right: 4mm;
-      }
-
       .cover-title {
-        font-size: 26pt;
-        line-height: 1.08;
-        margin: 0 0 3mm;
+        font-size: 30pt;
+        font-weight: 700;
+        line-height: 1.04;
+        letter-spacing: -0.015em;
+        margin: 5mm 0 4mm;
       }
 
-      .cover-subtitle {
-        font-size: 16pt;
-        color: var(--success);
+      .cover-paradox {
+        font-size: 15pt;
         font-weight: 700;
-        margin: 0 0 4mm;
-        max-width: 130mm;
+        line-height: 1.18;
+        color: var(--success);
+        margin-bottom: 2.5mm;
+        max-width: 145mm;
       }
 
       .cover-meta {
+        font-size: 8.5pt;
         color: var(--accent);
-        font-size: 9pt;
         margin-bottom: 8mm;
       }
 
-      .panel {
-        border: 1px solid var(--accent);
-        padding: 5mm;
-        margin-bottom: 5mm;
-        page-break-inside: avoid;
+      .section-title {
+        font-size: 13pt;
+        font-weight: 700;
+        line-height: 1.18;
+        margin-bottom: 1.5mm;
       }
 
-      .panel-accent {
-        border-left: 5px solid var(--success);
-      }
-
-      .panel-danger {
-        border-left: 5px solid var(--danger);
-      }
-
-      .cover-grid {
-        display: grid;
-        grid-template-columns: 1.45fr 0.9fr;
-        gap: 5mm;
-        margin-bottom: 5mm;
-      }
-
-      .lead-token {
-        display: inline-block;
-        font-family: "Courier", monospace;
-        font-size: 10pt;
+      .section-sub {
+        font-size: 8.5pt;
         color: var(--accent);
         margin-bottom: 3mm;
       }
 
-      .lead-title {
-        font-size: 18pt;
+      .mono { font-family: "Courier New", "Courier", monospace; }
+
+      /* ── Rules ─────────────────────────────────── */
+
+      .rule       { height: 1px; background: var(--rule); margin: 4mm 0; }
+      .rule-mid   { height: 1px; background: var(--rule-mid); margin: 5mm 0; }
+      .accent-top { border-top: 3px solid var(--accent); padding-top: 3mm; }
+
+      /* ── Cover: Key Finding ────────────────────── */
+
+      .finding-label {
+        font-size: 7pt;
         font-weight: 700;
-        line-height: 1.1;
-        margin: 0 0 2mm;
-      }
-
-      .lead-support {
-        color: var(--success);
-        font-size: 10pt;
-        margin-bottom: 4mm;
-      }
-
-      .executive-summary {
-        font-size: 11pt;
-        line-height: 1.65;
-        max-width: 112mm;
-      }
-
-      .meta-stack {
-        display: grid;
-        gap: 4mm;
-      }
-
-      .meta-label,
-      .stat-label,
-      .section-kicker {
-        color: var(--accent);
-        font-size: 8pt;
-        letter-spacing: 0.18em;
+        letter-spacing: 0.2em;
         text-transform: uppercase;
+        color: var(--accent);
         margin-bottom: 1.5mm;
       }
 
-      .meta-value {
-        font-size: 10pt;
-      }
-
-      .mono {
-        font-family: "Courier", monospace;
-      }
-
-      .stat-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 4mm;
-        margin-bottom: 6mm;
-      }
-
-      .stat-card {
-        border: 1px solid var(--accent);
-        padding: 4mm;
-        min-height: 28mm;
-      }
-
-      .stat-card.primary {
-        border-left: 5px solid var(--success);
-      }
-
-      .stat-value {
-        font-size: 14pt;
+      .finding-value {
+        font-size: 19pt;
         font-weight: 700;
-        line-height: 1.15;
-        margin-bottom: 2mm;
+        line-height: 1.12;
+        margin-bottom: 1.5mm;
       }
 
-      .stat-support {
-        color: var(--accent);
-        font-size: 8.7pt;
-      }
-
-      .snapshot {
-        margin-top: 5mm;
-      }
-
-      .mini-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 4mm;
-        margin-top: 5mm;
-      }
-
-      .mini-points {
-        margin: 0;
-        padding-left: 5mm;
-      }
-
-      .mini-points li {
-        margin-bottom: 2.2mm;
-      }
-
-      .section {
-        margin-top: 4mm;
-      }
-
-      .section-header {
-        margin-bottom: 4mm;
-      }
-
-      .section-title {
-        font-size: 15pt;
-        font-weight: 700;
-        margin: 0 0 1.2mm;
-      }
-
-      .section-subtitle {
-        color: var(--accent);
-        font-size: 9pt;
-        margin: 0 0 3mm;
-      }
-
-      .rule {
-        height: 1px;
-        background: var(--accent);
-      }
-
-      .option-card {
-        border: 1px solid var(--accent);
-        padding: 4.5mm;
-        margin-bottom: 4mm;
-      }
-
-      .option-top {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 4mm;
-        margin-bottom: 2mm;
-        align-items: end;
-      }
-
-      .option-name {
-        font-size: 11pt;
-        font-weight: 700;
-      }
-
-      .option-score {
-        font-size: 11pt;
+      .finding-support {
+        font-size: 9.5pt;
         font-weight: 700;
         color: var(--success);
+        margin-bottom: 4mm;
       }
 
-      .option-card:not(.leader) .option-score {
-        color: var(--text);
+      .executive-prose {
+        font-size: 9.8pt;
+        line-height: 1.72;
+        max-width: 148mm;
       }
 
-      .bar-shell {
-        border: 1px solid var(--accent);
-        height: 12px;
+      /* ── Cover: Stats ──────────────────────────── */
+
+      .stat-strip {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        margin: 5mm 0;
+      }
+
+      .stat-cell {
+        padding: 2.5mm 4mm;
+        border-right: 1px solid var(--rule-mid);
+      }
+
+      .stat-cell:first-child { padding-left: 0; }
+      .stat-cell:last-child  { border-right: none; }
+
+      .stat-num {
+        font-size: 15pt;
+        font-weight: 700;
+        line-height: 1.15;
+      }
+
+      .stat-lbl {
+        font-size: 6.5pt;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-top: 0.8mm;
+      }
+
+      .stat-detail {
+        font-size: 7pt;
+        color: var(--text-dim);
+        margin-top: 0.3mm;
+      }
+
+      /* ── Cover: Metadata ───────────────────────── */
+
+      .meta-row {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 3mm;
+        font-size: 7.5pt;
+        color: var(--text-dim);
+      }
+
+      .meta-key {
+        font-size: 6pt;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 0.5mm;
+      }
+
+      .meta-val { word-break: break-all; }
+
+      /* ── Narrative ─────────────────────────────── */
+
+      .narr-block {
+        margin-bottom: 7mm;
+        page-break-inside: avoid;
+      }
+
+      .narr-block:last-of-type { margin-bottom: 0; }
+
+      .narr-label {
+        font-size: 7.5pt;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: var(--accent);
         margin-bottom: 2mm;
       }
 
-      .bar-fill {
-        height: 100%;
-        background: var(--accent);
+      .narr-body {
+        font-size: 10pt;
+        line-height: 1.78;
       }
 
-      .option-card.leader .bar-fill {
-        background: var(--success);
-      }
+      .narr-accent { border-left: 2px solid var(--success); padding-left: 4mm; }
+      .narr-warn   { border-left: 2px solid var(--danger);  padding-left: 4mm; }
 
-      .option-desc {
-        color: var(--accent);
-        font-size: 8.9pt;
-      }
+      /* ── Distribution ──────────────────────────── */
 
-      .scenario-body {
-        white-space: pre-wrap;
-        line-height: 1.7;
-      }
-
-      .response-card {
-        border: 1px solid var(--accent);
-        padding: 4.5mm;
+      .opt-item {
         margin-bottom: 4.5mm;
+        page-break-inside: avoid;
       }
 
-      .response-head {
+      .opt-head {
         display: grid;
         grid-template-columns: 1fr auto;
         gap: 4mm;
         align-items: baseline;
-        margin-bottom: 2mm;
-      }
-
-      .response-iteration {
-        font-size: 11pt;
-        font-weight: 700;
-      }
-
-      .response-choice {
-        font-size: 10pt;
-        color: var(--success);
-        font-weight: 700;
-        margin-bottom: 2mm;
-      }
-
-      .response-meta {
-        color: var(--accent);
-        font-size: 8.5pt;
-        margin-bottom: 3mm;
-      }
-
-      .response-copy {
-        white-space: pre-wrap;
-        line-height: 1.62;
-        font-size: 9.2pt;
-      }
-
-      .response-note {
-        color: var(--danger);
-        font-size: 8.5pt;
-        margin-top: 2.5mm;
-      }
-
-      .bullets {
-        margin: 0;
-        padding-left: 6mm;
-      }
-
-      .bullets li {
-        margin-bottom: 2.5mm;
-      }
-
-      .complex {
-        margin-bottom: 4mm;
-      }
-
-      .complex-title {
-        font-weight: 700;
         margin-bottom: 1mm;
       }
 
-      .complex-note {
-        color: var(--accent);
+      .opt-name {
+        font-size: 10pt;
+        font-weight: 700;
+      }
+
+      .opt-name .tok {
+        font-family: "Courier New", monospace;
         font-size: 9pt;
-      }
-
-      .narrative-body {
-        font-size: 10.5pt;
-        line-height: 1.72;
-        margin-top: 3mm;
-      }
-
-      .footer {
-        margin-top: 9mm;
-        padding-top: 3mm;
-        border-top: 1px solid var(--accent);
         color: var(--accent);
+        margin-right: 1.5mm;
+      }
+
+      .opt-score {
+        font-size: 10pt;
+        font-weight: 700;
+        text-align: right;
+      }
+
+      .opt-item.leader .opt-score { color: var(--success); }
+
+      .opt-bar {
+        height: 5px;
+        background: var(--bg-raised);
+        margin-bottom: 1.2mm;
+      }
+
+      .opt-bar-fill {
+        height: 100%;
+        background: var(--accent);
+        min-width: 2px;
+      }
+
+      .opt-item.leader .opt-bar-fill { background: var(--success); }
+
+      .opt-desc {
         font-size: 8pt;
+        color: var(--text-dim);
+        line-height: 1.45;
+      }
+
+      .scenario-body {
+        font-size: 9pt;
+        line-height: 1.72;
+        white-space: pre-wrap;
+        border-left: 2px solid var(--accent);
+        padding-left: 4mm;
+      }
+
+      /* ── Response Ledger ────────────────────────── */
+
+      .resp {
+        padding-bottom: 4mm;
+        margin-bottom: 4mm;
+        border-bottom: 1px solid var(--rule);
+        page-break-inside: avoid;
+      }
+
+      .resp:last-child { border-bottom: none; margin-bottom: 0; }
+
+      .resp-top {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 2.5mm;
+        align-items: baseline;
+        margin-bottom: 1mm;
+      }
+
+      .resp-iter {
+        font-size: 6.5pt;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+
+      .resp-choice {
+        font-size: 10pt;
+        font-weight: 700;
+        color: var(--success);
+      }
+
+      .resp-tok {
+        font-size: 8pt;
+        font-family: "Courier New", monospace;
+        color: var(--accent);
+        text-align: right;
+      }
+
+      .resp-meta {
+        font-size: 7pt;
+        color: var(--text-dim);
+        margin-bottom: 1.5mm;
+      }
+
+      .resp-body {
+        font-size: 8.5pt;
+        line-height: 1.62;
+      }
+
+      .resp-note {
+        font-size: 7pt;
+        color: var(--danger);
+        font-style: italic;
+        margin-top: 1.5mm;
+      }
+
+      /* ── Analysis ──────────────────────────────── */
+
+      .fw-callout {
+        font-size: 15pt;
+        font-weight: 700;
+        color: var(--success);
+        margin: 1.5mm 0 5mm;
+      }
+
+      .insight-list {
+        margin: 0 0 4mm;
+        padding-left: 5mm;
+      }
+
+      .insight-list li {
+        margin-bottom: 1.8mm;
+        line-height: 1.55;
+      }
+
+      .cx-item { margin-bottom: 2.5mm; }
+
+      .cx-label {
+        font-weight: 700;
+        font-size: 9.5pt;
+      }
+
+      .cx-detail {
+        font-size: 8pt;
+        color: var(--text-dim);
+      }
+
+      /* ── Phase 1: Charts ───────────────────────── */
+
+      .chart-row {
+        display: grid;
+        grid-template-columns: 180px 1fr;
+        gap: 5mm;
+        margin: 4mm 0;
+        align-items: start;
+      }
+
+      .chart-label {
+        font-size: 7pt;
+        font-weight: 700;
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: var(--accent);
+        margin-bottom: 2mm;
+      }
+
+      .heatmap-wrap { margin: 3mm 0; }
+      .heatmap-wrap svg, .chart-row svg { max-width: 100%; }
+
+      /* ── Phase 2: Bookmarks ─────────────────────── */
+
+      .section-title { -weasy-bookmark-level: 1; }
+
+      /* ── Phase 5: Pattern badge ─────────────────── */
+
+      .pattern-badge {
+        display: inline-block;
+        padding: 1mm 3mm;
+        font-size: 7pt;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--bg);
+        border-radius: 1mm;
+        margin-bottom: 3mm;
+      }
+
+      .pattern-badge.unanimous, .pattern-badge.dominant { background: var(--success); }
+      .pattern-badge.contested { background: var(--danger); }
+      .pattern-badge.split     { background: #C9A0DC; }
+      .pattern-badge.ambiguous { background: var(--accent); }
+
+      /* ── Footer ────────────────────────────────── */
+
+      .ft {
+        margin-top: 8mm;
+        padding-top: 2.5mm;
+        border-top: 1px solid var(--rule);
         display: flex;
         justify-content: space-between;
+        font-size: 6.5pt;
+        color: var(--accent);
+        letter-spacing: 0.05em;
       }
     </style>
   </head>
   <body>
+
+    <!-- ═══ COVER ═══ -->
     <section class="page">
-      <div class="topline">
-        <div><span class="mark"></span>AI Ethics Comparator</div>
-        <div>Professional Decision Report</div>
+      <div class="accent-top">
+        <div class="kicker">AI Ethics Comparator &mdash; Executive Brief</div>
       </div>
 
-      <div class="eyebrow">Executive Brief</div>
-      <h1 class="cover-title">Ethical Decision Report</h1>
-      <div class="cover-subtitle">{{ report.paradox_title }}</div>
-      <div class="cover-meta">
-        {{ report.category }} | Generated {{ report.generated_at_label }}
+      <h1 class="cover-title">Ethical Decision<br>Report</h1>
+      <div class="cover-paradox">{{ report.paradox_title }}</div>
+      <div class="cover-meta">{{ report.category }} &nbsp;&vert;&nbsp; {{ report.generated_at_label }}</div>
+
+      <div class="rule-mid"></div>
+
+      <div class="finding-label">Key Finding</div>
+      <div class="finding-value">{{ report.lead_choice_label }}</div>
+      <div class="finding-support">{{ report.lead_choice_support }}</div>
+      <div class="executive-prose">
+        {%- if report.narrative and report.narrative.executive_narrative -%}
+          {{ report.narrative.executive_narrative }}
+        {%- else -%}
+          {{ report.executive_summary }}
+        {%- endif -%}
       </div>
 
-      <div class="cover-grid">
-        <div class="panel panel-accent">
-          <div class="lead-token">{{ report.lead_choice_token }}</div>
-          <div class="lead-title">{{ report.lead_choice_label }}</div>
-          <div class="lead-support">{{ report.lead_choice_support }}</div>
-          <div class="executive-summary">{{ report.executive_summary }}</div>
-        </div>
+      <div class="rule"></div>
 
-        <div class="panel">
-          <div class="meta-stack">
-            <div>
-              <div class="meta-label">Run ID</div>
-              <div class="meta-value mono">{{ report.run_id }}</div>
-            </div>
-            <div>
-              <div class="meta-label">Model</div>
-              <div class="meta-value">{{ report.model_name }}</div>
-            </div>
-            <div>
-              <div class="meta-label">Prompt Hash</div>
-              <div class="meta-value mono">{{ report.prompt_hash_short }}</div>
-            </div>
-            <div>
-              <div class="meta-label">Analyst</div>
-              <div class="meta-value">{{ report.analyst_model }}</div>
-            </div>
-          </div>
+      <div class="stat-strip">
+        <div class="stat-cell">
+          <div class="stat-num">{{ report.response_count }}</div>
+          <div class="stat-lbl">Responses</div>
+          <div class="stat-detail">{{ report.response_count_support }}</div>
         </div>
-      </div>
-
-      <div class="stat-grid">
-        <div class="stat-card primary">
-          <div class="stat-label">Leading Choice</div>
-          <div class="stat-value">{{ report.lead_choice_label }}</div>
-          <div class="stat-support">{{ report.lead_choice_support }}</div>
+        <div class="stat-cell">
+          <div class="stat-num">{{ report.mean_latency_label }}</div>
+          <div class="stat-lbl">Mean Latency</div>
+          <div class="stat-detail">{{ report.latency_support }}</div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Response Count</div>
-          <div class="stat-value">{{ report.response_count }}</div>
-          <div class="stat-support">{{ report.response_count_support }}</div>
+        <div class="stat-cell">
+          <div class="stat-num">{{ report.token_volume_label }}</div>
+          <div class="stat-lbl">Token Volume</div>
+          <div class="stat-detail">{{ report.token_support }}</div>
         </div>
-        <div class="stat-card primary">
-          <div class="stat-label">Mean Latency</div>
-          <div class="stat-value">{{ report.mean_latency_label }}</div>
-          <div class="stat-support">{{ report.latency_support }}</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Token Volume</div>
-          <div class="stat-value">{{ report.token_volume_label }}</div>
-          <div class="stat-support">{{ report.token_support }}</div>
+        <div class="stat-cell">
+          <div class="stat-num">{% if report.narrative %}Narrative{% elif report.analysis %}Analysis{% else %}Pending{% endif %}</div>
+          <div class="stat-lbl">Synthesis</div>
+          <div class="stat-detail">{% if report.narrative %}AI-generated prose{% elif report.analysis %}{{ report.analyst_model }}{% else %}Not yet generated{% endif %}</div>
         </div>
       </div>
 
-      <div class="panel snapshot {% if report.analysis %}panel-accent{% endif %}">
-        <div class="section-kicker">Analyst Snapshot</div>
-        <div>{{ report.analysis_snapshot }}</div>
+      <div class="rule"></div>
+
+      <div class="meta-row">
+        <div><div class="meta-key">Run ID</div><div class="meta-val mono">{{ report.run_id }}</div></div>
+        <div><div class="meta-key">Model</div><div class="meta-val">{{ report.model_name }}</div></div>
+        <div><div class="meta-key">Prompt Hash</div><div class="meta-val mono">{{ report.prompt_hash_short }}</div></div>
+        <div><div class="meta-key">Analyst</div><div class="meta-val">{{ report.analyst_model }}</div></div>
       </div>
 
-      <div class="mini-grid">
-        <div class="panel">
-          <div class="section-kicker">Engagement Scope</div>
-          <ul class="mini-points">
-            {% for item in report.scope_points %}
-            <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
-        </div>
-        <div class="panel panel-accent">
-          <div class="section-kicker">Report Signals</div>
-          <ul class="mini-points">
-            {% for item in report.readout_points %}
-            <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
-        </div>
-      </div>
-
-      <div class="footer">
+      <div class="ft">
         <div>AI Ethics Comparator</div>
         <div class="mono">{{ report.run_id }}</div>
       </div>
     </section>
 
+    <!-- ═══ NARRATIVE ═══ -->
     {% if report.narrative %}
     <section class="page">
-      <div class="section">
-        <div class="section-header">
-          <div class="section-kicker">Narrative</div>
-          <div class="section-title">Analyst Narrative</div>
-          <p class="section-subtitle">AI-generated interpretive synthesis of findings.</p>
-          <div class="rule"></div>
-        </div>
+      <div class="kicker" style="margin-bottom: 3mm;">Analyst Narrative</div>
+      <div class="section-title">Interpretive Synthesis</div>
+      <div class="section-sub">AI-generated analysis of findings and implications.</div>
+      <div class="rule-mid"></div>
 
-        {% if report.narrative.executive_narrative %}
-        <div class="panel panel-accent">
-          <div class="stat-label">Executive Narrative</div>
-          <div class="narrative-body">{{ report.narrative.executive_narrative }}</div>
-        </div>
-        {% endif %}
-
-        {% if report.narrative.response_arc %}
-        <div class="panel">
-          <div class="stat-label">Response Arc</div>
-          <div class="narrative-body">{{ report.narrative.response_arc }}</div>
-        </div>
-        {% endif %}
-
-        {% if report.narrative.scenario_commentary %}
-        <div class="panel">
-          <div class="stat-label">Scenario Commentary</div>
-          <div class="narrative-body">{{ report.narrative.scenario_commentary }}</div>
-        </div>
-        {% endif %}
-
-        {% if report.narrative.implications %}
-        <div class="panel panel-danger">
-          <div class="stat-label">Deployment Implications</div>
-          <div class="narrative-body">{{ report.narrative.implications }}</div>
-        </div>
-        {% endif %}
+      {% if report.narrative.executive_narrative %}
+      <div class="narr-block narr-accent">
+        <div class="narr-label">Executive Narrative</div>
+        <div class="narr-body">{{ report.narrative.executive_narrative }}</div>
       </div>
+      {% endif %}
 
-      <div class="footer">
+      {% if report.narrative.response_arc %}
+      <div class="narr-block">
+        <div class="narr-label">Response Arc</div>
+        <div class="narr-body">{{ report.narrative.response_arc }}</div>
+      </div>
+      {% endif %}
+
+      {% if report.narrative.scenario_commentary %}
+      <div class="narr-block">
+        <div class="narr-label">Scenario Commentary</div>
+        <div class="narr-body">{{ report.narrative.scenario_commentary }}</div>
+      </div>
+      {% endif %}
+
+      {% if report.narrative.cross_iteration_patterns %}
+      <div class="narr-block">
+        <div class="narr-label">Cross-Iteration Patterns</div>
+        <div class="narr-body">{{ report.narrative.cross_iteration_patterns }}</div>
+      </div>
+      {% endif %}
+
+      {% if report.narrative.framework_diagnosis %}
+      <div class="narr-block" style="border-left: 2px solid var(--accent); padding-left: 4mm;">
+        <div class="narr-label">Framework Diagnosis</div>
+        <div class="narr-body">{{ report.narrative.framework_diagnosis }}</div>
+      </div>
+      {% endif %}
+
+      {% if report.narrative.implications %}
+      <div class="narr-block narr-warn">
+        <div class="narr-label">Deployment Implications</div>
+        <div class="narr-body">{{ report.narrative.implications }}</div>
+      </div>
+      {% endif %}
+
+      <div class="ft">
         <div>AI Ethics Comparator</div>
         <div class="mono">{{ report.run_id }}</div>
       </div>
     </section>
     {% endif %}
 
+    <!-- ═══ DISTRIBUTION + SCENARIO ═══ -->
     <section class="page">
-      <div class="section">
-        <div class="section-header">
-          <div class="section-kicker">Briefing</div>
-          <div class="section-title">Choice Distribution</div>
-          <p class="section-subtitle">Vote share across all iterations.</p>
-          <div class="rule"></div>
-        </div>
+      <div class="kicker" style="margin-bottom: 3mm;">Briefing</div>
+      <div class="section-title">Choice Distribution</div>
+      <div class="section-sub">Vote share across {{ report.response_count }} iterations.</div>
+      <div class="rule-mid"></div>
 
-        {% for option in report.option_stats %}
-        <div class="option-card {% if option.is_leader %}leader panel-accent{% endif %}">
-          <div class="option-top">
-            <div class="option-name">
-              <span class="mono">{{ option.token }}</span>
-              {{ option.label }}
-            </div>
-            <div class="option-score">{{ option.count }} ({{ option.percentage_label }})</div>
-          </div>
-          <div class="bar-shell">
-            <div class="bar-fill" style="width: {{ option.percentage }}%;"></div>
-          </div>
-          <div class="option-desc">{{ option.description }}</div>
+      {% for option in report.option_stats %}
+      <div class="opt-item {% if option.is_leader %}leader{% endif %}">
+        <div class="opt-head">
+          <div class="opt-name"><span class="tok">{{ option.token }}</span>{{ option.label }}</div>
+          <div class="opt-score">{{ option.count }} ({{ option.percentage_label }})</div>
         </div>
-        {% endfor %}
-
-        {% if report.undecided_count %}
-        <div class="option-desc">
-          Undecided: {{ report.undecided_count }} ({{ report.undecided_percentage_label }})
-        </div>
-        {% endif %}
+        <div class="opt-bar"><div class="opt-bar-fill" style="width: {{ option.percentage }}%;"></div></div>
+        <div class="opt-desc">{{ option.description }}</div>
       </div>
+      {% endfor %}
 
-      <div class="section" style="margin-top: 8mm;">
-        <div class="section-header">
-          <div class="section-kicker">Scenario</div>
-          <div class="section-title">Scenario Brief</div>
-          <p class="section-subtitle">Context excerpt from the evaluated prompt.</p>
-          <div class="rule"></div>
-        </div>
-        <div class="panel scenario-body">{{ report.scenario_excerpt }}</div>
+      {% if report.undecided_count %}
+      <div style="font-size: 8pt; color: var(--danger); margin-bottom: 3mm;">
+        Undecided: {{ report.undecided_count }} ({{ report.undecided_percentage_label }})
       </div>
+      {% endif %}
 
-      <div class="footer">
+      <div class="rule-mid" style="margin-top: 5mm;"></div>
+
+      {% if report.run_pattern %}
+      <div class="pattern-badge {{ report.run_pattern }}">{{ report.run_pattern }}</div>
+      {% endif %}
+
+      {% if report.donut_svg or report.sparkline_svg %}
+      <div class="chart-row">
+        <div>
+          {% if report.donut_svg %}<div class="chart-label">Distribution</div>{{ report.donut_svg | safe }}{% endif %}
+        </div>
+        <div>
+          {% if report.sparkline_svg %}<div class="chart-label">Latency Profile</div>{{ report.sparkline_svg | safe }}{% endif %}
+        </div>
+      </div>
+      {% endif %}
+
+      {% if report.heatmap_svg %}
+      <div class="heatmap-wrap">
+        <div class="chart-label">Decision Pattern</div>
+        {{ report.heatmap_svg | safe }}
+      </div>
+      {% endif %}
+
+      <div class="rule-mid" style="margin-top: 5mm;"></div>
+
+      <div style="font-size: 10pt; font-weight: 700; margin-bottom: 1.5mm;">Scenario Brief</div>
+      <div class="section-sub">Context excerpt from the evaluated prompt.</div>
+      <div class="rule"></div>
+      <div class="scenario-body">{{ report.scenario_excerpt }}</div>
+
+      <div class="ft">
         <div>AI Ethics Comparator</div>
         <div class="mono">{{ report.run_id }}</div>
       </div>
     </section>
 
+    <!-- ═══ RESPONSE LEDGER ═══ -->
     <section class="page">
-      <div class="section-header">
-        <div class="section-kicker">Responses</div>
-        <div class="section-title">Response Ledger</div>
-        <p class="section-subtitle">Per-iteration decisions and explanations.</p>
-        <div class="rule"></div>
-      </div>
+      <div class="kicker" style="margin-bottom: 3mm;">Response Ledger</div>
+      <div class="section-title">Per-Iteration Decisions</div>
+      <div class="section-sub">Individual model responses with explanations.</div>
+      <div class="rule-mid"></div>
 
       {% for response in report.responses %}
-      <div class="response-card">
-        <div class="response-head">
-          <div class="response-iteration">Iteration {{ response.iteration }}</div>
-          <div class="mono">
-            {{ response.decision_token or "null" }} |
-            optionId {{ response.option_id if response.option_id is not none else "null" }}
-          </div>
+      <div class="resp">
+        <div class="resp-top">
+          <div class="resp-iter">Iteration {{ response.iteration }}</div>
+          <div class="resp-choice">{{ response.option_label }}</div>
+          <div class="resp-tok">{{ response.decision_token or "null" }}</div>
         </div>
-        <div class="response-choice">{{ response.option_label }}</div>
         {% if response.latency_label or response.token_usage_label %}
-        <div class="response-meta">
-          {{ response.latency_label }}{% if response.latency_label and response.token_usage_label %} | {% endif %}{{ response.token_usage_label }}
+        <div class="resp-meta">
+          {{ response.latency_label }}{% if response.latency_label and response.token_usage_label %} &nbsp;&vert;&nbsp; {% endif %}{{ response.token_usage_label }}
         </div>
         {% endif %}
-        <div class="response-copy">{{ response.display_text }}</div>
+        <div class="resp-body">{{ response.display_text }}</div>
         {% if response.used_raw_fallback %}
-        <div class="response-note">
-          Displayed from raw model output because the parsed explanation field was empty.
-        </div>
+        <div class="resp-note">Displayed from raw model output &mdash; parsed explanation field was empty.</div>
         {% endif %}
       </div>
       {% endfor %}
 
-      <div class="footer">
+      <div class="ft">
         <div>AI Ethics Comparator</div>
         <div class="mono">{{ report.run_id }}</div>
       </div>
     </section>
 
+    <!-- ═══ ANALYSIS ═══ -->
     {% if report.analysis %}
     <section class="page">
-      <div class="section-header">
-        <div class="section-kicker">Analysis</div>
-        <div class="section-title">Analyst Assessment</div>
-        <p class="section-subtitle">Structured synthesis of the run.</p>
-        <div class="rule"></div>
-      </div>
+      <div class="kicker" style="margin-bottom: 3mm;">Analysis</div>
+      <div class="section-title">Analyst Assessment</div>
+      <div class="section-sub">Structured synthesis by {{ report.analyst_model }}.</div>
+      <div class="rule-mid"></div>
 
       {% if report.analysis.legacy_text %}
-      <div class="panel">{{ report.analysis.legacy_text }}</div>
+      <div class="narr-body">{{ report.analysis.legacy_text }}</div>
+
       {% else %}
       {% if report.analysis.dominant_framework %}
-      <div class="panel panel-accent">
-        <div class="stat-label">Dominant Framework</div>
-        <div class="stat-value">{{ report.analysis.dominant_framework }}</div>
-      </div>
+      <div class="narr-label">Dominant Framework</div>
+      <div class="fw-callout">{{ report.analysis.dominant_framework }}</div>
       {% endif %}
 
       {% if report.analysis.key_insights %}
-      <div class="panel">
-        <div class="stat-label">Key Insights</div>
-        <ul class="bullets">
-          {% for item in report.analysis.key_insights %}
-          <li>{{ item }}</li>
-          {% endfor %}
-        </ul>
-      </div>
+      <div class="narr-label">Key Insights</div>
+      <ul class="insight-list">
+        {% for item in report.analysis.key_insights %}<li>{{ item }}</li>{% endfor %}
+      </ul>
       {% endif %}
 
       {% if report.analysis.justifications %}
-      <div class="panel">
-        <div class="stat-label">Pattern Recognition</div>
-        <ul class="bullets">
-          {% for item in report.analysis.justifications %}
-          <li>{{ item }}</li>
-          {% endfor %}
-        </ul>
-      </div>
+      <div class="narr-label">Reasoning Patterns</div>
+      <ul class="insight-list">
+        {% for item in report.analysis.justifications %}<li>{{ item }}</li>{% endfor %}
+      </ul>
       {% endif %}
 
       {% if report.analysis.consistency %}
-      <div class="panel panel-danger">
-        <div class="stat-label">Consistency Check</div>
-        <ul class="bullets">
-          {% for item in report.analysis.consistency %}
-          <li>{{ item }}</li>
-          {% endfor %}
-        </ul>
-      </div>
+      <div class="narr-label" style="color: var(--danger);">Consistency Check</div>
+      <ul class="insight-list">
+        {% for item in report.analysis.consistency %}<li>{{ item }}</li>{% endfor %}
+      </ul>
       {% endif %}
 
       {% if report.analysis.moral_complexes %}
-      <div class="panel">
-        <div class="stat-label">Moral Complexes</div>
-        {% for complex in report.analysis.moral_complexes %}
-        <div class="complex">
-          <div class="complex-title">{{ complex.label }} ({{ complex.count }})</div>
-          {% if complex.justification %}
-          <div class="complex-note">{{ complex.justification }}</div>
-          {% endif %}
-        </div>
-        {% endfor %}
+      <div class="rule"></div>
+      <div class="narr-label">Moral Complexes</div>
+      {% for complex in report.analysis.moral_complexes %}
+      <div class="cx-item">
+        <div class="cx-label">{{ complex.label }} <span style="color: var(--accent); font-weight: 400;">({{ complex.count }})</span></div>
+        {% if complex.justification %}<div class="cx-detail">{{ complex.justification }}</div>{% endif %}
       </div>
+      {% endfor %}
       {% endif %}
 
       {% if report.analysis.reasoning_quality.noticed %}
-      <div class="panel panel-accent">
-        <div class="stat-label">Rubric Items Noticed</div>
-        <ul class="bullets">
-          {% for item in report.analysis.reasoning_quality.noticed %}
-          <li>{{ item }}</li>
-          {% endfor %}
-        </ul>
-      </div>
+      <div class="rule"></div>
+      <div class="narr-label" style="color: var(--success);">Rubric Items Noticed</div>
+      <ul class="insight-list">
+        {% for item in report.analysis.reasoning_quality.noticed %}<li>{{ item }}</li>{% endfor %}
+      </ul>
       {% endif %}
 
       {% if report.analysis.reasoning_quality.missed %}
-      <div class="panel panel-danger">
-        <div class="stat-label">Rubric Items Missed</div>
-        <ul class="bullets">
-          {% for item in report.analysis.reasoning_quality.missed %}
-          <li>{{ item }}</li>
-          {% endfor %}
-        </ul>
-      </div>
+      <div class="narr-label" style="color: var(--danger);">Rubric Items Missed</div>
+      <ul class="insight-list">
+        {% for item in report.analysis.reasoning_quality.missed %}<li>{{ item }}</li>{% endfor %}
+      </ul>
       {% endif %}
       {% endif %}
 
-      <div class="footer">
+      <div class="ft">
         <div>AI Ethics Comparator</div>
         <div class="mono">{{ report.run_id }}</div>
       </div>
     </section>
     {% endif %}
+
   </body>
 </html>

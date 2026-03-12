@@ -3,6 +3,7 @@ AI Ethics Comparator - Main Server
 App factory with startup-time service initialization.
 """
 
+import asyncio
 import io
 import logging
 import os
@@ -13,7 +14,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncIterator, Awaitable, Callable, Optional
+from typing import Any, AsyncIterator, Awaitable, Callable, Coroutine, Optional
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
@@ -29,11 +30,12 @@ from lib.counterfactual import CounterfactualEngine
 from lib.experiment_runner import ExperimentRunner
 from lib.fingerprint import compute_model_fingerprint
 from lib.paradoxes import extract_scenario_text, get_paradox_by_id, load_paradoxes
+from lib.query_errors import AuthenticationError, ModelNotFoundError, QueryExecutionError, QuotaError
 from lib.query_processor import QueryProcessor, RunConfig
 from lib.report_writer import ReportWriterAgent, NarrativeConfig
 from lib.reporting import ReportGenerator
 from lib.storage import RunStorage, STRICT_RUN_ID_PATTERN, ExperimentStorage
-from lib.validation import ExperimentCreateRequest, ExperimentRecord, InsightRequest, QueryRequest
+from lib.validation import ComparisonRequest, ExperimentCreateRequest, ExperimentRecord, InsightRequest, QueryRequest
 from lib.view_models import RunViewModel, fetch_recent_run_view_models, safe_markdown
 
 # Load environment before startup config resolution.
@@ -87,6 +89,151 @@ def _get_services(request: Request) -> AppServices:
     return services
 
 
+def _build_run_config_from_request(
+    query_request: QueryRequest,
+    paradox: dict[str, Any],
+) -> RunConfig:
+    return RunConfig(
+        modelName=query_request.model_name,
+        paradox=paradox,
+        option_overrides=(
+            [opt.model_dump() for opt in query_request.option_overrides.options]
+            if query_request.option_overrides and query_request.option_overrides.options
+            else None
+        ),
+        iterations=query_request.iterations or 10,
+        systemPrompt=query_request.system_prompt or "",
+        params=query_request.params.model_dump() if query_request.params else {},
+    )
+
+
+def _build_run_config_from_saved_run(
+    run_data: dict[str, Any],
+    paradox: dict[str, Any],
+) -> RunConfig:
+    params = run_data.get("params", {})
+    return RunConfig(
+        modelName=str(run_data.get("modelName", "")),
+        paradox=paradox,
+        iterations=int(run_data.get("iterationCount", 0) or 0),
+        systemPrompt=str(run_data.get("systemPrompt", "") or ""),
+        params=params if isinstance(params, dict) else {},
+        shuffle_options=isinstance(run_data.get("shuffleMapping"), dict),
+    )
+
+
+async def _save_failed_run(
+    storage: RunStorage,
+    run_data: dict[str, Any],
+    error_message: str,
+) -> None:
+    run_id = run_data.get("runId")
+    if not isinstance(run_id, str):
+        return
+    failed_run = dict(run_data)
+    try:
+        failed_run = await storage.get_run(run_id)
+    except Exception:
+        pass
+    failed_run["status"] = "failed"
+    failed_run["lastError"] = error_message
+    failed_run["updatedAt"] = datetime.now(timezone.utc).isoformat()
+    await storage.save_run(run_id, failed_run)
+
+
+async def _execute_persisted_run(
+    services: AppServices,
+    run_config: RunConfig,
+    run_data: dict[str, Any],
+) -> dict[str, Any]:
+    run_id = run_data.get("runId")
+    if not isinstance(run_id, str):
+        raise ValueError("Persisted run is missing runId")
+
+    save_lock = asyncio.Lock()
+
+    async def persist_progress(snapshot: dict[str, Any]) -> None:
+        async with save_lock:
+            persisted = dict(snapshot)
+            persisted["runId"] = run_id
+            await services.storage.save_run(run_id, persisted)
+
+    try:
+        final_run = await services.query_processor.execute_run(
+            run_config,
+            existing_run=run_data,
+            progress_callback=persist_progress,
+        )
+    except Exception as exc:
+        await _save_failed_run(services.storage, run_data, str(exc))
+        raise
+
+    final_run["runId"] = run_id
+    final_run["status"] = "completed"
+    final_run["updatedAt"] = datetime.now(timezone.utc).isoformat()
+    await persist_progress(final_run)
+    return final_run
+
+
+def _track_run_task(
+    app: FastAPI,
+    run_id: str,
+    coroutine: Coroutine[Any, Any, dict[str, Any]],
+) -> "asyncio.Task[dict[str, Any]]":
+    active_tasks: dict[str, asyncio.Task[dict[str, Any]]] = getattr(app.state, "active_run_tasks", {})
+    existing_task = active_tasks.get(run_id)
+    if existing_task is not None and not existing_task.done():
+        return existing_task
+
+    task = asyncio.create_task(coroutine, name=f"run:{run_id}")
+    active_tasks[run_id] = task
+    app.state.active_run_tasks = active_tasks
+
+    def _cleanup(done_task: "asyncio.Task[dict[str, Any]]") -> None:
+        current = active_tasks.get(run_id)
+        if current is done_task:
+            active_tasks.pop(run_id, None)
+        try:
+            exc = done_task.exception()
+        except asyncio.CancelledError:
+            return
+        if exc is not None:
+            logger.error("Run task %s failed: %s", run_id, exc)
+
+    task.add_done_callback(_cleanup)
+    return task
+
+
+async def _resume_incomplete_runs(app: FastAPI, services: AppServices) -> None:
+    try:
+        paradoxes = load_paradoxes(services.paradoxes_path)
+    except Exception as exc:
+        logger.error("Failed to load paradoxes while resuming runs: %s", exc)
+        return
+
+    for run_data in await services.storage.list_incomplete_runs():
+        run_id = run_data.get("runId")
+        if not isinstance(run_id, str):
+            continue
+
+        paradox = get_paradox_by_id(paradoxes, run_data.get("paradoxId"))
+        if not paradox:
+            await _save_failed_run(services.storage, run_data, "Paradox definition not found during resume")
+            continue
+
+        try:
+            run_config = _build_run_config_from_saved_run(run_data, paradox)
+        except Exception as exc:
+            await _save_failed_run(services.storage, run_data, f"Invalid resume configuration: {exc}")
+            continue
+
+        _track_run_task(
+            app,
+            run_id,
+            _execute_persisted_run(services, run_config, run_data),
+        )
+
+
 def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
     templates_dir = "templates"
     templates = _build_templates(templates_dir)
@@ -106,6 +253,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
+        app_instance.state.active_run_tasks = {}
         config = config_override or AppConfig.load()
         try:
             config.validate_secrets()
@@ -174,9 +322,19 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         app_instance.title = config.APP_NAME
         app_instance.version = config.VERSION
         logger.info("Starting %s v%s", config.APP_NAME, config.VERSION)
+        await _resume_incomplete_runs(app_instance, app_instance.state.services)
         try:
             yield
         finally:
+            active_tasks: dict[str, asyncio.Task[dict[str, Any]]] = getattr(
+                app_instance.state,
+                "active_run_tasks",
+                {},
+            )
+            for task in list(active_tasks.values()):
+                task.cancel()
+            if active_tasks:
+                await asyncio.gather(*active_tasks.values(), return_exceptions=True)
             app_instance.state.services = None
 
     app = FastAPI(title=app_title, version=app_version, lifespan=lifespan)
@@ -190,6 +348,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
     )
 
     app.state.services = None
+    app.state.active_run_tasks = {}
 
     @app.middleware("http")
     async def add_version_header(
@@ -509,22 +668,15 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
                     ),
                 )
 
-            run_config = RunConfig(
-                modelName=query_request.model_name,
-                paradox=paradox,
-                option_overrides=(
-                    [opt.model_dump() for opt in query_request.option_overrides.options]
-                    if query_request.option_overrides and query_request.option_overrides.options
-                    else None
-                ),
-                iterations=req_iterations,
-                systemPrompt=query_request.system_prompt or "",
-                params=query_request.params.model_dump() if query_request.params else {},
+            run_config = _build_run_config_from_request(query_request, paradox)
+            initial_run = services.query_processor.initialize_run_data(run_config)
+            run_id = await services.storage.create_run(query_request.model_name, initial_run)
+            task = _track_run_task(
+                request.app,
+                run_id,
+                _execute_persisted_run(services, run_config, initial_run),
             )
-
-            run_data = await services.query_processor.execute_run(run_config)
-
-            run_id = await services.storage.create_run(query_request.model_name, run_data)
+            run_data = await asyncio.shield(task)
 
             if request.headers.get("HX-Request"):
                 vm = RunViewModel.build(run_data, paradox)
@@ -538,15 +690,20 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             return run_data
         except HTTPException:
             raise
+        except AuthenticationError as exc:
+            logger.error("Query execution failed: %s", exc)
+            raise HTTPException(status_code=401, detail="Invalid API key or unauthorized.") from exc
+        except QuotaError as exc:
+            logger.error("Query execution failed: %s", exc)
+            raise HTTPException(status_code=402, detail="Insufficient API credits.") from exc
+        except ModelNotFoundError as exc:
+            logger.error("Query execution failed: %s", exc)
+            raise HTTPException(status_code=404, detail="Requested model not found.") from exc
+        except QueryExecutionError as exc:
+            logger.error("Query execution failed: %s", exc)
+            raise HTTPException(status_code=502, detail="Model provider error") from exc
         except Exception as exc:
             logger.error("Query execution failed: %s", exc)
-            error_str = str(exc).lower()
-            if "401" in error_str or "unauthorized" in error_str:
-                raise HTTPException(status_code=401, detail="Invalid API Key or Unauthorized.") from exc
-            if "429" in error_str or "rate limit" in error_str:
-                raise HTTPException(status_code=429, detail="Rate limit exceeded. Try fewer iterations.") from exc
-            if "insufficient_quota" in error_str or "quota" in error_str:
-                raise HTTPException(status_code=402, detail="Insufficient API credits.") from exc
             raise HTTPException(status_code=500, detail="Internal server error") from exc
 
     @app.post("/api/insight")
@@ -649,7 +806,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             )
 
     @app.get("/api/runs/{run_id}/pdf")
-    async def download_pdf_report(request: Request, run_id: str) -> StreamingResponse:
+    async def download_pdf_report(request: Request, run_id: str, theme: str = "dark") -> StreamingResponse:
         services = _get_services(request)
         _validate_run_id(run_id)
         try:
@@ -689,9 +846,10 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
                             narr_exc,
                         )
 
+            validated_theme = "light" if theme == "light" else "dark"
             try:
                 pdf_bytes = services.report_generator.generate_pdf_report(
-                    run_data, paradox, insight, narrative
+                    run_data, paradox, insight, narrative, theme=validated_theme
                 )
             except RuntimeError as exc:
                 logger.warning("PDF generation unavailable for %s: %s", run_id, exc)
@@ -711,6 +869,91 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         except Exception as exc:
             logger.exception("PDF generation failed for %s", run_id)
             raise HTTPException(status_code=500, detail="Failed to generate PDF") from exc
+
+    @app.get("/api/compare/pdf")
+    async def download_comparison_pdf(request: Request, run_ids: str, theme: str = "dark") -> StreamingResponse:
+        """Generate a comparative PDF for 2-4 runs on the same paradox."""
+        services = _get_services(request)
+        ids = [rid.strip() for rid in run_ids.split(",") if rid.strip()]
+        if len(ids) < 2 or len(ids) > 4:
+            raise HTTPException(status_code=400, detail="Provide 2-4 comma-separated run_ids")
+        for rid in ids:
+            _validate_run_id(rid)
+
+        try:
+            runs = [await services.storage.get_run(rid) for rid in ids]
+            paradox_ids = {r.get("paradoxId") for r in runs}
+            if len(paradox_ids) != 1:
+                raise HTTPException(status_code=400, detail="All runs must share the same paradox")
+
+            paradoxes = load_paradoxes(services.paradoxes_path)
+            paradox = get_paradox_by_id(paradoxes, paradox_ids.pop())
+            if not paradox:
+                raise HTTPException(status_code=404, detail="Paradox not found")
+
+            insights = []
+            for run in runs:
+                ins = run.get("insights", [])
+                insights.append(ins[-1] if ins else None)
+
+            validated_theme = "light" if theme == "light" else "dark"
+            try:
+                pdf_bytes = services.report_generator.generate_comparison_pdf(
+                    runs, paradox, insights, theme=validated_theme,
+                )
+            except RuntimeError as exc:
+                logger.warning("Comparison PDF generation unavailable: %s", exc)
+                raise HTTPException(status_code=503, detail="Comparison PDF generation unavailable") from exc
+            return StreamingResponse(
+                io.BytesIO(pdf_bytes),
+                media_type="application/pdf",
+                headers={"Content-Disposition": "inline; filename=comparison_report.pdf"},
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.exception("Comparison PDF generation failed")
+            raise HTTPException(status_code=500, detail="Failed to generate comparison PDF") from exc
+
+    @app.get("/api/runs/{run_id}/export")
+    async def export_run(request: Request, run_id: str, format: str = "json") -> Response:
+        """Export run data in JSON or PPTX format (Phase 6)."""
+        services = _get_services(request)
+        _validate_run_id(run_id)
+        try:
+            run_data = await services.storage.get_run(run_id)
+            paradoxes = load_paradoxes(services.paradoxes_path)
+            paradox = get_paradox_by_id(paradoxes, run_data["paradoxId"]) or {}
+
+            if format == "json":
+                from lib.export_data import export_run_json
+                data = export_run_json(run_data, paradox)
+                return JSONResponse(content=data)
+
+            if format == "pptx":
+                from lib.export_pptx import generate_pptx, pptx_available
+                if not pptx_available():
+                    raise HTTPException(status_code=503, detail="PowerPoint export unavailable")
+                insight = None
+                if "insights" in run_data and run_data["insights"]:
+                    insight = run_data["insights"][-1]
+                pptx_bytes = generate_pptx(run_data, paradox, insight)
+                return StreamingResponse(
+                    io.BytesIO(pptx_bytes),
+                    media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    headers={"Content-Disposition": f"attachment; filename=report_{run_id}.pptx"},
+                )
+
+            raise HTTPException(status_code=400, detail="format must be 'json' or 'pptx'")
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Run not found")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.exception("Export failed for %s", run_id)
+            raise HTTPException(status_code=500, detail="Export failed") from exc
 
     return app
 

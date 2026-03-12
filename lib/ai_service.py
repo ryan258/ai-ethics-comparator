@@ -9,6 +9,16 @@ from typing import Optional, Dict, Any, List, Tuple
 from openai import AsyncOpenAI
 import logging
 
+from lib.query_errors import (
+    AuthenticationError,
+    InvalidModelOutputError,
+    ModelNotFoundError,
+    ProviderTransientError,
+    QueryTimeoutError,
+    QuotaError,
+    RateLimitError,
+)
+
 logger = logging.getLogger(__name__)
 
 class AIService:
@@ -208,11 +218,12 @@ class AIService:
         retry_count: int,
     ) -> Tuple[str, Dict[str, int]]:
         """Handle errors with retry logic"""
-        logger.error(f"Error querying OpenRouter: {error}")
+        logger.error("Error querying OpenRouter: %s", error)
 
         # Check for status code in error
-        status_code = getattr(error, 'status_code', None)
+        status_code = getattr(error, "status_code", None)
         error_msg = str(error)
+        error_msg_lower = error_msg.lower()
 
         if status_code:
             # Retry on 429 (rate limit) or 5xx (server errors)
@@ -234,18 +245,40 @@ class AIService:
 
             # Add context based on status code
             if status_code == 404:
-                raise Exception(f"[404] Model not found: {error_msg}")
-            elif status_code == 429:
-                raise Exception(f"[429] Rate limit exceeded after {self.max_retries} retries: {error_msg}")
-            elif status_code in (402, 403):
-                raise Exception(f"[{status_code}] Billing or authentication issue: {error_msg}")
-            elif status_code == 401:
-                raise Exception(f"[401] Invalid API key: {error_msg}")
-            else:
-                raise Exception(f"[{status_code}] OpenRouter API error: {error_msg}")
+                raise ModelNotFoundError(f"Model not found: {error_msg}")
+            if status_code == 429:
+                raise RateLimitError(
+                    f"Rate limit exceeded after {self.max_retries} retries: {error_msg}"
+                )
+            if status_code in (402, 403):
+                raise QuotaError(f"Billing or quota issue: {error_msg}")
+            if status_code == 401:
+                raise AuthenticationError(f"Invalid API key: {error_msg}")
+            raise ProviderTransientError(f"OpenRouter API error [{status_code}]: {error_msg}")
 
         # Handle network errors
-        if "JSON" in error_msg or "Connection" in error_msg:
+        if (
+            isinstance(error, asyncio.TimeoutError)
+            or "timeout" in error_msg_lower
+            or "timed out" in error_msg_lower
+        ):
+            should_retry = retry_count < self.max_retries
+            if should_retry:
+                delay = self.retry_delay * (2 ** retry_count)
+                logger.info(
+                    "Timeout error - retrying after %ss (attempt %s/%s)...",
+                    delay,
+                    retry_count + 1,
+                    self.max_retries,
+                )
+                await asyncio.sleep(delay)
+                return await self.get_model_response(model_name, prompt, system_prompt, params, retry_count + 1)
+
+            raise QueryTimeoutError(
+                f"Provider timeout after {self.max_retries} retries: {error_msg}"
+            )
+
+        if "json" in error_msg_lower or "connection" in error_msg_lower or "network" in error_msg_lower:
             should_retry = retry_count < self.max_retries
             if should_retry:
                 delay = self.retry_delay * (2 ** retry_count)
@@ -258,10 +291,12 @@ class AIService:
                 await asyncio.sleep(delay)
                 return await self.get_model_response(model_name, prompt, system_prompt, params, retry_count + 1)
 
-            raise Exception(f"[Network] API error after {self.max_retries} retries: {error_msg}")
+            raise ProviderTransientError(
+                f"Network error after {self.max_retries} retries: {error_msg}"
+            )
 
         # Preserve explicit model-output failures without wrapping.
         if error_msg.startswith("Model "):
-            raise Exception(error_msg)
+            raise InvalidModelOutputError(error_msg)
 
-        raise Exception(f"[Unknown] Failed to retrieve response: {error_msg}")
+        raise ProviderTransientError(f"Failed to retrieve response: {error_msg}")

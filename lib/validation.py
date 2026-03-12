@@ -191,6 +191,23 @@ class ExperimentCreateRequest(BaseModel):
             )
         return self
 
+class ComparisonRequest(BaseModel):
+    """Request to generate a comparative PDF for multiple runs."""
+    run_ids: List[str] = Field(..., min_length=2, max_length=4, alias="runIds")
+    theme: str = Field(default="dark", pattern=r"^(dark|light)$")
+
+    class Config:
+        populate_by_name = True
+
+    @field_validator("run_ids")
+    @classmethod
+    def validate_run_ids(cls, v: List[str]) -> List[str]:
+        for rid in v:
+            if not re.match(r"^[a-z0-9][a-z0-9_-]{0,99}$", rid, re.IGNORECASE):
+                raise ValueError(f"Invalid run ID format: {rid}")
+        return v
+
+
 class ExperimentRecord(BaseModel):
     model_config = ConfigDict(extra="ignore")
 

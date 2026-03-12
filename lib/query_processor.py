@@ -12,10 +12,17 @@ import hashlib
 import time
 import random
 import copy
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Awaitable, Callable, Dict, Any, List, Tuple, Optional
 from datetime import datetime, timezone
 import logging
 from lib.ai_service import AIService
+from lib.query_errors import (
+    InvalidChoiceError,
+    MissingExplanationError,
+    ParseAmbiguityError,
+    QueryExecutionError,
+    RetryableQueryError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -343,7 +350,8 @@ def parse_trolley_response(response_text: str, option_count: int) -> Dict[str, A
         return {
             "decisionToken": None,
             "optionId": None,
-            "explanation": response_text.strip()
+            "explanation": response_text.strip(),
+            "parseIssue": "ambiguous_choice",
         }
 
     decision_token = "{" + matches[0] + "}"
@@ -429,6 +437,10 @@ def aggregate_trolley_stats(responses: List[Dict[str, Any]], option_count: int) 
 
 from dataclasses import dataclass, field
 
+
+RunProgressCallback = Callable[[Dict[str, Any]], Awaitable[None]]
+
+
 @dataclass
 class RunConfig:
     """Configuration for an experimental run (N-way support)"""
@@ -463,6 +475,145 @@ class QueryProcessor:
         self.choice_inference_model = choice_inference_model
         self.max_reasks_per_iteration = max_reasks_per_iteration
 
+    @staticmethod
+    def _sanitize_params(
+        params: object,
+        *,
+        fallback: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        source = params if isinstance(params, dict) else fallback if isinstance(fallback, dict) else {}
+        sanitized = {
+            "temperature": source.get("temperature", 1.0),
+            "top_p": source.get("top_p", 1.0),
+            "max_tokens": source.get("max_tokens", 1000),
+            "frequency_penalty": source.get("frequency_penalty", 0),
+            "presence_penalty": source.get("presence_penalty", 0),
+        }
+        if source.get("seed") is not None:
+            sanitized["seed"] = source["seed"]
+        return sanitized
+
+    @staticmethod
+    def _completed_responses(
+        responses: object,
+        iterations: int,
+    ) -> List[Dict[str, Any]]:
+        if not isinstance(responses, list):
+            return []
+
+        completed: Dict[int, Dict[str, Any]] = {}
+        for response in responses:
+            if not isinstance(response, dict):
+                continue
+            iteration = response.get("iteration")
+            option_id = response.get("optionId")
+            explanation = response.get("explanation")
+            if not isinstance(iteration, int) or iteration < 1 or iteration > iterations:
+                continue
+            if not isinstance(option_id, int):
+                continue
+            if not isinstance(explanation, str) or not explanation.strip():
+                continue
+            completed[iteration] = copy.deepcopy(response)
+
+        return [completed[idx] for idx in sorted(completed)]
+
+    def _prepare_prompt(
+        self,
+        config: RunConfig,
+        existing_run: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[str, List[Dict[str, Any]], int, Optional[Dict[str, int]]]:
+        if existing_run:
+            prompt = existing_run.get("prompt")
+            stored_options = existing_run.get("options")
+            stored_shuffle = existing_run.get("shuffleMapping")
+            if isinstance(prompt, str) and isinstance(stored_options, list) and stored_options:
+                option_count = sum(1 for option in stored_options if isinstance(option, dict))
+                shuffle_mapping = stored_shuffle if isinstance(stored_shuffle, dict) else None
+                return prompt, copy.deepcopy(stored_options), option_count, shuffle_mapping
+
+        paradox_type = config.paradox.get("type")
+        if paradox_type != "trolley":
+            raise ValueError(f"Unsupported paradox type: {paradox_type}")
+
+        original_options = copy.deepcopy(config.paradox.get("options", []))
+        if config.option_overrides:
+            override_map = {opt["id"]: opt["description"] for opt in config.option_overrides}
+            original_options = [
+                {**opt, "description": override_map.get(opt["id"], opt["description"])}
+                for opt in original_options
+            ]
+
+        options_to_render = copy.deepcopy(original_options)
+        shuffle_mapping: Optional[Dict[str, int]] = None
+        if config.shuffle_options and options_to_render:
+            random.shuffle(options_to_render)
+            shuffle_mapping = {}
+            for index, option in enumerate(options_to_render):
+                new_id = index + 1
+                shuffle_mapping[str(new_id)] = option["id"]
+                option["id"] = new_id
+
+        dummy_paradox = {**config.paradox, "options": options_to_render}
+        prompt, resolved_options = render_options_template(dummy_paradox, None)
+        if config.systemPrompt:
+            prompt = f"PERSONA: {config.systemPrompt}\n\n{prompt}"
+
+        return prompt, original_options, len(resolved_options), shuffle_mapping
+
+    def initialize_run_data(
+        self,
+        config: RunConfig,
+        existing_run: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        prompt, original_options, option_count, shuffle_mapping = self._prepare_prompt(
+            config,
+            existing_run=existing_run,
+        )
+        if option_count < 1:
+            raise ValueError("Paradox must define at least one option")
+
+        base_run = copy.deepcopy(existing_run) if isinstance(existing_run, dict) else {}
+        params = self._sanitize_params(config.params, fallback=base_run.get("params"))
+        completed_responses = self._completed_responses(
+            base_run.get("responses"),
+            config.iterations,
+        )
+        created_at = str(base_run.get("timestamp") or datetime.now(timezone.utc).isoformat())
+        run_data: Dict[str, Any] = {
+            **base_run,
+            "timestamp": created_at,
+            "updatedAt": datetime.now(timezone.utc).isoformat(),
+            "modelName": config.modelName,
+            "paradoxId": config.paradox["id"],
+            "paradoxType": "trolley",
+            "promptHash": hashlib.sha256(prompt.encode()).hexdigest()[:16],
+            "prompt": prompt,
+            "iterationCount": config.iterations,
+            "completedIterations": len(completed_responses),
+            "params": params,
+            "responses": completed_responses,
+            "options": original_options,
+            "summary": aggregate_trolley_stats(completed_responses, option_count),
+            "status": "running",
+        }
+
+        system_prompt = config.systemPrompt or str(base_run.get("systemPrompt", "") or "")
+        if system_prompt:
+            run_data["systemPrompt"] = system_prompt
+        elif "systemPrompt" in run_data:
+            run_data.pop("systemPrompt", None)
+
+        if shuffle_mapping is not None:
+            run_data["shuffleMapping"] = shuffle_mapping
+        elif "shuffleMapping" in run_data and not isinstance(run_data.get("shuffleMapping"), dict):
+            run_data.pop("shuffleMapping", None)
+
+        if len(completed_responses) >= config.iterations:
+            run_data["status"] = "completed"
+
+        return run_data
+
     async def _infer_option_id_with_fallback(
         self,
         response_text: str,
@@ -491,220 +642,185 @@ class QueryProcessor:
             return None, None
         return inferred_option, "ai_classifier"
 
-    async def execute_run(self, config: RunConfig) -> Dict[str, Any]:
+    async def execute_run(
+        self,
+        config: RunConfig,
+        *,
+        existing_run: Optional[Dict[str, Any]] = None,
+        progress_callback: Optional[RunProgressCallback] = None,
+    ) -> Dict[str, Any]:
         """
         Execute experimental run
-        
+
         Args:
             config: Explicit RunConfig object
-            
+            existing_run: Optional partially completed run record to resume
+            progress_callback: Optional callback invoked after each accepted iteration
+
         Returns:
             Complete run data with responses and summary
         """
-        model_name = config.modelName
-        paradox = config.paradox
-        option_overrides = config.option_overrides
-        iterations = config.iterations
-        system_prompt = config.systemPrompt
-        params = config.params
+        current_run = self.initialize_run_data(config, existing_run=existing_run)
+        prompt = str(current_run["prompt"])
+        option_count = len(current_run.get("options", []))
+        shuffle_mapping = current_run.get("shuffleMapping")
+        params = self._sanitize_params(config.params, fallback=current_run.get("params"))
+        completed = {
+            response["iteration"]: copy.deepcopy(response)
+            for response in current_run.get("responses", [])
+            if isinstance(response, dict) and isinstance(response.get("iteration"), int)
+        }
+        state_lock = asyncio.Lock()
 
-        paradox_type = paradox.get("type")
-        if paradox_type != "trolley":
-            raise ValueError(f"Unsupported paradox type: {paradox_type}")
+        async def persist_state() -> None:
+            if progress_callback is None:
+                return
+            snapshot = copy.deepcopy(current_run)
+            await progress_callback(snapshot)
 
-        # Map options and apply overrides
-        original_options = copy.deepcopy(paradox.get("options", []))
-        if option_overrides:
-            override_map = {opt["id"]: opt["description"] for opt in option_overrides}
-            original_options = [
-                {**opt, "description": override_map.get(opt["id"], opt["description"])}
-                for opt in original_options
-            ]
+        if len(completed) >= config.iterations:
+            current_run["status"] = "completed"
+            current_run["completedIterations"] = len(completed)
+            current_run["updatedAt"] = datetime.now(timezone.utc).isoformat()
+            await persist_state()
+            return current_run
 
-        options_to_render = copy.deepcopy(original_options)
-        shuffle_mapping = None
-        if config.shuffle_options and options_to_render:
-            random.shuffle(options_to_render)
-            shuffle_mapping = {}
-            for index, opt in enumerate(options_to_render):
-                new_id = index + 1
-                shuffle_mapping[str(new_id)] = opt["id"]
-                opt["id"] = new_id
+        async def record_result(result: Dict[str, Any]) -> None:
+            async with state_lock:
+                completed[result["iteration"]] = result
+                ordered_responses = [copy.deepcopy(completed[idx]) for idx in sorted(completed)]
+                current_run["responses"] = ordered_responses
+                current_run["completedIterations"] = len(ordered_responses)
+                current_run["summary"] = aggregate_trolley_stats(ordered_responses, option_count)
+                current_run["status"] = "completed" if len(ordered_responses) >= config.iterations else "running"
+                current_run["updatedAt"] = datetime.now(timezone.utc).isoformat()
+            await persist_state()
 
-        # Use render_options_template for N-way support, passing in our modified paradox
-        dummy_paradox = {**paradox, "options": options_to_render}
-        prompt, resolved_options = render_options_template(dummy_paradox, None)
-        option_count = len(resolved_options)
-
-        if system_prompt:
-            prompt = f"PERSONA: {system_prompt}\n\n{prompt}"
-        
-        # Execute iterations with concurrency limiting
-        async def run_iteration(iteration_number: int):
+        async def run_iteration(iteration_number: int) -> Dict[str, Any]:
             async with self.semaphore:
-                response: str = ""
-                parsed: Dict[str, Any] = {
-                    "decisionToken": None,
-                    "optionId": None,
-                    "explanation": "",
-                }
+                response = ""
                 reask_count = 0
                 next_reask_issue = "invalid_choice"
-
-                max_attempts = self.max_reasks_per_iteration + 1
                 total_latency = 0.0
                 total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
 
-                for attempt_idx in range(max_attempts):
+                while True:
+                    attempt_number = reask_count + 1
                     iteration_prompt = prompt
-                    if attempt_idx > 0:
+                    if reask_count > 0:
                         iteration_prompt = _build_reask_prompt(
                             prompt,
                             option_count,
                             response,
-                            attempt_idx,
+                            attempt_number,
                             issue=next_reask_issue,
                         )
 
-                    start_t = time.monotonic()
-                    response, usage = await self.ai_service.get_model_response(
-                        model_name,
-                        iteration_prompt,
-                        "",  # Pass empty string to disable system prompt handling in AI service
-                        params,
-                    )
+                    try:
+                        start_t = time.monotonic()
+                        response, usage = await self.ai_service.get_model_response(
+                            config.modelName,
+                            iteration_prompt,
+                            "",
+                            params,
+                        )
+                    except RetryableQueryError as retry_error:
+                        logger.warning(
+                            "Retrying iteration %s after provider error: %s",
+                            iteration_number,
+                            retry_error,
+                        )
+                        continue
+
                     latency = time.monotonic() - start_t
                     total_latency += latency
                     total_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
                     total_usage["completion_tokens"] += usage.get("completion_tokens", 0)
 
                     parsed = parse_trolley_response(response, option_count)
-                    
+
                     if shuffle_mapping and parsed["optionId"] is not None:
-                        orig_id = shuffle_mapping.get(str(parsed["optionId"]))
-                        if orig_id is not None:
-                            parsed["optionId"] = orig_id
-                            parsed["decisionToken"] = f"{{{orig_id}}}"
+                        original_id = shuffle_mapping.get(str(parsed["optionId"]))
+                        if original_id is not None:
+                            parsed["optionId"] = original_id
+                            parsed["decisionToken"] = f"{{{original_id}}}"
 
                     parsed["latency"] = total_latency
                     parsed["tokenUsage"] = total_usage
-                    if parsed["optionId"] is not None and _has_explanation_text(parsed):
-                        break
-                    if parsed["optionId"] is not None:
-                        next_reask_issue = "missing_explanation"
-                    else:
-                        next_reask_issue = "invalid_choice"
 
-                    if attempt_idx < self.max_reasks_per_iteration:
-                        reask_count += 1
-
-                timestamp = datetime.now(timezone.utc).isoformat()
-
-                inferred = False
-                inference_method: Optional[str] = None
-
-                if parsed["optionId"] is None:
-                    try:
+                    inferred = False
+                    inference_method: Optional[str] = None
+                    if parsed["optionId"] is None:
                         inferred_option, inference_method = await self._infer_option_id_with_fallback(
                             response,
                             option_count,
                         )
-                    except Exception as inference_error:
-                        logger.warning("Choice inference fallback failed: %s", inference_error)
-                        inferred_option, inference_method = None, None
+                        if inferred_option is not None:
+                            if shuffle_mapping:
+                                original_id = shuffle_mapping.get(str(inferred_option))
+                                if original_id is not None:
+                                    inferred_option = original_id
+                            parsed["decisionToken"] = f"{{{inferred_option}}}"
+                            parsed["optionId"] = inferred_option
+                            inferred = True
 
-                    if inferred_option is not None:
-                        if shuffle_mapping:
-                            orig_id = shuffle_mapping.get(str(inferred_option))
-                            if orig_id is not None:
-                                inferred_option = orig_id
+                    if parsed["optionId"] is not None and _has_explanation_text(parsed):
+                        result = {
+                            "iteration": iteration_number,
+                            "decisionToken": parsed["decisionToken"],
+                            "optionId": parsed["optionId"],
+                            "explanation": parsed["explanation"],
+                            "raw": response,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }
+                        for key in [
+                            "valuePriorities",
+                            "keyAssumptions",
+                            "mainRisk",
+                            "switchCondition",
+                            "evidenceNeeded",
+                            "latency",
+                            "tokenUsage",
+                        ]:
+                            if key in parsed:
+                                result[key] = parsed[key]
+                        if reask_count:
+                            result["reaskCount"] = reask_count
+                        if inferred and inference_method:
+                            result["inferred"] = True
+                            result["inferenceMethod"] = inference_method
+                        return result
 
-                        parsed["decisionToken"] = f"{{{inferred_option}}}"
-                        parsed["optionId"] = inferred_option
-                        inferred = True
+                    if parsed.get("parseIssue") == "ambiguous_choice":
+                        retry_error: RetryableQueryError = ParseAmbiguityError(
+                            "Ambiguous response contained multiple decision tokens"
+                        )
+                    elif parsed["optionId"] is not None:
+                        retry_error = MissingExplanationError(
+                            "Model selected an option without the required explanation"
+                        )
+                        next_reask_issue = "missing_explanation"
+                    else:
+                        retry_error = InvalidChoiceError(
+                            "Model did not return a single valid choice"
+                        )
+                        next_reask_issue = "invalid_choice"
 
-                result = {
-                    "iteration": iteration_number,
-                    "decisionToken": parsed["decisionToken"],
-                    "optionId": parsed["optionId"],
-                    "explanation": parsed["explanation"],
-                    "raw": response,
-                    "timestamp": timestamp
-                }
-                for key in ["valuePriorities", "keyAssumptions", "mainRisk", "switchCondition", "evidenceNeeded", "latency", "tokenUsage"]:
-                    if key in parsed:
-                        result[key] = parsed[key]
-                if reask_count:
-                    result["reaskCount"] = reask_count
-                if inferred and inference_method:
-                    result["inferred"] = True
-                    result["inferenceMethod"] = inference_method
-                return result
+                    reask_count += 1
+                    logger.warning(
+                        "Retrying iteration %s after invalid output: %s",
+                        iteration_number,
+                        retry_error,
+                    )
 
-        # Run all iterations concurrently (limited by semaphore)
-        tasks = [run_iteration(i + 1) for i in range(iterations)]
-        
-        # Add global timeout (e.g. 5 minutes) to prevent hanging forever
-        timeout_seconds = 300
-        try:
-            responses = await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=True),
-                timeout=timeout_seconds
-            )
-        except asyncio.TimeoutError:
-            logger.error("Query batch timed out after %ss", timeout_seconds)
-            raise asyncio.TimeoutError(
-                f"Query executions exceeded {timeout_seconds}s timeout"
-            )
-        
-        # Filter out exceptions from gather results
-        valid_responses = []
-        for i, resp in enumerate(responses):
-            if isinstance(resp, Exception):
-                logger.error("Iteration %s failed: %s", i + 1, resp)
-                # Create a strict error response structure
-                valid_responses.append({
-                    "iteration": i+1,
-                    "error": str(resp),
-                    "raw": str(resp),
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                })
-            else:
-                valid_responses.append(resp)
-                
-        responses = valid_responses
+        remaining_iterations = [
+            iteration
+            for iteration in range(1, config.iterations + 1)
+            if iteration not in completed
+        ]
+        tasks = [run_iteration(iteration) for iteration in remaining_iterations]
+        results = await asyncio.gather(*tasks)
+        for result in results:
+            await record_result(result)
 
-        # Build run data
-        run_data = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "modelName": model_name,
-            "paradoxId": paradox["id"],
-            "paradoxType": "trolley",
-            "promptHash": hashlib.sha256(prompt.encode()).hexdigest()[:16],
-            "prompt": prompt,
-            "iterationCount": iterations,
-            "params": {
-                "temperature": params.get("temperature", 1.0),
-                "top_p": params.get("top_p", 1.0),
-                "max_tokens": params.get("max_tokens", 1000),
-                "frequency_penalty": params.get("frequency_penalty", 0),
-                "presence_penalty": params.get("presence_penalty", 0)
-            },
-            "responses": responses
-        }
-
-        # Add optional fields
-        if system_prompt:
-            run_data["systemPrompt"] = system_prompt
-
-        if params.get("seed") is not None:
-            run_data["params"]["seed"] = params["seed"]
-
-        if config.shuffle_options and shuffle_mapping is not None:
-            run_data["shuffleMapping"] = shuffle_mapping
-
-        # Store original options so cross-run comparison is possible.
-        run_data["options"] = original_options
-        run_data["summary"] = aggregate_trolley_stats(responses, option_count)
-
-        return run_data
+        return copy.deepcopy(current_run)

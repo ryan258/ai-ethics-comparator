@@ -17,13 +17,13 @@ except ModuleNotFoundError:  # pragma: no cover - optional dependency guard
     pydyf = None  # type: ignore[assignment]
 
 
-PALETTE: Dict[str, str] = {
-    "bg": "#121212",
-    "text": "#EBD2BE",
-    "accent": "#A6ACCD",
-    "success": "#98C379",
-    "danger": "#E06C75",
-}
+from lib.pdf_charts import (
+    PALETTE_DARK,
+    PALETTE_LIGHT,
+    draw_donut_native,
+    draw_heatmap_native,
+    draw_sparkline_native,
+)
 
 
 def pdf_available() -> bool:
@@ -71,29 +71,34 @@ class NativePdfReportRenderer:
     FOOTER_HEIGHT = 24.0
     CONTENT_WIDTH = PAGE_WIDTH - (MARGIN_X * 2)
 
-    def __init__(self, report: Dict[str, Any]) -> None:
+    def __init__(self, report: Dict[str, Any], *, theme: str = "dark") -> None:
         if pydyf is None:
             raise RuntimeError("pydyf is required for native PDF rendering.")
 
         self.report = report
+        self.palette = PALETTE_LIGHT if theme == "light" else PALETTE_DARK
         self.pdf = pydyf.PDF()
         self.page_number = 0
         self.current_page: Optional[pydyf.Stream] = None
         self.current_y = self.TOP_MARGIN
+        self.current_section = ""
+        self.section_pages: List[Tuple[str, int]] = []
         self.font_refs = self._register_fonts()
 
     def render(self) -> bytes:
         """Render the report to PDF bytes."""
-        page_methods = [self._draw_cover_page]
+        page_methods: List[Tuple[str, Any]] = [("Cover", self._draw_cover_page)]
         if isinstance(self.report.get("narrative"), dict):
-            page_methods.append(self._draw_narrative)
-        page_methods.append(self._draw_briefing_page)
+            page_methods.append(("Interpretive Synthesis", self._draw_narrative))
+        page_methods.append(("Choice Distribution", self._draw_briefing_page))
         if self.report.get("responses"):
-            page_methods.append(self._draw_responses)
+            page_methods.append(("Response Ledger", self._draw_responses))
         if isinstance(self.report.get("analysis"), dict):
-            page_methods.append(self._draw_analysis)
+            page_methods.append(("Analyst Assessment", self._draw_analysis))
 
-        for method in page_methods:
+        for section_name, method in page_methods:
+            self.current_section = section_name
+            self.section_pages.append((section_name, self.page_number + 1))
             self._start_page()
             method()
             self._finalize_page()
@@ -139,26 +144,7 @@ class NativePdfReportRenderer:
         self.current_page = pydyf.Stream(compress=False)
         self.current_y = self.TOP_MARGIN
 
-        self._fill_rect(0, 0, self.PAGE_WIDTH, self.PAGE_HEIGHT, PALETTE["bg"])
-        self._fill_rect(0, 0, self.PAGE_WIDTH, 10, PALETTE["accent"])
-        self._fill_rect(0, 10, self.PAGE_WIDTH * 0.16, 6, PALETTE["danger"])
-
-        self._draw_text(
-            "AI ETHICS COMPARATOR",
-            self.MARGIN_X,
-            24,
-            font="BodyBold",
-            size=9,
-            color=PALETTE["accent"],
-        )
-        self._draw_text(
-            "Professional Decision Report",
-            self.PAGE_WIDTH - self.MARGIN_X - 170,
-            24,
-            font="Body",
-            size=9,
-            color=PALETTE["text"],
-        )
+        self._fill_rect(0, 0, self.PAGE_WIDTH, self.PAGE_HEIGHT, self.palette["bg"])
 
     def _finalize_page(self) -> None:
         assert pydyf is not None
@@ -167,28 +153,31 @@ class NativePdfReportRenderer:
 
         footer_y = self.PAGE_HEIGHT - self.BOTTOM_MARGIN + 4
         self._draw_line(
-            self.MARGIN_X,
-            footer_y,
-            self.PAGE_WIDTH - self.MARGIN_X,
-            footer_y,
-            PALETTE["accent"],
-            width=0.8,
+            self.MARGIN_X, footer_y,
+            self.PAGE_WIDTH - self.MARGIN_X, footer_y,
+            self.palette["accent"], width=0.3,
         )
+        footer_text_y = self.PAGE_HEIGHT - self.BOTTOM_MARGIN + 10
+        self._draw_text(
+            "AI Ethics Comparator",
+            self.MARGIN_X, footer_text_y,
+            font="Body", size=6, color=self.palette["accent"],
+        )
+        if self.current_section:
+            self._draw_text(
+                f"  |  {self.current_section}",
+                self.MARGIN_X + 72, footer_text_y,
+                font="Body", size=6, color=self.palette["accent"],
+            )
         self._draw_text(
             self.report.get("run_id", "unknown"),
-            self.MARGIN_X,
-            self.PAGE_HEIGHT - self.BOTTOM_MARGIN + 10,
-            font="Mono",
-            size=8,
-            color=PALETTE["accent"],
+            self.MARGIN_X + 210, footer_text_y,
+            font="Mono", size=6, color=self.palette["accent"],
         )
         self._draw_text(
             f"Page {self.page_number}",
-            self.PAGE_WIDTH - self.MARGIN_X - 36,
-            self.PAGE_HEIGHT - self.BOTTOM_MARGIN + 10,
-            font="Body",
-            size=8,
-            color=PALETTE["accent"],
+            self.PAGE_WIDTH - self.MARGIN_X - 30, footer_text_y,
+            font="Body", size=6, color=self.palette["accent"],
         )
 
         page_stream = self.current_page
@@ -216,250 +205,154 @@ class NativePdfReportRenderer:
         self._start_page()
 
     def _draw_cover_page(self) -> None:
+        # ── Accent bar + kicker ──
+        self._fill_rect(self.MARGIN_X, self.current_y, 90, 2.5, self.palette["accent"])
+        self.current_y += 10
         self._draw_text(
-            "EXECUTIVE BRIEF",
+            "AI ETHICS COMPARATOR  —  EXECUTIVE BRIEF",
             self.MARGIN_X,
             self.current_y,
             font="BodyBold",
-            size=8,
-            color=PALETTE["accent"],
-        )
-        self.current_y += 18
-        self._draw_text(
-            "Ethical Decision Report",
-            self.MARGIN_X,
-            self.current_y,
-            font="Display",
-            size=29,
-            color=PALETTE["text"],
-        )
-        self.current_y += 38
-
-        paradox_title = _clean_text(self.report.get("paradox_title", "Unknown paradox"))
-        self._draw_text_block(
-            paradox_title,
-            self.MARGIN_X,
-            self.current_y,
-            self.CONTENT_WIDTH,
-            font="BodyBold",
-            size=18,
-            color=PALETTE["success"],
-            leading=1.18,
-        )
-        self.current_y += 34
-
-        subtitle = (
-            f"Category: {self.report.get('category', 'Uncategorized')}  |  "
-            f"Generated: {self.report.get('generated_at_label', 'Unknown')}"
-        )
-        self._draw_text(
-            subtitle,
-            self.MARGIN_X,
-            self.current_y,
-            font="Body",
-            size=10,
-            color=PALETTE["accent"],
+            size=7,
+            color=self.palette["accent"],
         )
         self.current_y += 20
 
-        self._draw_cover_summary_band()
-        self._draw_cover_stat_band()
-        self._draw_cover_snapshot()
-        self._draw_cover_detail_band()
-
-    def _draw_cover_summary_band(self) -> None:
-        feature_width = self.CONTENT_WIDTH * 0.63
-        side_width = self.CONTENT_WIDTH - feature_width - 14
-        panel_height = 188
-        x_left = self.MARGIN_X
-        x_right = self.MARGIN_X + feature_width + 14
-
-        self._card(x_left, self.current_y, feature_width, panel_height, accent_bar=PALETTE["success"])
+        # ── Title ──
         self._draw_text(
-            str(self.report.get("lead_choice_token", "{?}")),
-            x_left + 16,
-            self.current_y + 16,
-            font="Mono",
-            size=10,
-            color=PALETTE["accent"],
+            "Ethical Decision",
+            self.MARGIN_X,
+            self.current_y,
+            font="Display",
+            size=30,
+            color=self.palette["text"],
         )
-        self._draw_text_block(
-            _clean_text(self.report.get("lead_choice_label", "No dominant choice")),
-            x_left + 16,
-            self.current_y + 34,
-            feature_width - 32,
-            font="BodyBold",
-            size=20,
-            color=PALETTE["text"],
-            leading=1.12,
+        self.current_y += 34
+        self._draw_text(
+            "Report",
+            self.MARGIN_X,
+            self.current_y,
+            font="Display",
+            size=30,
+            color=self.palette["text"],
         )
-        self._draw_text_block(
-            _clean_text(self.report.get("lead_choice_support", "")),
-            x_left + 16,
-            self.current_y + 86,
-            feature_width - 32,
+        self.current_y += 42
+
+        # ── Paradox title ──
+        paradox_title = _clean_text(self.report.get("paradox_title", "Unknown paradox"))
+        title_height = self._draw_text_block(
+            paradox_title,
+            self.MARGIN_X,
+            self.current_y,
+            self.CONTENT_WIDTH * 0.85,
             font="BodyBold",
-            size=10,
-            color=PALETTE["success"],
+            size=15,
+            color=self.palette["success"],
             leading=1.2,
         )
-        self._draw_text_block(
-            _clean_text(self.report.get("executive_summary", "")),
-            x_left + 16,
-            self.current_y + 112,
-            feature_width - 32,
-            font="Body",
-            size=11,
-            color=PALETTE["text"],
-            leading=1.5,
-            max_lines=5,
-        )
+        self.current_y += max(22.0, title_height + 6)
 
-        self._card(x_right, self.current_y, side_width, panel_height)
+        # ── Category | Date ──
+        subtitle = (
+            f"{self.report.get('category', 'Uncategorized')}  |  "
+            f"{self.report.get('generated_at_label', 'Unknown')}"
+        )
+        self._draw_text(subtitle, self.MARGIN_X, self.current_y, font="Body", size=9, color=self.palette["accent"])
+        self.current_y += 18
+
+        # ── Rule ──
+        self._draw_line(self.MARGIN_X, self.current_y, self.PAGE_WIDTH - self.MARGIN_X, self.current_y, self.palette["accent"], width=0.6)
+        self.current_y += 14
+
+        # ── Key Finding ──
+        self._draw_text("KEY FINDING", self.MARGIN_X, self.current_y, font="BodyBold", size=7, color=self.palette["accent"])
+        self.current_y += 14
+        lead_label = _clean_text(self.report.get("lead_choice_label", "No dominant choice"))
+        lead_height = self._draw_text_block(
+            lead_label, self.MARGIN_X, self.current_y, self.CONTENT_WIDTH * 0.8,
+            font="BodyBold", size=19, color=self.palette["text"], leading=1.12,
+        )
+        self.current_y += max(24.0, lead_height + 4)
+        self._draw_text(
+            _clean_text(self.report.get("lead_choice_support", "")),
+            self.MARGIN_X, self.current_y,
+            font="BodyBold", size=10, color=self.palette["success"],
+        )
+        self.current_y += 18
+
+        # ── Executive prose ──
+        narrative = self.report.get("narrative")
+        prose = ""
+        if isinstance(narrative, dict) and narrative.get("executive_narrative"):
+            prose = narrative["executive_narrative"]
+        else:
+            prose = self.report.get("executive_summary", "")
+        self._draw_flowing_text(
+            prose, self.CONTENT_WIDTH * 0.88,
+            font="Body", size=10, color=self.palette["text"], leading=1.65,
+            max_height=120.0,
+        )
+        self.current_y += 4
+
+        # ── Rule ──
+        self._draw_line(self.MARGIN_X, self.current_y, self.PAGE_WIDTH - self.MARGIN_X, self.current_y, self.palette["accent"], width=0.4)
+        self.current_y += 12
+
+        # ── Stat strip (no boxes — just aligned columns) ──
+        self._draw_cover_stats()
+
+        # ── Rule ──
+        self._draw_line(self.MARGIN_X, self.current_y, self.PAGE_WIDTH - self.MARGIN_X, self.current_y, self.palette["accent"], width=0.4)
+        self.current_y += 10
+
+        # ── Metadata strip ──
+        self._draw_cover_metadata()
+
+    def _draw_cover_stats(self) -> None:
+        col_width = self.CONTENT_WIDTH / 4
+        has_narrative = isinstance(self.report.get("narrative"), dict) and any(
+            self.report["narrative"].get(k) for k in ("executive_narrative", "response_arc", "implications", "scenario_commentary")
+        )
+        has_analysis = isinstance(self.report.get("analysis"), dict)
+        if has_narrative:
+            synth_val = "Narrative"
+        elif has_analysis:
+            synth_val = "Analysis"
+        else:
+            synth_val = "Pending"
+
+        stats = [
+            (str(self.report.get("response_count", 0)), "RESPONSES"),
+            (self.report.get("mean_latency_label", "n/a"), "MEAN LATENCY"),
+            (self.report.get("token_volume_label", "n/a"), "TOKEN VOLUME"),
+            (synth_val, "SYNTHESIS"),
+        ]
+        for idx, (value, label) in enumerate(stats):
+            x = self.MARGIN_X + (idx * col_width) + (4 if idx else 0)
+            self._draw_text(_clean_text(value), x, self.current_y, font="BodyBold", size=15, color=self.palette["text"])
+            self._draw_text(label, x, self.current_y + 18, font="BodyBold", size=6, color=self.palette["accent"])
+            # Vertical separator between columns
+            if idx < 3:
+                sep_x = self.MARGIN_X + ((idx + 1) * col_width) - 2
+                self._draw_line(sep_x, self.current_y - 2, sep_x, self.current_y + 28, self.palette["accent"], width=0.3)
+        self.current_y += 36
+
+    def _draw_cover_metadata(self) -> None:
         metadata = [
             ("RUN ID", self.report.get("run_id", "unknown"), "Mono"),
             ("MODEL", self.report.get("model_name", "unknown"), "Body"),
             ("PROMPT HASH", self.report.get("prompt_hash_short", "n/a"), "Mono"),
             ("ANALYST", self.report.get("analyst_model", "Not generated"), "Body"),
         ]
-        meta_y = self.current_y + 16
-        for label, value, font in metadata:
-            self._draw_text(label, x_right + 14, meta_y, font="BodyBold", size=8, color=PALETTE["accent"])
+        col_width = self.CONTENT_WIDTH / 4
+        for idx, (label, value, font) in enumerate(metadata):
+            x = self.MARGIN_X + (idx * col_width) + (4 if idx else 0)
+            self._draw_text(label, x, self.current_y, font="BodyBold", size=6, color=self.palette["accent"])
             self._draw_text_block(
-                _clean_text(value),
-                x_right + 14,
-                meta_y + 12,
-                side_width - 28,
-                font=font,
-                size=10,
-                color=PALETTE["text"],
-                leading=1.2,
-                max_lines=2,
+                _clean_text(value), x, self.current_y + 10, col_width - 10,
+                font=font, size=8, color=self.palette["text"], leading=1.2, max_lines=1,
             )
-            meta_y += 40
-
-        self.current_y += panel_height + 18
-
-    def _draw_cover_stat_band(self) -> None:
-        card_height = 78
-        gap = 10
-        card_width = (self.CONTENT_WIDTH - (gap * 3)) / 4
-        stats = [
-            ("Response Count", str(self.report.get("response_count", 0)), self.report.get("response_count_support", ""), True),
-            ("Mean Latency", self.report.get("mean_latency_label", "n/a"), self.report.get("latency_support", ""), False),
-            ("Token Volume", self.report.get("token_volume_label", "n/a"), self.report.get("token_support", ""), False),
-            ("Analyst Status", "READY" if isinstance(self.report.get("analysis"), dict) else "PENDING", _clean_text(self.report.get("analyst_model", "Not generated")), True),
-        ]
-
-        for idx, (title, value, support, primary) in enumerate(stats):
-            x = self.MARGIN_X + (idx * (card_width + gap))
-            self._card(x, self.current_y, card_width, card_height, accent_bar=PALETTE["success"] if primary else None)
-            self._draw_text(title.upper(), x + 12, self.current_y + 12, font="BodyBold", size=7, color=PALETTE["accent"])
-            self._draw_text_block(
-                _clean_text(value),
-                x + 12,
-                self.current_y + 26,
-                card_width - 24,
-                font="BodyBold",
-                size=12,
-                color=PALETTE["text"],
-                leading=1.1,
-                max_lines=2,
-            )
-            self._draw_text_block(
-                _clean_text(support),
-                x + 12,
-                self.current_y + 50,
-                card_width - 24,
-                font="Body",
-                size=8,
-                color=PALETTE["accent"],
-                leading=1.18,
-                max_lines=2,
-            )
-
-        self.current_y += card_height + 18
-
-    def _draw_cover_snapshot(self) -> None:
-        panel_height = 102
-        self._card(self.MARGIN_X, self.current_y, self.CONTENT_WIDTH, panel_height, accent_bar=PALETTE["accent"])
-        self._draw_text("ANALYST SNAPSHOT", self.MARGIN_X + 16, self.current_y + 14, font="BodyBold", size=8, color=PALETTE["accent"])
-        self._draw_text_block(
-            _clean_text(self.report.get("analysis_snapshot", "")),
-            self.MARGIN_X + 16,
-            self.current_y + 30,
-            self.CONTENT_WIDTH - 32,
-            font="Body",
-            size=11,
-            color=PALETTE["text"],
-            leading=1.5,
-            max_lines=4,
-        )
-        self.current_y += panel_height + 8
-
-    def _draw_cover_detail_band(self) -> None:
-        panel_height = 128
-        gap = 12
-        panel_width = (self.CONTENT_WIDTH - gap) / 2
-        left_x = self.MARGIN_X
-        right_x = self.MARGIN_X + panel_width + gap
-        self._new_page_if_needed(panel_height + 8)
-
-        self._card(left_x, self.current_y, panel_width, panel_height, accent_bar=PALETTE["accent"])
-        self._draw_text(
-            "ENGAGEMENT SCOPE",
-            left_x + 14,
-            self.current_y + 14,
-            font="BodyBold",
-            size=8,
-            color=PALETTE["accent"],
-        )
-        self._draw_cover_points(
-            self.report.get("scope_points", []),
-            x=left_x + 14,
-            top_y=self.current_y + 34,
-            width=panel_width - 28,
-        )
-
-        self._card(right_x, self.current_y, panel_width, panel_height, accent_bar=PALETTE["success"])
-        self._draw_text(
-            "REPORT SIGNALS",
-            right_x + 14,
-            self.current_y + 14,
-            font="BodyBold",
-            size=8,
-            color=PALETTE["accent"],
-        )
-        self._draw_cover_points(
-            self.report.get("readout_points", []),
-            x=right_x + 14,
-            top_y=self.current_y + 34,
-            width=panel_width - 28,
-        )
-
-        self.current_y += panel_height + 8
-
-    def _draw_cover_points(self, items: object, *, x: float, top_y: float, width: float) -> None:
-        if not isinstance(items, list):
-            return
-        y = top_y
-        for item in items[:3]:
-            text = _clean_text(item)
-            if not text:
-                continue
-            self._draw_text("-", x, y, font="BodyBold", size=11, color=PALETTE["success"])
-            self._draw_text_block(
-                text,
-                x + 12,
-                y,
-                width - 12,
-                font="Body",
-                size=9,
-                color=PALETTE["text"],
-                leading=1.35,
-                max_lines=3,
-            )
-            y += 30
+        self.current_y += 26
 
     def _draw_narrative(self) -> None:
         """Draw the AI-generated narrative synthesis page."""
@@ -467,253 +360,326 @@ class NativePdfReportRenderer:
         if not isinstance(narrative, dict):
             return
 
-        self._section_heading("Analyst Narrative", "AI-generated interpretive synthesis of findings.")
+        self._section_heading("Interpretive Synthesis", "AI-generated analysis of findings and implications.")
 
         sections = [
-            ("Executive Narrative", narrative.get("executive_narrative", ""), PALETTE["success"]),
+            ("Executive Narrative", narrative.get("executive_narrative", ""), self.palette["success"]),
             ("Response Arc", narrative.get("response_arc", ""), None),
             ("Scenario Commentary", narrative.get("scenario_commentary", ""), None),
-            ("Deployment Implications", narrative.get("implications", ""), PALETTE["danger"]),
+            ("Cross-Iteration Patterns", narrative.get("cross_iteration_patterns", ""), None),
+            ("Framework Diagnosis", narrative.get("framework_diagnosis", ""), self.palette["accent"]),
+            ("Deployment Implications", narrative.get("implications", ""), self.palette["danger"]),
         ]
 
         for title, text, accent in sections:
             text = _clean_text(text)
             if not text:
                 continue
-            lines = self._wrap_text(text, self.CONTENT_WIDTH - 32, font="Body", size=10)
-            panel_height = max(60.0, (len(lines) * 13.5) + 42)
-            self._new_page_if_needed(panel_height + 14)
-            self._card(
-                self.MARGIN_X,
-                self.current_y,
-                self.CONTENT_WIDTH,
-                panel_height,
-                accent_bar=accent,
-            )
+            prose_width = self.CONTENT_WIDTH - 14 if accent else self.CONTENT_WIDTH
+            prose_x = self.MARGIN_X + 14 if accent else self.MARGIN_X
+            lines = self._wrap_text(text, prose_width, font="Body", size=10)
+            block_height = (len(lines) * 15.5) + 22
+            self._new_page_if_needed(block_height + 14)
+
+            # Section label
             self._draw_text(
-                title.upper(),
-                self.MARGIN_X + 16,
-                self.current_y + 14,
-                font="BodyBold",
-                size=8,
-                color=PALETTE["accent"],
+                title.upper(), prose_x, self.current_y,
+                font="BodyBold", size=7, color=self.palette["accent"],
             )
+            self.current_y += 14
+
+            # Left accent bar (thin, only for accented sections)
+            if accent:
+                bar_top = self.current_y
+                bar_height = len(lines) * 15.5
+                self._fill_rect(self.MARGIN_X, bar_top, 2.5, bar_height, accent)
+
+            # Prose body
             self._draw_wrapped_lines(
-                lines,
-                self.MARGIN_X + 16,
-                self.current_y + 30,
-                font="Body",
-                size=10,
-                color=PALETTE["text"],
-                leading=1.55,
+                lines, prose_x, self.current_y,
+                font="Body", size=10, color=self.palette["text"], leading=1.55,
             )
-            self.current_y += panel_height + 10
+            self.current_y += (len(lines) * 15.5) + 18
 
     def _draw_briefing_page(self) -> None:
         self._section_heading("Choice Distribution", "Vote share across all iterations.")
         self._draw_distribution_section()
+        self.current_y += 6
+        self._draw_visual_dashboard()
         self.current_y += 10
         self._section_heading("Scenario Brief", "Context excerpt from the evaluated prompt.")
         self._draw_scenario_section()
 
     def _draw_distribution_section(self) -> None:
         option_stats = self.report.get("option_stats", [])
-        section_height = (len(option_stats) * 72) + 24
-        if self.report.get("undecided_count", 0):
-            section_height += 34
-
-        self._new_page_if_needed(section_height)
 
         for option in option_stats:
-            self._new_page_if_needed(78)
+            self._new_page_if_needed(58)
             is_leader = bool(option.get("is_leader"))
-            self._card(
-                self.MARGIN_X,
-                self.current_y,
-                self.CONTENT_WIDTH,
-                62,
-                accent_bar=PALETTE["success"] if is_leader else None,
-            )
+
+            # Option name + score on same line
+            token_label = f"{option['token']}  {option['label']}"
             self._draw_text(
-                f"{option['token']}  {option['label']}",
-                self.MARGIN_X + 16,
-                self.current_y + 14,
-                font="BodyBold",
-                size=11,
-                color=PALETTE["text"],
+                token_label, self.MARGIN_X, self.current_y,
+                font="BodyBold", size=10, color=self.palette["text"],
             )
             self._draw_text(
                 f"{option['count']} ({option['percentage_label']})",
-                self.PAGE_WIDTH - self.MARGIN_X - 92,
-                self.current_y + 14,
-                font="BodyBold",
-                size=10,
-                color=PALETTE["success"] if is_leader else PALETTE["text"],
+                self.PAGE_WIDTH - self.MARGIN_X - 88, self.current_y,
+                font="BodyBold", size=10,
+                color=self.palette["success"] if is_leader else self.palette["text"],
             )
-            bar_x = self.MARGIN_X + 16
-            bar_y = self.current_y + 30
-            bar_width = self.CONTENT_WIDTH - 32
-            self._fill_rect(bar_x, bar_y, bar_width, 12, PALETTE["bg"])
-            self._stroke_rect(bar_x, bar_y, bar_width, 12, PALETTE["accent"], 0.8)
+            self.current_y += 16
+
+            # Thin bar (no border, just filled track)
+            bar_width = self.CONTENT_WIDTH
+            self._fill_rect(self.MARGIN_X, self.current_y, bar_width, 5, self.palette.get("bg_raised", "#1a1a1a"))
             fill_width = bar_width * (float(option["percentage"]) / 100.0)
             if fill_width > 0:
                 self._fill_rect(
-                    bar_x,
-                    bar_y,
-                    max(6.0, fill_width),
-                    12,
-                    PALETTE["success"] if is_leader else PALETTE["accent"],
+                    self.MARGIN_X, self.current_y,
+                    max(3.0, fill_width), 5,
+                    self.palette["success"] if is_leader else self.palette["accent"],
                 )
+            self.current_y += 9
+
+            # Description
             self._draw_text_block(
-                option["description"],
-                self.MARGIN_X + 16,
-                self.current_y + 48,
-                self.CONTENT_WIDTH - 32,
-                font="Body",
-                size=8,
-                color=PALETTE["accent"],
-                leading=1.15,
-                max_lines=1,
+                option["description"], self.MARGIN_X, self.current_y,
+                self.CONTENT_WIDTH, font="Body", size=8,
+                color=self.palette["accent"], leading=1.35, max_lines=2,
             )
-            self.current_y += 74
+            self.current_y += 24
 
         undecided_count = int(self.report.get("undecided_count", 0) or 0)
         if undecided_count:
-            self._draw_text("Undecided", self.MARGIN_X, self.current_y, font="BodyBold", size=10, color=PALETTE["text"])
             self._draw_text(
-                f"{undecided_count} ({self.report.get('undecided_percentage_label', '0.0%')})",
-                self.MARGIN_X + 110,
-                self.current_y,
-                font="BodyBold",
-                size=10,
-                color=PALETTE["danger"],
+                f"Undecided: {undecided_count} ({self.report.get('undecided_percentage_label', '0.0%')})",
+                self.MARGIN_X, self.current_y,
+                font="BodyBold", size=9, color=self.palette["danger"],
             )
-            self.current_y += 26
+            self.current_y += 20
+
+    def _draw_visual_dashboard(self) -> None:
+        """Draw Phase 1 charts: donut, sparkline, heatmap."""
+        donut_data = self.report.get("donut_data", [])
+        latency_series = self.report.get("latency_series", [])
+        decision_seq = self.report.get("decision_sequence", [])
+        option_ids = self.report.get("chart_option_ids", [])
+
+        has_donut = any(d.get("value", 0) for d in donut_data)
+        has_spark = len(latency_series) >= 2
+        has_heat = bool(decision_seq) and bool(option_ids)
+
+        if not (has_donut or has_spark or has_heat):
+            return
+
+        # ── Row 1: Donut (left) + Sparkline (right) ──
+        row_height = 130.0
+        self._new_page_if_needed(row_height + 80)
+
+        self._draw_line(
+            self.MARGIN_X, self.current_y,
+            self.PAGE_WIDTH - self.MARGIN_X, self.current_y,
+            self.palette["accent"], width=0.3,
+        )
+        self.current_y += 8
+
+        # Pattern badge (Phase 5)
+        pattern = self.report.get("run_pattern", "")
+        if pattern:
+            self._draw_pattern_badge(pattern)
+
+        row_top = self.current_y
+
+        if has_donut:
+            donut_cx = self.MARGIN_X + 85
+            donut_cy = row_top + 62
+            assert self.current_page is not None
+            draw_donut_native(
+                self.current_page, self.PAGE_HEIGHT,
+                donut_cx, donut_cy, donut_data, self.palette,
+                outer_r=56.0, inner_r=34.0,
+            )
+            # Center label
+            self._draw_text(
+                str(self.report.get("response_count", 0)),
+                donut_cx - 10, donut_cy - 4,
+                font="BodyBold", size=18, color=self.palette["text"],
+            )
+            self._draw_text(
+                "TOTAL", donut_cx - 10, donut_cy + 14,
+                font="BodyBold", size=6, color=self.palette["accent"],
+            )
+
+        if has_spark:
+            spark_x = self.MARGIN_X + self.CONTENT_WIDTH * 0.42
+            spark_y = row_top + 10
+            spark_w = self.CONTENT_WIDTH * 0.56
+            self._draw_text(
+                "LATENCY PROFILE", spark_x, spark_y,
+                font="BodyBold", size=7, color=self.palette["accent"],
+            )
+            assert self.current_page is not None
+            draw_sparkline_native(
+                self.current_page, self.PAGE_HEIGHT,
+                spark_x, spark_y + 14, latency_series, self.palette,
+                width=spark_w, height=44.0,
+            )
+            # Min/max labels
+            lo, hi = min(latency_series), max(latency_series)
+            self._draw_text(
+                f"{hi:.1f}s", spark_x + spark_w + 4, spark_y + 14,
+                font="Mono", size=6, color=self.palette["accent"],
+            )
+            self._draw_text(
+                f"{lo:.1f}s", spark_x + spark_w + 4, spark_y + 52,
+                font="Mono", size=6, color=self.palette["accent"],
+            )
+
+        self.current_y = row_top + row_height
+
+        # ── Row 2: Heatmap ──
+        if has_heat:
+            self._draw_text(
+                "DECISION PATTERN", self.MARGIN_X, self.current_y,
+                font="BodyBold", size=7, color=self.palette["accent"],
+            )
+            self.current_y += 12
+            assert self.current_page is not None
+            tw, th = draw_heatmap_native(
+                self.current_page, self.PAGE_HEIGHT,
+                self.MARGIN_X, self.current_y,
+                decision_seq, option_ids, self.palette,
+            )
+            # Row labels
+            for row, oid in enumerate(option_ids[:25]):
+                label_y = self.current_y + 12 + row * 15 + 3
+                self._draw_text(
+                    f"{{{oid}}}", self.MARGIN_X, label_y,
+                    font="Mono", size=7, color=self.palette["accent"],
+                )
+            self.current_y += th + 8
+
+    def _draw_pattern_badge(self, pattern: str) -> None:
+        """Draw a coloured pattern classification badge (Phase 5)."""
+        badge_colors = {
+            "unanimous": self.palette["success"],
+            "dominant": self.palette["success"],
+            "contested": self.palette["danger"],
+            "split": "#C9A0DC",
+            "ambiguous": self.palette["accent"],
+        }
+        color = badge_colors.get(pattern, self.palette["accent"])
+        label = pattern.upper()
+        badge_w = self._estimate_text_width(label, font="BodyBold", size=7) + 12
+        badge_h = 14
+
+        self._fill_rect(self.MARGIN_X, self.current_y, badge_w, badge_h, color)
+        # Draw text in contrasting colour
+        text_color = self.palette["bg"] if pattern in ("unanimous", "dominant", "contested") else self.palette["text"]
+        self._draw_text(
+            label, self.MARGIN_X + 6, self.current_y + 2,
+            font="BodyBold", size=7, color=text_color,
+        )
+        self.current_y += badge_h + 6
 
     def _draw_scenario_section(self) -> None:
         scenario_text = _clean_text(self.report.get("scenario_excerpt", self.report.get("scenario_text", "")))
-        scenario_lines = self._wrap_text(scenario_text or "Scenario text unavailable.", self.CONTENT_WIDTH - 32, font="Body", size=10)
-        visible_lines = min(len(scenario_lines), 15)
-        panel_height = max(128.0, (visible_lines * 13.5) + 42)
-        self._new_page_if_needed(panel_height + 10)
-        panel_top = self.current_y
-        self._card(self.MARGIN_X, panel_top, self.CONTENT_WIDTH, panel_height, accent_bar=PALETTE["accent"])
-        max_lines = max(int((panel_height - 32) / 13.5), 1)
-        if len(scenario_lines) > max_lines:
-            scenario_lines = scenario_lines[:max_lines]
-            last_line = scenario_lines[-1]
-            scenario_lines[-1] = (last_line[:-3].rstrip() + "..." if len(last_line) > 3 else "...")
+        scenario_lines = self._wrap_text(scenario_text or "Scenario text unavailable.", self.CONTENT_WIDTH - 14, font="Body", size=9.5)
+        visible_lines = min(len(scenario_lines), 25)
+        line_height = 9.5 * 1.55
+        text_height = visible_lines * line_height
+        block_height = text_height + 8
+        self._new_page_if_needed(block_height + 10)
+
+        # Left accent bar
+        self._fill_rect(self.MARGIN_X, self.current_y - 2, 2.5, block_height, self.palette["accent"])
+
         self._draw_wrapped_lines(
-            scenario_lines,
-            self.MARGIN_X + 16,
-            panel_top + 16,
+            scenario_lines[:visible_lines],
+            self.MARGIN_X + 12,
+            self.current_y,
             font="Body",
-            size=10,
-            color=PALETTE["text"],
-            leading=1.35,
+            size=9.5,
+            color=self.palette["text"],
+            leading=1.55,
         )
-        self.current_y = panel_top + panel_height + 8
+        self.current_y += block_height + 8
 
     def _draw_responses(self) -> None:
         self._section_heading("Response Ledger", "Per-iteration decisions and explanations")
-        cards_on_page = 0
         for response in self.report.get("responses", []):
-            if cards_on_page >= 2:
-                self._finalize_page()
-                self._start_page()
-                self._section_heading("Response Ledger", "Continued")
-                cards_on_page = 0
             self._draw_response_block(response)
-            cards_on_page += 1
 
     def _draw_response_block(self, response: Dict[str, Any]) -> None:
         explanation = _clean_text(response.get("display_text", "")) or "No explanation recorded."
-        body_font_size = 8
-        body_leading = 1.5
-        explanation_lines = self._wrap_text(explanation, self.CONTENT_WIDTH - 32, font="Body", size=body_font_size)
-        body_height = max(56.0, len(explanation_lines) * (body_font_size * body_leading))
-        card_height = 84 + body_height
+        body_font_size = 9
+        body_leading = 1.55
+        explanation_lines = self._wrap_text(explanation, self.CONTENT_WIDTH, font="Body", size=body_font_size)
+        body_height = max(16.0, len(explanation_lines) * (body_font_size * body_leading))
+        block_height = 52 + body_height
         if response.get("used_raw_fallback"):
-            card_height += 16
+            block_height += 14
 
-        self._new_page_if_needed(card_height + 10)
-        card_top = self.current_y
-        self._card(self.MARGIN_X, card_top, self.CONTENT_WIDTH, card_height, accent_bar=PALETTE["success"])
+        self._new_page_if_needed(block_height + 12)
+
+        # ── Iteration label + choice + token ──
         self._draw_text(
-            f"Iteration {response.get('iteration', '?')}",
-            self.MARGIN_X + 14,
-            card_top + 12,
-            font="BodyBold",
-            size=10,
-            color=PALETTE["text"],
+            f"ITERATION {response.get('iteration', '?')}",
+            self.MARGIN_X, self.current_y,
+            font="BodyBold", size=7, color=self.palette["accent"],
         )
-        header_right = (
-            f"{response.get('decision_token') or 'null'}  |  "
-            f"optionId {response.get('option_id') if response.get('option_id') is not None else 'null'}"
+        self._draw_text(
+            str(response.get("decision_token") or "null"),
+            self.PAGE_WIDTH - self.MARGIN_X - 30, self.current_y,
+            font="Mono", size=8, color=self.palette["accent"],
         )
-        self._draw_text_block(
-            header_right,
-            self.MARGIN_X + 180,
-            card_top + 12,
-            self.CONTENT_WIDTH - 194,
-            font="Mono",
-            size=9,
-            color=PALETTE["accent"],
-            leading=1.1,
-            align="right",
-        )
+        self.current_y += 14
 
-        self._draw_text_block(
+        # ── Option label ──
+        self._draw_text(
             response.get("option_label", "Undecided"),
-            self.MARGIN_X,
-            card_top + 30,
-            self.CONTENT_WIDTH,
-            font="BodyBold",
-            size=12,
-            color=PALETTE["success"],
-            leading=1.2,
+            self.MARGIN_X, self.current_y,
+            font="BodyBold", size=11, color=self.palette["success"],
         )
+        self.current_y += 16
 
+        # ── Latency / tokens (compact) ──
         if response.get("latency_label") or response.get("token_usage_label"):
             meta_text = "  |  ".join(
-                value
-                for value in [response.get("latency_label", ""), response.get("token_usage_label", "")]
-                if value
+                v for v in [response.get("latency_label", ""), response.get("token_usage_label", "")]
+                if v
             )
             if meta_text:
-                self._draw_text_block(
-                    meta_text,
-                    self.MARGIN_X,
-                    card_top + 48,
-                    self.CONTENT_WIDTH,
-                    font="Body",
-                    size=8,
-                    color=PALETTE["accent"],
-                    leading=1.1,
-                )
-        text_y = card_top + 68
+                self._draw_text(meta_text, self.MARGIN_X, self.current_y, font="Body", size=7, color=self.palette["accent"])
+                self.current_y += 12
+
+        # ── Explanation ──
+        self.current_y += 4
         self._draw_wrapped_lines(
-            explanation_lines,
-            self.MARGIN_X + 16,
-            text_y,
-            font="Body",
-            size=body_font_size,
-            color=PALETTE["text"],
-            leading=body_leading,
+            explanation_lines, self.MARGIN_X, self.current_y,
+            font="Body", size=body_font_size, color=self.palette["text"], leading=body_leading,
         )
+        self.current_y += body_height
 
         if response.get("used_raw_fallback"):
-            self._draw_text_block(
-                "Displayed from raw model output because the parsed explanation field was empty.",
-                self.MARGIN_X + 16,
-                text_y + body_height + 8,
-                self.CONTENT_WIDTH - 32,
-                font="BodyItalic",
-                size=8,
-                color=PALETTE["danger"],
-                leading=1.2,
+            self.current_y += 4
+            self._draw_text(
+                "Displayed from raw model output — parsed explanation field was empty.",
+                self.MARGIN_X, self.current_y,
+                font="BodyItalic", size=7, color=self.palette["danger"],
             )
-        self.current_y = card_top + card_height + 10
+            self.current_y += 10
+
+        # ── Thin separator rule ──
+        self.current_y += 6
+        self._draw_line(
+            self.MARGIN_X, self.current_y,
+            self.PAGE_WIDTH - self.MARGIN_X, self.current_y,
+            self.palette["accent"], width=0.3,
+        )
+        self.current_y += 10
 
     def _draw_analysis(self) -> None:
         analysis = self.report.get("analysis")
@@ -729,7 +695,7 @@ class NativePdfReportRenderer:
                 self.CONTENT_WIDTH,
                 font="Body",
                 size=10,
-                color=PALETTE["text"],
+                color=self.palette["text"],
                 leading=1.35,
             )
             self.current_y += 10
@@ -737,67 +703,62 @@ class NativePdfReportRenderer:
 
         dominant_framework = _clean_text(analysis.get("dominant_framework", ""))
         if dominant_framework:
-            self._card(self.MARGIN_X, self.current_y, self.CONTENT_WIDTH, 58, accent_bar=PALETTE["accent"])
             self._draw_text(
-                "Dominant framework".upper(),
-                self.MARGIN_X + 14,
-                self.current_y + 12,
-                font="BodyBold",
-                size=8,
-                color=PALETTE["accent"],
+                "DOMINANT FRAMEWORK",
+                self.MARGIN_X, self.current_y,
+                font="BodyBold", size=7, color=self.palette["accent"],
             )
-            self._draw_text_block(
+            self.current_y += 14
+            self._draw_text(
                 dominant_framework,
-                self.MARGIN_X + 14,
-                self.current_y + 26,
-                self.CONTENT_WIDTH - 28,
-                font="BodyBold",
-                size=14,
-                color=PALETTE["success"],
-                leading=1.2,
+                self.MARGIN_X, self.current_y,
+                font="BodyBold", size=15, color=self.palette["success"],
             )
-            self.current_y += 72
+            self.current_y += 28
 
-        self._draw_bullet_section("Key insights", analysis.get("key_insights", []), PALETTE["text"])
-        self._draw_bullet_section("Pattern recognition", analysis.get("justifications", []), PALETTE["text"])
-        self._draw_bullet_section("Consistency check", analysis.get("consistency", []), PALETTE["text"])
+        self._draw_bullet_section("Key insights", analysis.get("key_insights", []), self.palette["text"])
+        self._draw_bullet_section("Pattern recognition", analysis.get("justifications", []), self.palette["text"])
+        self._draw_bullet_section("Consistency check", analysis.get("consistency", []), self.palette["text"])
 
         moral_complexes = analysis.get("moral_complexes", [])
         if isinstance(moral_complexes, list) and moral_complexes:
-            self._section_heading("Moral Complexes", "Dominant motifs surfaced by the analyst")
+            self._draw_line(
+                self.MARGIN_X, self.current_y,
+                self.PAGE_WIDTH - self.MARGIN_X, self.current_y,
+                self.palette["accent"], width=0.3,
+            )
+            self.current_y += 10
+            self._draw_text(
+                "MORAL COMPLEXES", self.MARGIN_X, self.current_y,
+                font="BodyBold", size=7, color=self.palette["accent"],
+            )
+            self.current_y += 16
             for complex_item in moral_complexes:
                 if not isinstance(complex_item, dict):
                     continue
                 label = _clean_text(complex_item.get("label", "Complex"))
                 count = complex_item.get("count", 0)
                 justification = _clean_text(complex_item.get("justification", ""))
-                self._new_page_if_needed(72)
-                self._card(self.MARGIN_X, self.current_y, self.CONTENT_WIDTH, 56, accent_bar=PALETTE["danger"])
+                self._new_page_if_needed(36)
                 self._draw_text(
-                    f"{label} ({count})",
-                    self.MARGIN_X + 14,
-                    self.current_y + 12,
-                    font="BodyBold",
-                    size=11,
-                    color=PALETTE["text"],
+                    f"{label} ({count})", self.MARGIN_X, self.current_y,
+                    font="BodyBold", size=10, color=self.palette["text"],
                 )
-                self._draw_text_block(
-                    justification or "No justification provided.",
-                    self.MARGIN_X + 14,
-                    self.current_y + 28,
-                    self.CONTENT_WIDTH - 28,
-                    font="Body",
-                    size=9,
-                    color=PALETTE["accent"],
-                    leading=1.2,
-                    max_lines=2,
-                )
-                self.current_y += 70
+                self.current_y += 14
+                if justification:
+                    self._draw_text_block(
+                        justification, self.MARGIN_X, self.current_y,
+                        self.CONTENT_WIDTH, font="Body", size=8,
+                        color=self.palette["accent"], leading=1.3, max_lines=2,
+                    )
+                    self.current_y += 22
+                else:
+                    self.current_y += 6
 
         reasoning_quality = analysis.get("reasoning_quality")
         if isinstance(reasoning_quality, dict):
-            self._draw_bullet_section("Rubric items noticed", reasoning_quality.get("noticed", []), PALETTE["success"])
-            self._draw_bullet_section("Rubric items missed", reasoning_quality.get("missed", []), PALETTE["danger"])
+            self._draw_bullet_section("Rubric items noticed", reasoning_quality.get("noticed", []), self.palette["success"])
+            self._draw_bullet_section("Rubric items missed", reasoning_quality.get("missed", []), self.palette["danger"])
 
     def _draw_bullet_section(self, title: str, items: object, color: str) -> None:
         normalized = [item for item in self._normalize_items(items) if item]
@@ -817,7 +778,7 @@ class NativePdfReportRenderer:
                 self.current_y,
                 font="Body",
                 size=10,
-                color=PALETTE["text"],
+                color=self.palette["text"],
                 leading=1.35,
             )
             self.current_y += needed_height
@@ -831,41 +792,24 @@ class NativePdfReportRenderer:
         return []
 
     def _section_heading(self, title: str, subtitle: str) -> None:
-        self._new_page_if_needed(52)
-        self._draw_text(title.upper(), self.MARGIN_X, self.current_y, font="BodyBold", size=8, color=PALETTE["accent"])
-        self.current_y += 14
-        self._draw_text_block(
-            title,
-            self.MARGIN_X,
-            self.current_y,
-            self.CONTENT_WIDTH,
-            font="BodyBold",
-            size=17,
-            color=PALETTE["text"],
-            leading=1.2,
+        self._new_page_if_needed(44)
+        self._draw_text(
+            title, self.MARGIN_X, self.current_y,
+            font="BodyBold", size=14, color=self.palette["text"],
         )
-        self.current_y += 24
+        self.current_y += 18
         if subtitle:
-            self._draw_text_block(
-                subtitle,
-                self.MARGIN_X,
-                self.current_y,
-                self.CONTENT_WIDTH,
-                font="Body",
-                size=9,
-                color=PALETTE["accent"],
-                leading=1.2,
+            self._draw_text(
+                subtitle, self.MARGIN_X, self.current_y,
+                font="Body", size=9, color=self.palette["accent"],
             )
-            self.current_y += 16
+            self.current_y += 14
         self._draw_line(
-            self.MARGIN_X,
-            self.current_y,
-            self.PAGE_WIDTH - self.MARGIN_X,
-            self.current_y,
-            PALETTE["accent"],
-            width=0.8,
+            self.MARGIN_X, self.current_y,
+            self.PAGE_WIDTH - self.MARGIN_X, self.current_y,
+            self.palette["accent"], width=0.5,
         )
-        self.current_y += 14
+        self.current_y += 12
 
     def _draw_flowing_text(
         self,
@@ -1048,20 +992,6 @@ class NativePdfReportRenderer:
             )
         return len(lines) * line_height
 
-    def _card(
-        self,
-        x: float,
-        top_y: float,
-        width: float,
-        height: float,
-        *,
-        accent_bar: Optional[str] = None,
-    ) -> None:
-        self._fill_rect(x, top_y, width, height, PALETTE["bg"])
-        self._stroke_rect(x, top_y, width, height, PALETTE["accent"], 0.85)
-        if accent_bar:
-            self._fill_rect(x, top_y, 5, height, accent_bar)
-
     def _fill_rect(self, x: float, top_y: float, width: float, height: float, color: str) -> None:
         assert self.current_page is not None
         lower_y = self.PAGE_HEIGHT - top_y - height
@@ -1069,16 +999,6 @@ class NativePdfReportRenderer:
         self.current_page.set_color_rgb(*_hex_to_rgb(color))
         self.current_page.rectangle(x, lower_y, width, height)
         self.current_page.fill()
-        self.current_page.pop_state()
-
-    def _stroke_rect(self, x: float, top_y: float, width: float, height: float, color: str, line_width: float) -> None:
-        assert self.current_page is not None
-        lower_y = self.PAGE_HEIGHT - top_y - height
-        self.current_page.push_state()
-        self.current_page.set_line_width(line_width)
-        self.current_page.set_color_rgb(*_hex_to_rgb(color), stroke=True)
-        self.current_page.rectangle(x, lower_y, width, height)
-        self.current_page.stroke()
         self.current_page.pop_state()
 
     def _draw_line(

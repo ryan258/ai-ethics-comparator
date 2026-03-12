@@ -33,6 +33,8 @@ class ReportWriterAgent:
         "response_arc",
         "implications",
         "scenario_commentary",
+        "cross_iteration_patterns",
+        "framework_diagnosis",
     )
 
     def __init__(
@@ -250,6 +252,37 @@ class ReportWriterAgent:
             pass
         return None
 
+    async def generate_comparison_narrative(
+        self,
+        runs: List[Dict[str, Any]],
+        paradox: Dict[str, Any],
+        config: NarrativeConfig,
+    ) -> Dict[str, str]:
+        """Generate a comparative narrative for multi-model PDF reports (Phase 3)."""
+        prompt_path = self.prompt_template_path.parent / "comparison_writer_prompt.txt"
+        try:
+            with open(prompt_path, "r", encoding="utf-8") as f:
+                meta_prompt = f.read()
+        except Exception as exc:
+            logger.error("Failed to load comparison prompt: %s", exc)
+            return self._empty_narrative()
+
+        lines: List[str] = [f"Paradox: {paradox.get('title', 'Unknown')}"]
+        for i, run in enumerate(runs, 1):
+            lines.append(f"\n--- Model {i}: {run.get('modelName', 'Unknown')} ---")
+            lines.append(self._compile_context(run, paradox, None))
+
+        formatted = Template(meta_prompt).safe_substitute(context="\n".join(lines))
+        try:
+            raw, _ = await self.ai_service.get_model_response(
+                config.model, formatted, "",
+                {"temperature": config.temperature, "max_tokens": config.max_tokens},
+            )
+        except Exception as exc:
+            logger.warning("Comparison narrative AI call failed: %s", exc)
+            return self._empty_narrative()
+        return self._parse_narrative(raw)
+
     def _parse_sections(self, text: str) -> Dict[str, str]:
         """Fallback parser: extract sections by header markers."""
         section_markers = {
@@ -272,6 +305,16 @@ class ReportWriterAgent:
                 "SCENARIO COMMENTARY",
                 "Scenario Commentary",
                 "scenario commentary",
+            ),
+            "cross_iteration_patterns": (
+                "CROSS-ITERATION PATTERNS",
+                "Cross-Iteration Patterns",
+                "cross-iteration patterns",
+            ),
+            "framework_diagnosis": (
+                "FRAMEWORK DIAGNOSIS",
+                "Framework Diagnosis",
+                "framework diagnosis",
             ),
         }
         result: Dict[str, str] = {key: "" for key in self.NARRATIVE_KEYS}
@@ -308,4 +351,6 @@ class ReportWriterAgent:
             "response_arc": "",
             "implications": "",
             "scenario_commentary": "",
+            "cross_iteration_patterns": "",
+            "framework_diagnosis": "",
         }

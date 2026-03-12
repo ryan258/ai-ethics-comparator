@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Comparative Report — {{ report.paradox_title }}</title>
+    <style>
+      @page { size: A4; margin: 18mm 20mm 20mm 20mm; }
+
+      :root {
+        --bg: #121212; --bg-raised: #181818;
+        --text: #EBD2BE; --text-dim: #a89882;
+        --accent: #A6ACCD; --success: #98C379; --danger: #E06C75;
+        --rule: rgba(166,172,205,0.22); --rule-mid: rgba(166,172,205,0.40);
+      }
+      {% if report.theme == "light" %}
+      :root {
+        --bg: #FFFFFF; --bg-raised: #F3F4F6;
+        --text: #1A1A1A; --text-dim: #6B7280;
+        --accent: #6B7280; --success: #059669; --danger: #DC2626;
+        --rule: rgba(107,114,128,0.18); --rule-mid: rgba(107,114,128,0.35);
+      }
+      {% endif %}
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body {
+        background: var(--bg); color: var(--text);
+        font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+        font-size: 9.5pt; line-height: 1.62;
+      }
+      .page { page-break-after: always; }
+      .page:last-child { page-break-after: auto; }
+
+      .kicker { font-size: 7pt; font-weight: 700; letter-spacing: 0.28em; text-transform: uppercase; color: var(--accent); }
+      .cover-title { font-size: 28pt; font-weight: 700; line-height: 1.06; margin: 4mm 0 3mm; }
+      .section-title { font-size: 13pt; font-weight: 700; margin-bottom: 1.5mm; -weasy-bookmark-level: 1; }
+      .section-sub { font-size: 8.5pt; color: var(--accent); margin-bottom: 3mm; }
+      .rule { height: 1px; background: var(--rule); margin: 4mm 0; }
+      .rule-mid { height: 1px; background: var(--rule-mid); margin: 5mm 0; }
+      .mono { font-family: "Courier New", Courier, monospace; }
+
+      /* Model grid */
+      .model-grid { display: grid; gap: 5mm; margin: 4mm 0; }
+      .model-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+      .model-grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+      .model-grid.cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+      .model-card { padding: 3mm; background: var(--bg-raised); border-radius: 2mm; }
+      .model-card h3 { font-size: 9pt; font-weight: 700; margin-bottom: 2mm; word-break: break-all; }
+      .model-card .stat { font-size: 7.5pt; color: var(--text-dim); }
+
+      /* Delta table */
+      .delta-table { width: 100%; border-collapse: collapse; font-size: 8pt; margin: 3mm 0; }
+      .delta-table th, .delta-table td { padding: 1.5mm 2mm; text-align: left; border-bottom: 1px solid var(--rule); }
+      .delta-table th { font-size: 6.5pt; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); }
+      .delta-table .num { text-align: right; font-family: "Courier New", monospace; }
+
+      /* Stats */
+      .stat-badge { display: inline-block; padding: 0.5mm 2mm; font-size: 7pt; font-weight: 700; border-radius: 1mm; }
+      .stat-badge.sig { background: var(--success); color: var(--bg); }
+      .stat-badge.ns  { background: var(--bg-raised); color: var(--text-dim); }
+      .effect-label { font-size: 7pt; color: var(--text-dim); }
+
+      .ft { margin-top: 8mm; padding-top: 2.5mm; border-top: 1px solid var(--rule);
+            display: flex; justify-content: space-between; font-size: 6.5pt; color: var(--accent); }
+    </style>
+  </head>
+  <body>
+
+    <!-- ═══ COVER ═══ -->
+    <section class="page">
+      <div style="border-top: 3px solid var(--accent); padding-top: 3mm;">
+        <div class="kicker">AI Ethics Comparator &mdash; Comparative Brief</div>
+      </div>
+      <h1 class="cover-title">Comparative<br>Analysis</h1>
+      <div style="font-size: 15pt; font-weight: 700; color: var(--success); margin-bottom: 2mm;">
+        {{ report.paradox_title }}
+      </div>
+      <div style="font-size: 8.5pt; color: var(--accent); margin-bottom: 6mm;">
+        {{ report.category }} &nbsp;&vert;&nbsp; {{ report.model_count }} models compared
+      </div>
+      <div class="rule-mid"></div>
+
+      <div class="model-grid cols-{{ report.model_count }}">
+        {% for model in report.models %}
+        <div class="model-card">
+          <h3>{{ model.model_name }}</h3>
+          <div class="stat">{{ model.response_count }} responses</div>
+          {% for opt in model.option_stats %}
+          <div class="stat" {% if opt.is_leader %}style="color: var(--success); font-weight: 700;"{% endif %}>
+            {{ opt.label }}: {{ opt.percentage_label }}
+          </div>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="ft">
+        <div>AI Ethics Comparator &mdash; Comparison</div>
+        <div>{{ report.model_count }} models</div>
+      </div>
+    </section>
+
+    <!-- ═══ DISTRIBUTION ═══ -->
+    <section class="page">
+      <div class="kicker" style="margin-bottom: 3mm;">Distribution</div>
+      <div class="section-title">Choice Distribution Comparison</div>
+      <div class="section-sub">Side-by-side vote share for each model.</div>
+      <div class="rule-mid"></div>
+
+      <div class="model-grid cols-{{ report.model_count }}">
+        {% for model in report.models %}
+        <div class="model-card" style="text-align: center;">
+          <h3>{{ model.model_name }}</h3>
+          {{ model.donut_svg | safe }}
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="rule-mid"></div>
+      <div class="section-title" style="font-size: 10pt;">Delta Table</div>
+      <table class="delta-table">
+        <thead>
+          <tr>
+            <th>Option</th>
+            {% for name in report.delta_table.model_names %}<th class="num">{{ name }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in report.delta_table.rows %}
+          <tr>
+            <td>{{ row.label }}</td>
+            {% for val in row.values %}
+            <td class="num">{{ val.count }} ({{ "%.1f" | format(val.percentage) }}%)</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div class="ft">
+        <div>AI Ethics Comparator &mdash; Comparison</div>
+        <div>Distribution</div>
+      </div>
+    </section>
+
+    <!-- ═══ STATISTICS ═══ -->
+    <section class="page">
+      <div class="kicker" style="margin-bottom: 3mm;">Statistics</div>
+      <div class="section-title">Statistical Significance</div>
+      <div class="section-sub">Chi-square tests and effect sizes for pairwise comparisons.</div>
+      <div class="rule-mid"></div>
+
+      {% for comp in report.comparisons %}
+      <div style="margin-bottom: 5mm; page-break-inside: avoid;">
+        <div style="font-size: 10pt; font-weight: 700; margin-bottom: 2mm;">
+          {{ comp.model_a }} vs {{ comp.model_b }}
+        </div>
+        {% if comp.chi_square %}
+        <div style="font-size: 8pt; margin-bottom: 1.5mm;">
+          &chi;&sup2; = {{ comp.chi_square.chiSquare }}
+          &nbsp; p = {{ comp.chi_square.pValue }}
+          &nbsp;
+          {% if comp.chi_square.significant %}
+          <span class="stat-badge sig">SIGNIFICANT</span>
+          {% else %}
+          <span class="stat-badge ns">NOT SIGNIFICANT</span>
+          {% endif %}
+          {% if comp.chi_square.warning %}
+          <span class="effect-label"> &mdash; {{ comp.chi_square.warning }}</span>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% for eff in comp.option_effects %}
+        <div style="font-size: 7.5pt; color: var(--text-dim);">
+          {{ eff.label }}: h={{ eff.h }} ({{ eff.interpretation }})
+        </div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+
+      {% if report.narrative and report.narrative.executive_narrative %}
+      <div class="rule-mid"></div>
+      <div style="font-size: 10pt; font-weight: 700; margin-bottom: 2mm;">Comparative Narrative</div>
+      <div style="font-size: 9.5pt; line-height: 1.72;">{{ report.narrative.executive_narrative }}</div>
+      {% endif %}
+
+      <div class="ft">
+        <div>AI Ethics Comparator &mdash; Comparison</div>
+        <div>Statistics</div>
+      </div>
+    </section>
+
+  </body>
+</html>

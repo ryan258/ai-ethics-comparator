@@ -283,6 +283,7 @@ class RunStorage:
                             "modelName": run_data.get("modelName", "Unknown"),
                             "paradoxId": run_data.get("paradoxId", "Unknown"),
                             "iterationCount": run_data.get("iterationCount", 0),
+                            "status": run_data.get("status", "completed"),
                             "filePath": f"results/{entry.name}"
                         }
                         current = runs_by_id.get(run_id)
@@ -322,6 +323,44 @@ class RunStorage:
             return runs
 
         return await loop.run_in_executor(None, _list)
+
+    async def list_incomplete_runs(self) -> List[Dict[str, Any]]:
+        """Return persisted runs that were left in a resumable state."""
+        loop = asyncio.get_running_loop()
+
+        def _list_incomplete() -> List[Dict[str, Any]]:
+            if not self.results_root.exists():
+                return []
+
+            resumable: List[Dict[str, Any]] = []
+            for entry in sorted(self.results_root.iterdir(), key=lambda path: path.name):
+                if not entry.is_file() or entry.suffix != ".json":
+                    continue
+                try:
+                    with open(entry, "r", encoding="utf-8") as f:
+                        run_data = json.load(f)
+                except Exception:
+                    continue
+
+                if not isinstance(run_data, dict):
+                    continue
+
+                run_id = run_data.get("runId")
+                if not isinstance(run_id, str) or not STRICT_RUN_ID_PATTERN.fullmatch(run_id):
+                    continue
+
+                if run_data.get("status") != "running":
+                    continue
+
+                iteration_count = int(run_data.get("iterationCount", 0) or 0)
+                completed_iterations = int(run_data.get("completedIterations", 0) or 0)
+                if iteration_count > 0 and completed_iterations < iteration_count:
+                    resumable.append(run_data)
+
+            resumable.sort(key=lambda item: str(item.get("timestamp", "")))
+            return resumable
+
+        return await loop.run_in_executor(None, _list_incomplete)
 
     async def get_run(self, run_id: str) -> Dict[str, Any]:
         """

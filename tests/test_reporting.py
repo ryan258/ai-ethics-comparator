@@ -137,7 +137,7 @@ def test_report_generator_uses_native_fallback_when_weasyprint_is_unavailable(mo
     pdf_bytes = generator.generate_pdf_report(_sample_run_data(), _sample_paradox(), _sample_insight())
 
     assert pdf_bytes.startswith(b"%PDF-")
-    assert b"Ethical Decision Report" in pdf_bytes
+    assert b"Ethical Decision" in pdf_bytes
     assert b"Choice Distribution" in pdf_bytes
     assert b"openrouterhealer-alpha-001" in pdf_bytes
     assert b"Restrict Distress-Triggering Use Cases" in pdf_bytes
@@ -173,3 +173,108 @@ def test_pdf_route_returns_pdf_with_native_fallback(monkeypatch, tmp_path: Path)
     assert response.headers["content-type"] == "application/pdf"
     assert response.headers["content-disposition"] == f"inline; filename=report_{run_id}.pdf"
     assert response.content.startswith(b"%PDF-")
+
+
+def test_comparison_pdf_route_returns_503_without_weasyprint(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(reporting, "HTML", None)
+
+    main = importlib.import_module("main")
+
+    class TempRunStorage(main.RunStorage):
+        def __init__(self, _results_root: str) -> None:
+            super().__init__(str(tmp_path / "results"))
+
+    monkeypatch.setattr(main, "RunStorage", TempRunStorage)
+
+    config = main.AppConfig(
+        OPENROUTER_API_KEY="test/dummy-key",
+        APP_BASE_URL="http://localhost:8000",
+        OPENROUTER_BASE_URL="https://openrouter.ai/api/v1",
+        AVAILABLE_MODELS=[{"id": "test/model", "name": "Test Model"}],
+        ANALYST_MODEL="test/model",
+        DEFAULT_MODEL="test/model",
+    )
+
+    app = main.create_app(config_override=config)
+    with TestClient(app) as client:
+        run_one = _sample_run_data()
+        run_one["modelName"] = "openrouter/healer-alpha"
+        run_two = _sample_run_data()
+        run_two["modelName"] = "openrouter/healer-beta"
+        run_two["summary"] = {
+            "total": 3,
+            "options": [
+                {"id": 1, "count": 1, "percentage": 33.3},
+                {"id": 2, "count": 1, "percentage": 33.3},
+                {"id": 3, "count": 1, "percentage": 33.3},
+            ],
+            "undecided": {"count": 0, "percentage": 0.0},
+        }
+        run_id_one = asyncio.run(client.app.state.services.storage.create_run("openrouter/healer-alpha", run_one))
+        run_id_two = asyncio.run(client.app.state.services.storage.create_run("openrouter/healer-beta", run_two))
+        response = client.get(f"/api/compare/pdf?run_ids={run_id_one},{run_id_two}")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Comparison PDF generation unavailable"
+
+
+def test_export_route_returns_503_when_pptx_dependency_missing(monkeypatch, tmp_path: Path) -> None:
+    main = importlib.import_module("main")
+    export_pptx = importlib.import_module("lib.export_pptx")
+
+    class TempRunStorage(main.RunStorage):
+        def __init__(self, _results_root: str) -> None:
+            super().__init__(str(tmp_path / "results"))
+
+    monkeypatch.setattr(main, "RunStorage", TempRunStorage)
+    monkeypatch.setattr(export_pptx, "pptx_available", lambda: False)
+
+    config = main.AppConfig(
+        OPENROUTER_API_KEY="test/dummy-key",
+        APP_BASE_URL="http://localhost:8000",
+        OPENROUTER_BASE_URL="https://openrouter.ai/api/v1",
+        AVAILABLE_MODELS=[{"id": "test/model", "name": "Test Model"}],
+        ANALYST_MODEL="test/model",
+        DEFAULT_MODEL="test/model",
+    )
+
+    app = main.create_app(config_override=config)
+    with TestClient(app) as client:
+        run_id = asyncio.run(client.app.state.services.storage.create_run("openrouter/healer-alpha", _sample_run_data()))
+        response = client.get(f"/api/runs/{run_id}/export?format=pptx")
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "PowerPoint export unavailable"
+
+
+def test_export_route_returns_pptx_when_generator_is_available(monkeypatch, tmp_path: Path) -> None:
+    main = importlib.import_module("main")
+    export_pptx = importlib.import_module("lib.export_pptx")
+
+    class TempRunStorage(main.RunStorage):
+        def __init__(self, _results_root: str) -> None:
+            super().__init__(str(tmp_path / "results"))
+
+    monkeypatch.setattr(main, "RunStorage", TempRunStorage)
+    monkeypatch.setattr(export_pptx, "pptx_available", lambda: True)
+    monkeypatch.setattr(export_pptx, "generate_pptx", lambda run_data, paradox, insight=None: b"PPTX-DATA")
+
+    config = main.AppConfig(
+        OPENROUTER_API_KEY="test/dummy-key",
+        APP_BASE_URL="http://localhost:8000",
+        OPENROUTER_BASE_URL="https://openrouter.ai/api/v1",
+        AVAILABLE_MODELS=[{"id": "test/model", "name": "Test Model"}],
+        ANALYST_MODEL="test/model",
+        DEFAULT_MODEL="test/model",
+    )
+
+    app = main.create_app(config_override=config)
+    with TestClient(app) as client:
+        run_id = asyncio.run(client.app.state.services.storage.create_run("openrouter/healer-alpha", _sample_run_data()))
+        response = client.get(f"/api/runs/{run_id}/export?format=pptx")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == (
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    )
+    assert response.content == b"PPTX-DATA"

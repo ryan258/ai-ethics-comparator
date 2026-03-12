@@ -44,7 +44,7 @@ def test_pdf_route_returns_generic_service_unavailable_when_generator_is_missing
             "options": [],
         }
 
-    def raise_unavailable(run_data: dict, paradox: dict, insight=None, narrative=None) -> bytes:
+    def raise_unavailable(run_data: dict, paradox: dict, insight=None, narrative=None, **kwargs) -> bytes:
         raise RuntimeError("gobject-2.0-0 missing")
 
     monkeypatch.setattr(services.storage, "get_run", fake_get_run)

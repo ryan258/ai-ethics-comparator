@@ -10,5 +10,7 @@ markupsafe
 openai
 weasyprint==61.2
 pydyf==0.12.1
+python-pptx
+# matplotlib
 pytest
 pytest-asyncio

@@ -14,6 +14,7 @@ from lib.query_processor import (
     parse_trolley_response,
     render_options_template,
 )
+from lib.query_errors import ProviderTransientError
 
 
 def test_render_options_template_appends_strict_single_choice_contract() -> None:
@@ -304,7 +305,7 @@ def test_query_processor_reasks_when_choice_has_no_explanation() -> None:
     assert "did not include the required explanation" in dummy_ai.prompts[1]
 
 
-def test_query_processor_max_two_reasks_then_undecided() -> None:
+def test_query_processor_retries_invalid_outputs_until_valid_choice() -> None:
     class DummyAIService:
         def __init__(self) -> None:
             self.call_count = 0
@@ -318,7 +319,12 @@ def test_query_processor_max_two_reasks_then_undecided() -> None:
             retry_count: int = 0,
         ) -> tuple[str, dict]:
             self.call_count += 1
-            return "No final choice yet.", {"prompt_tokens": 10, "completion_tokens": 10}
+            if self.call_count < 3:
+                return "No final choice yet.", {"prompt_tokens": 10, "completion_tokens": 10}
+            return (
+                '{"option_id": 2, "explanation": "Escalate the safer coordination path."}',
+                {"prompt_tokens": 10, "completion_tokens": 10},
+            )
 
     dummy_ai = DummyAIService()
     qp = QueryProcessor(
@@ -349,10 +355,9 @@ def test_query_processor_max_two_reasks_then_undecided() -> None:
     )
 
     response = run_data["responses"][0]
-    assert response["decisionToken"] is None
-    assert response["optionId"] is None
+    assert response["decisionToken"] == "{2}"
+    assert response["optionId"] == 2
     assert response["reaskCount"] == 2
-    assert run_data["summary"]["undecided"]["count"] == 1
     assert dummy_ai.call_count == 3
 
 
@@ -376,8 +381,11 @@ def test_query_processor_reask_bound_validation() -> None:
         QueryProcessor(dummy_ai, max_reasks_per_iteration=-1)  # type: ignore[arg-type]
 
 
-def test_query_processor_iteration_exception_counts_as_undecided() -> None:
+def test_query_processor_retries_transient_provider_errors_until_success() -> None:
     class DummyAIService:
+        def __init__(self) -> None:
+            self.call_count = 0
+
         async def get_model_response(
             self,
             model_name: str,
@@ -386,10 +394,17 @@ def test_query_processor_iteration_exception_counts_as_undecided() -> None:
             params=None,
             retry_count: int = 0,
         ) -> tuple[str, dict]:
-            raise RuntimeError("simulated API failure")
+            self.call_count += 1
+            if self.call_count == 1:
+                raise ProviderTransientError("simulated API failure")
+            return (
+                '{"option_id": 1, "explanation": "Accept the first option after retry."}',
+                {"prompt_tokens": 10, "completion_tokens": 10},
+            )
 
+    dummy_ai = DummyAIService()
     qp = QueryProcessor(
-        DummyAIService(),  # type: ignore[arg-type]
+        dummy_ai,  # type: ignore[arg-type]
         concurrency_limit=1,
         choice_inference_model=None,
         max_reasks_per_iteration=0,
@@ -416,6 +431,96 @@ def test_query_processor_iteration_exception_counts_as_undecided() -> None:
     )
 
     response = run_data["responses"][0]
-    assert "error" in response
-    assert response["iteration"] == 1
-    assert run_data["summary"]["undecided"]["count"] == 1
+    assert response["decisionToken"] == "{1}"
+    assert response["optionId"] == 1
+    assert dummy_ai.call_count == 2
+
+
+def test_query_processor_resumes_from_existing_run() -> None:
+    class DummyAIService:
+        def __init__(self) -> None:
+            self.call_count = 0
+
+        async def get_model_response(
+            self,
+            model_name: str,
+            prompt: str,
+            system_prompt: str = "",
+            params=None,
+            retry_count: int = 0,
+        ) -> tuple[str, dict]:
+            self.call_count += 1
+            return (
+                '{"option_id": 2, "explanation": "Finish the remaining iteration."}',
+                {"prompt_tokens": 10, "completion_tokens": 10},
+            )
+
+    paradox = {
+        "id": "test_paradox",
+        "type": "trolley",
+        "promptTemplate": "Scenario.\n\n**Options**\n\n{{OPTIONS}}",
+        "options": [
+            {"id": 1, "label": "A", "description": "Option A"},
+            {"id": 2, "label": "B", "description": "Option B"},
+        ],
+    }
+    qp = QueryProcessor(
+        DummyAIService(),  # type: ignore[arg-type]
+        concurrency_limit=1,
+        choice_inference_model=None,
+        max_reasks_per_iteration=1,
+    )
+    existing_run = {
+        "runId": "testrun-001",
+        "timestamp": "2026-03-12T12:00:00+00:00",
+        "status": "running",
+        "modelName": "generator/model",
+        "paradoxId": "test_paradox",
+        "paradoxType": "trolley",
+        "prompt": "Scenario prompt",
+        "iterationCount": 2,
+        "completedIterations": 1,
+        "params": {"max_tokens": 200},
+        "options": paradox["options"],
+        "responses": [
+            {
+                "iteration": 1,
+                "decisionToken": "{1}",
+                "optionId": 1,
+                "explanation": "Already completed.",
+                "raw": '{"option_id":1,"explanation":"Already completed."}',
+            }
+        ],
+        "summary": {
+            "total": 1,
+            "options": [
+                {"id": 1, "count": 1, "percentage": 100.0},
+                {"id": 2, "count": 0, "percentage": 0.0},
+            ],
+            "undecided": {"count": 0, "percentage": 0.0},
+        },
+    }
+    snapshots: list[dict] = []
+
+    async def capture(snapshot: dict) -> None:
+        snapshots.append(snapshot)
+
+    run_data = asyncio.run(
+        qp.execute_run(
+            RunConfig(
+                modelName="generator/model",
+                paradox=paradox,
+                iterations=2,
+                params={"max_tokens": 200},
+            ),
+            existing_run=existing_run,
+            progress_callback=capture,
+        )
+    )
+
+    assert run_data["status"] == "completed"
+    assert run_data["completedIterations"] == 2
+    assert len(run_data["responses"]) == 2
+    assert run_data["responses"][0]["iteration"] == 1
+    assert run_data["responses"][1]["iteration"] == 2
+    assert snapshots[-1]["status"] == "completed"

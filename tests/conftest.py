@@ -15,7 +15,7 @@ def app(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         def __init__(self, templates_dir: str = "templates") -> None:
             self.templates_dir = templates_dir
 
-        def generate_pdf_report(self, run_data, paradox, insight=None) -> bytes:
+        def generate_pdf_report(self, run_data, paradox, insight=None, narrative=None, **kwargs) -> bytes:
             return b"%PDF-1.4\n"
 
     class TempRunStorage(main.RunStorage):
