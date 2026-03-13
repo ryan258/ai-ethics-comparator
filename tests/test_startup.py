@@ -160,6 +160,62 @@ def test_choice_inference_can_be_disabled(monkeypatch, tmp_path: Path) -> None:
         assert qp.choice_inference_model is None
 
 
+def test_pdf_route_uses_configured_default_theme_when_query_param_is_absent(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    main = importlib.import_module("main")
+    captured: dict[str, str] = {}
+
+    class DummyReportGenerator:
+        def __init__(self, templates_dir: str = "templates") -> None:
+            self.templates_dir = templates_dir
+
+        def generate_pdf_report(self, run_data, paradox, insight=None, narrative=None, **kwargs) -> bytes:
+            captured["theme"] = kwargs.get("theme", "")
+            return b"%PDF-1.4\n"
+
+    class TempRunStorage(main.RunStorage):
+        def __init__(self, _results_root: str) -> None:
+            super().__init__(str(tmp_path / "results"))
+
+    monkeypatch.setattr(main, "ReportGenerator", DummyReportGenerator)
+    monkeypatch.setattr(main, "RunStorage", TempRunStorage)
+
+    config = main.AppConfig(
+        OPENROUTER_API_KEY="test/dummy-key",
+        APP_BASE_URL="http://localhost:8000",
+        OPENROUTER_BASE_URL="https://openrouter.ai/api/v1",
+        AVAILABLE_MODELS=[{"id": "test/model", "name": "Test Model"}],
+        ANALYST_MODEL="test/model",
+        DEFAULT_MODEL="test/model",
+        REPORT_PDF_THEME="light",
+    )
+
+    app = main.create_app(config_override=config)
+    with TestClient(app) as client:
+        run_data = {
+            "timestamp": "2026-03-12T02:29:33.489179+00:00",
+            "runId": "test-run-id",
+            "modelName": "test/model",
+            "paradoxId": "alignment_shutdown_veto",
+            "paradoxType": "trolley",
+            "promptHash": "abc123",
+            "summary": {
+                "total": 1,
+                "options": [{"id": 1, "count": 1, "percentage": 100.0}],
+                "undecided": {"count": 0, "percentage": 0.0},
+            },
+            "options": [{"id": 1, "label": "Option 1", "description": "Desc"}],
+            "responses": [{"iteration": 1, "decisionToken": "{1}", "optionId": 1, "explanation": "ok"}],
+        }
+        run_id = asyncio.run(client.app.state.services.storage.create_run("test/model", run_data))
+        response = client.get(f"/api/runs/{run_id}/pdf")
+
+    assert response.status_code == 200
+    assert captured["theme"] == "light"
+
+
 def test_startup_resumes_incomplete_runs(monkeypatch, tmp_path: Path) -> None:
     main = importlib.import_module("main")
     ai_calls = {"count": 0}

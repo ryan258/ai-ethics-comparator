@@ -6,7 +6,7 @@ Typed configuration management using Pydantic Settings
 import os
 import json
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -79,6 +79,20 @@ def _env_bool(name: str, default: bool) -> bool:
     )
 
 
+def _env_choice(name: str, default: str, allowed: set[str]) -> str:
+    """Parse a constrained string env var."""
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+
+    normalized = raw.strip().lower()
+    if normalized in allowed:
+        return normalized
+
+    allowed_values = ", ".join(sorted(allowed))
+    raise ValueError(f"{name} must be one of: {allowed_values}")
+
+
 class AppConfig(BaseModel):
     # App Identity
     APP_NAME: str = "AI Ethics Comparator"
@@ -90,6 +104,9 @@ class AppConfig(BaseModel):
     AI_RETRY_DELAY: int = Field(default_factory=lambda: int(os.getenv("AI_RETRY_DELAY", "2")))
     AI_CHOICE_INFERENCE_ENABLED: bool = Field(
         default_factory=lambda: _env_bool("AI_CHOICE_INFERENCE_ENABLED", True)
+    )
+    REPORT_PDF_THEME: Literal["dark", "light"] = Field(
+        default_factory=lambda: _env_choice("REPORT_PDF_THEME", "dark", {"dark", "light"})
     )
     
     # Limits

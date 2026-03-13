@@ -17,13 +17,7 @@ except ModuleNotFoundError:  # pragma: no cover - optional dependency guard
     pydyf = None  # type: ignore[assignment]
 
 
-from lib.pdf_charts import (
-    PALETTE_DARK,
-    PALETTE_LIGHT,
-    draw_donut_native,
-    draw_heatmap_native,
-    draw_sparkline_native,
-)
+from lib.pdf_charts import PALETTE_DARK, PALETTE_LIGHT, draw_heatmap_native
 
 
 def pdf_available() -> bool:
@@ -61,7 +55,7 @@ def _clean_text(value: object) -> str:
 
 
 class NativePdfReportRenderer:
-    """Render a polished multi-page PDF report using pydyf primitives."""
+    """Render a consulting-style multi-page PDF report using pydyf primitives."""
 
     PAGE_WIDTH = 595.0
     PAGE_HEIGHT = 842.0
@@ -70,6 +64,13 @@ class NativePdfReportRenderer:
     BOTTOM_MARGIN = 36.0
     FOOTER_HEIGHT = 24.0
     CONTENT_WIDTH = PAGE_WIDTH - (MARGIN_X * 2)
+    SECTION_GAP = 16.0
+    SECTION_GAP_TIGHT = 10.0
+    BLOCK_PADDING_X = 16.0
+    BLOCK_PADDING_Y = 14.0
+    ROOMY_PADDING_X = 20.0
+    ROOMY_PADDING_Y = 18.0
+    COLUMN_GAP = 18.0
 
     def __init__(self, report: Dict[str, Any], *, theme: str = "dark") -> None:
         if pydyf is None:
@@ -83,18 +84,19 @@ class NativePdfReportRenderer:
         self.current_y = self.TOP_MARGIN
         self.current_section = ""
         self.section_pages: List[Tuple[str, int]] = []
+        self.executive_caveat_drawn = False
         self.font_refs = self._register_fonts()
 
     def render(self) -> bytes:
         """Render the report to PDF bytes."""
-        page_methods: List[Tuple[str, Any]] = [("Cover", self._draw_cover_page)]
-        if isinstance(self.report.get("narrative"), dict):
-            page_methods.append(("Interpretive Synthesis", self._draw_narrative))
-        page_methods.append(("Choice Distribution", self._draw_briefing_page))
-        if self.report.get("responses"):
-            page_methods.append(("Response Ledger", self._draw_responses))
-        if isinstance(self.report.get("analysis"), dict):
-            page_methods.append(("Analyst Assessment", self._draw_analysis))
+        page_methods: List[Tuple[str, Any]] = [
+            ("Executive Summary", self._draw_executive_page),
+            ("Behavioral Pattern", self._draw_evidence_page),
+            ("Deployment Implications", self._draw_implications_page),
+            ("Method And Limitations", self._draw_method_page),
+            ("Appendix Summary", self._draw_appendix_summary_page),
+            ("Raw Appendix", self._draw_raw_appendix_page),
+        ]
 
         for section_name, method in page_methods:
             self.current_section = section_name
@@ -143,7 +145,6 @@ class NativePdfReportRenderer:
         self.page_number += 1
         self.current_page = pydyf.Stream(compress=False)
         self.current_y = self.TOP_MARGIN
-
         self._fill_rect(0, 0, self.PAGE_WIDTH, self.PAGE_HEIGHT, self.palette["bg"])
 
     def _finalize_page(self) -> None:
@@ -151,33 +152,50 @@ class NativePdfReportRenderer:
         if self.current_page is None:
             return
 
-        footer_y = self.PAGE_HEIGHT - self.BOTTOM_MARGIN + 4
+        footer_y = self.PAGE_HEIGHT - self.BOTTOM_MARGIN + 1
         self._draw_line(
-            self.MARGIN_X, footer_y,
-            self.PAGE_WIDTH - self.MARGIN_X, footer_y,
-            self.palette["accent"], width=0.3,
+            self.MARGIN_X,
+            footer_y,
+            self.PAGE_WIDTH - self.MARGIN_X,
+            footer_y,
+            self.palette["accent"],
+            width=0.45,
         )
-        footer_text_y = self.PAGE_HEIGHT - self.BOTTOM_MARGIN + 10
+        footer_text_y = footer_y + 8
         self._draw_text(
             "AI Ethics Comparator",
-            self.MARGIN_X, footer_text_y,
-            font="Body", size=6, color=self.palette["accent"],
+            self.MARGIN_X,
+            footer_text_y,
+            font="Body",
+            size=7,
+            color=self.palette["accent"],
         )
         if self.current_section:
             self._draw_text(
                 f"  |  {self.current_section}",
-                self.MARGIN_X + 72, footer_text_y,
-                font="Body", size=6, color=self.palette["accent"],
+                self.MARGIN_X + 74,
+                footer_text_y,
+                font="Body",
+                size=7,
+                color=self.palette["accent"],
             )
+        run_id = _clean_text(self.report.get("run_id", "unknown"))
+        run_id_width = self._estimate_text_width(run_id, font="Mono", size=6)
         self._draw_text(
-            self.report.get("run_id", "unknown"),
-            self.MARGIN_X + 210, footer_text_y,
-            font="Mono", size=6, color=self.palette["accent"],
+            run_id,
+            (self.PAGE_WIDTH - run_id_width) / 2,
+            footer_text_y,
+            font="Mono",
+            size=6,
+            color=self.palette["accent"],
         )
         self._draw_text(
             f"Page {self.page_number}",
-            self.PAGE_WIDTH - self.MARGIN_X - 30, footer_text_y,
-            font="Body", size=6, color=self.palette["accent"],
+            self.PAGE_WIDTH - self.MARGIN_X - 34,
+            footer_text_y,
+            font="Body",
+            size=7,
+            color=self.palette["accent"],
         )
 
         page_stream = self.current_page
@@ -204,612 +222,864 @@ class NativePdfReportRenderer:
         self._finalize_page()
         self._start_page()
 
-    def _draw_cover_page(self) -> None:
-        # ── Accent bar + kicker ──
-        self._fill_rect(self.MARGIN_X, self.current_y, 90, 2.5, self.palette["accent"])
-        self.current_y += 10
-        self._draw_text(
-            "AI ETHICS COMPARATOR  —  EXECUTIVE BRIEF",
-            self.MARGIN_X,
-            self.current_y,
-            font="BodyBold",
-            size=7,
-            color=self.palette["accent"],
+    def _draw_executive_page(self) -> None:
+        self._draw_page_heading(
+            "EXECUTIVE SUMMARY",
+            _clean_text(self.report.get("report_title", "")),
+            _clean_text(self.report.get("report_subtitle", "")),
+            title_size=19,
         )
-        self.current_y += 20
-
-        # ── Title ──
-        self._draw_text(
-            "Ethical Decision",
-            self.MARGIN_X,
-            self.current_y,
-            font="Display",
-            size=30,
-            color=self.palette["text"],
+        self._draw_thesis_box(_clean_text(self.report.get("thesis_statement", "")))
+        self.current_y += self._section_gap_value()
+        self._draw_metric_cards()
+        self.current_y += self._section_gap_value()
+        self._draw_option_distribution_block(
+            _clean_text(self.report.get("primary_chart_title", "")),
+            self.report.get("option_stats", []),
+            show_descriptions=False,
         )
-        self.current_y += 34
-        self._draw_text(
-            "Report",
-            self.MARGIN_X,
-            self.current_y,
-            font="Display",
-            size=30,
-            color=self.palette["text"],
+        self.current_y += self._section_gap_value()
+        self._draw_list_block("KEY TAKEAWAYS", self.report.get("key_takeaways", []))
+        self.current_y += self._section_gap_value(tight=True)
+        self._draw_callout_box("IMPLICATION", _clean_text(self.report.get("implication_box", "")), self.palette["success"])
+        reliability_note = _clean_text(self.report.get("reliability_note", ""))
+        if reliability_note:
+            self.current_y += self._section_gap_value(tight=True)
+            self._draw_callout_box("OUTPUT RELIABILITY", reliability_note, self.palette["danger"])
+        caveat_box = _clean_text(self.report.get("caveat_box", ""))
+        if caveat_box and self._remaining_height() >= self._estimate_callout_height(caveat_box, self.CONTENT_WIDTH) + 6:
+            self.current_y += self._section_gap_value(tight=True)
+            self._draw_callout_box("WHAT THIS DOES NOT PROVE", caveat_box, self.palette["danger"])
+            self.executive_caveat_drawn = True
+
+    def _draw_evidence_page(self) -> None:
+        self._draw_page_heading(
+            "BEHAVIORAL PATTERN AND SUPPORTING EVIDENCE",
+            _clean_text(self.report.get("evidence_title", "")),
         )
-        self.current_y += 42
-
-        # ── Paradox title ──
-        paradox_title = _clean_text(self.report.get("paradox_title", "Unknown paradox"))
-        title_height = self._draw_text_block(
-            paradox_title,
-            self.MARGIN_X,
-            self.current_y,
-            self.CONTENT_WIDTH * 0.85,
-            font="BodyBold",
-            size=15,
-            color=self.palette["success"],
-            leading=1.2,
+        self._draw_two_column_lists(
+            "CASE SUMMARY",
+            self.report.get("case_summary_points", []),
+            "OPTION DISTRIBUTION",
+            self._distribution_rows(),
         )
-        self.current_y += max(22.0, title_height + 6)
+        self.current_y += self._section_gap_value()
+        self._draw_list_block("EVIDENCE READOUT", self._evidence_readout_points())
+        self.current_y += self._section_gap_value()
+        self._draw_heatmap_block(_clean_text(self.report.get("sequence_chart_title", "")))
+        self.current_y += self._section_gap_value()
+        self._draw_rationale_cluster_block(_clean_text(self.report.get("rationale_chart_title", "")))
 
-        # ── Category | Date ──
-        subtitle = (
-            f"{self.report.get('category', 'Uncategorized')}  |  "
-            f"{self.report.get('generated_at_label', 'Unknown')}"
+    def _draw_implications_page(self) -> None:
+        self._draw_page_heading(
+            "IMPLICATIONS FOR DEPLOYMENT OR GOVERNANCE",
+            _clean_text(self.report.get("implications_title", "")),
         )
-        self._draw_text(subtitle, self.MARGIN_X, self.current_y, font="Body", size=9, color=self.palette["accent"])
-        self.current_y += 18
+        self._draw_callout_box("DEPLOYMENT READOUT", _clean_text(self.report.get("implication_box", "")), self.palette["success"])
+        self.current_y += self._section_gap_value()
+        self._draw_list_block("WHERE THIS TENDENCY IS ACCEPTABLE", self.report.get("acceptable_contexts", []))
+        self.current_y += self._section_gap_value()
+        self._draw_list_block("WHERE THIS TENDENCY IS RISKY", self.report.get("risky_contexts", []))
+        self.current_y += self._section_gap_value()
+        self._draw_list_block("REQUIRED OPERATIONAL SAFEGUARDS", self.report.get("required_controls", []))
 
-        # ── Rule ──
-        self._draw_line(self.MARGIN_X, self.current_y, self.PAGE_WIDTH - self.MARGIN_X, self.current_y, self.palette["accent"], width=0.6)
-        self.current_y += 14
-
-        # ── Key Finding ──
-        self._draw_text("KEY FINDING", self.MARGIN_X, self.current_y, font="BodyBold", size=7, color=self.palette["accent"])
-        self.current_y += 14
-        lead_label = _clean_text(self.report.get("lead_choice_label", "No dominant choice"))
-        lead_height = self._draw_text_block(
-            lead_label, self.MARGIN_X, self.current_y, self.CONTENT_WIDTH * 0.8,
-            font="BodyBold", size=19, color=self.palette["text"], leading=1.12,
+    def _draw_method_page(self) -> None:
+        self._draw_page_heading(
+            "METHOD AND LIMITATIONS",
+            _clean_text(self.report.get("method_title", "")),
+            title_size=16,
         )
-        self.current_y += max(24.0, lead_height + 4)
-        self._draw_text(
-            _clean_text(self.report.get("lead_choice_support", "")),
-            self.MARGIN_X, self.current_y,
-            font="BodyBold", size=10, color=self.palette["success"],
+        self.current_y += self._section_gap_value(roomy=True)
+        caveat_box = _clean_text(self.report.get("caveat_box", ""))
+        if caveat_box and not self.executive_caveat_drawn:
+            self._draw_callout_box(
+                "WHAT THIS DOES NOT PROVE",
+                caveat_box,
+                self.palette["danger"],
+                roomy=True,
+            )
+            self.current_y += self._section_gap_value(roomy=True)
+        self._draw_two_column_lists(
+            "METHOD",
+            self.report.get("method_points", []),
+            "LIMITATIONS",
+            self.report.get("limitation_points", []),
+            roomy=True,
         )
-        self.current_y += 18
-
-        # ── Executive prose ──
-        narrative = self.report.get("narrative")
-        prose = ""
-        if isinstance(narrative, dict) and narrative.get("executive_narrative"):
-            prose = narrative["executive_narrative"]
-        else:
-            prose = self.report.get("executive_summary", "")
-        self._draw_flowing_text(
-            prose, self.CONTENT_WIDTH * 0.88,
-            font="Body", size=10, color=self.palette["text"], leading=1.65,
-            max_height=120.0,
+        self.current_y += self._section_gap_value(roomy=True)
+        self._draw_metadata_block(
+            "INTERPRETIVE METADATA",
+            self.report.get("method_metadata_items", []),
+            roomy=True,
         )
-        self.current_y += 4
 
-        # ── Rule ──
-        self._draw_line(self.MARGIN_X, self.current_y, self.PAGE_WIDTH - self.MARGIN_X, self.current_y, self.palette["accent"], width=0.4)
-        self.current_y += 12
-
-        # ── Stat strip (no boxes — just aligned columns) ──
-        self._draw_cover_stats()
-
-        # ── Rule ──
-        self._draw_line(self.MARGIN_X, self.current_y, self.PAGE_WIDTH - self.MARGIN_X, self.current_y, self.palette["accent"], width=0.4)
-        self.current_y += 10
-
-        # ── Metadata strip ──
-        self._draw_cover_metadata()
-
-    def _draw_cover_stats(self) -> None:
-        col_width = self.CONTENT_WIDTH / 4
-        has_narrative = isinstance(self.report.get("narrative"), dict) and any(
-            self.report["narrative"].get(k) for k in ("executive_narrative", "response_arc", "implications", "scenario_commentary")
+    def _draw_appendix_summary_page(self) -> None:
+        self._draw_page_heading(
+            "APPENDIX SUMMARY TABLES",
+            _clean_text(self.report.get("appendix_title", "")),
         )
-        has_analysis = isinstance(self.report.get("analysis"), dict)
-        if has_narrative:
-            synth_val = "Narrative"
-        elif has_analysis:
-            synth_val = "Analysis"
-        else:
-            synth_val = "Pending"
-
-        stats = [
-            (str(self.report.get("response_count", 0)), "RESPONSES"),
-            (self.report.get("mean_latency_label", "n/a"), "MEAN LATENCY"),
-            (self.report.get("token_volume_label", "n/a"), "TOKEN VOLUME"),
-            (synth_val, "SYNTHESIS"),
-        ]
-        for idx, (value, label) in enumerate(stats):
-            x = self.MARGIN_X + (idx * col_width) + (4 if idx else 0)
-            self._draw_text(_clean_text(value), x, self.current_y, font="BodyBold", size=15, color=self.palette["text"])
-            self._draw_text(label, x, self.current_y + 18, font="BodyBold", size=6, color=self.palette["accent"])
-            # Vertical separator between columns
-            if idx < 3:
-                sep_x = self.MARGIN_X + ((idx + 1) * col_width) - 2
-                self._draw_line(sep_x, self.current_y - 2, sep_x, self.current_y + 28, self.palette["accent"], width=0.3)
-        self.current_y += 36
-
-    def _draw_cover_metadata(self) -> None:
-        metadata = [
-            ("RUN ID", self.report.get("run_id", "unknown"), "Mono"),
-            ("MODEL", self.report.get("model_name", "unknown"), "Body"),
-            ("PROMPT HASH", self.report.get("prompt_hash_short", "n/a"), "Mono"),
-            ("ANALYST", self.report.get("analyst_model", "Not generated"), "Body"),
-        ]
-        col_width = self.CONTENT_WIDTH / 4
-        for idx, (label, value, font) in enumerate(metadata):
-            x = self.MARGIN_X + (idx * col_width) + (4 if idx else 0)
-            self._draw_text(label, x, self.current_y, font="BodyBold", size=6, color=self.palette["accent"])
-            self._draw_text_block(
-                _clean_text(value), x, self.current_y + 10, col_width - 10,
-                font=font, size=8, color=self.palette["text"], leading=1.2, max_lines=1,
-            )
-        self.current_y += 26
-
-    def _draw_narrative(self) -> None:
-        """Draw the AI-generated narrative synthesis page."""
-        narrative = self.report.get("narrative")
-        if not isinstance(narrative, dict):
-            return
-
-        self._section_heading("Interpretive Synthesis", "AI-generated analysis of findings and implications.")
-
-        sections = [
-            ("Executive Narrative", narrative.get("executive_narrative", ""), self.palette["success"]),
-            ("Response Arc", narrative.get("response_arc", ""), None),
-            ("Scenario Commentary", narrative.get("scenario_commentary", ""), None),
-            ("Cross-Iteration Patterns", narrative.get("cross_iteration_patterns", ""), None),
-            ("Framework Diagnosis", narrative.get("framework_diagnosis", ""), self.palette["accent"]),
-            ("Deployment Implications", narrative.get("implications", ""), self.palette["danger"]),
-        ]
-
-        for title, text, accent in sections:
-            text = _clean_text(text)
-            if not text:
-                continue
-            prose_width = self.CONTENT_WIDTH - 14 if accent else self.CONTENT_WIDTH
-            prose_x = self.MARGIN_X + 14 if accent else self.MARGIN_X
-            lines = self._wrap_text(text, prose_width, font="Body", size=10)
-            block_height = (len(lines) * 15.5) + 22
-            self._new_page_if_needed(block_height + 14)
-
-            # Section label
-            self._draw_text(
-                title.upper(), prose_x, self.current_y,
-                font="BodyBold", size=7, color=self.palette["accent"],
-            )
-            self.current_y += 14
-
-            # Left accent bar (thin, only for accented sections)
-            if accent:
-                bar_top = self.current_y
-                bar_height = len(lines) * 15.5
-                self._fill_rect(self.MARGIN_X, bar_top, 2.5, bar_height, accent)
-
-            # Prose body
-            self._draw_wrapped_lines(
-                lines, prose_x, self.current_y,
-                font="Body", size=10, color=self.palette["text"], leading=1.55,
-            )
-            self.current_y += (len(lines) * 15.5) + 18
-
-    def _draw_briefing_page(self) -> None:
-        self._section_heading("Choice Distribution", "Vote share across all iterations.")
-        self._draw_distribution_section()
-        self.current_y += 6
-        self._draw_visual_dashboard()
-        self.current_y += 10
-        self._section_heading("Scenario Brief", "Context excerpt from the evaluated prompt.")
-        self._draw_scenario_section()
-
-    def _draw_distribution_section(self) -> None:
-        option_stats = self.report.get("option_stats", [])
-
-        for option in option_stats:
-            self._new_page_if_needed(58)
-            is_leader = bool(option.get("is_leader"))
-
-            # Option name + score on same line
-            token_label = f"{option['token']}  {option['label']}"
-            self._draw_text(
-                token_label, self.MARGIN_X, self.current_y,
-                font="BodyBold", size=10, color=self.palette["text"],
-            )
-            self._draw_text(
-                f"{option['count']} ({option['percentage_label']})",
-                self.PAGE_WIDTH - self.MARGIN_X - 88, self.current_y,
-                font="BodyBold", size=10,
-                color=self.palette["success"] if is_leader else self.palette["text"],
-            )
-            self.current_y += 16
-
-            # Thin bar (no border, just filled track)
-            bar_width = self.CONTENT_WIDTH
-            self._fill_rect(self.MARGIN_X, self.current_y, bar_width, 5, self.palette.get("bg_raised", "#1a1a1a"))
-            fill_width = bar_width * (float(option["percentage"]) / 100.0)
-            if fill_width > 0:
-                self._fill_rect(
-                    self.MARGIN_X, self.current_y,
-                    max(3.0, fill_width), 5,
-                    self.palette["success"] if is_leader else self.palette["accent"],
-                )
-            self.current_y += 9
-
-            # Description
-            self._draw_text_block(
-                option["description"], self.MARGIN_X, self.current_y,
-                self.CONTENT_WIDTH, font="Body", size=8,
-                color=self.palette["accent"], leading=1.35, max_lines=2,
-            )
-            self.current_y += 24
-
-        undecided_count = int(self.report.get("undecided_count", 0) or 0)
-        if undecided_count:
-            self._draw_text(
-                f"Undecided: {undecided_count} ({self.report.get('undecided_percentage_label', '0.0%')})",
-                self.MARGIN_X, self.current_y,
-                font="BodyBold", size=9, color=self.palette["danger"],
-            )
-            self.current_y += 20
-
-    def _draw_visual_dashboard(self) -> None:
-        """Draw Phase 1 charts: donut, sparkline, heatmap."""
-        donut_data = self.report.get("donut_data", [])
-        latency_series = self.report.get("latency_series", [])
-        decision_seq = self.report.get("decision_sequence", [])
-        option_ids = self.report.get("chart_option_ids", [])
-
-        has_donut = any(d.get("value", 0) for d in donut_data)
-        has_spark = len(latency_series) >= 2
-        has_heat = bool(decision_seq) and bool(option_ids)
-
-        if not (has_donut or has_spark or has_heat):
-            return
-
-        # ── Row 1: Donut (left) + Sparkline (right) ──
-        row_height = 130.0
-        self._new_page_if_needed(row_height + 80)
-
-        self._draw_line(
-            self.MARGIN_X, self.current_y,
-            self.PAGE_WIDTH - self.MARGIN_X, self.current_y,
-            self.palette["accent"], width=0.3,
-        )
-        self.current_y += 8
-
-        # Pattern badge (Phase 5)
-        pattern = self.report.get("run_pattern", "")
-        if pattern:
-            self._draw_pattern_badge(pattern)
-
-        row_top = self.current_y
-
-        if has_donut:
-            donut_cx = self.MARGIN_X + 85
-            donut_cy = row_top + 62
-            assert self.current_page is not None
-            draw_donut_native(
-                self.current_page, self.PAGE_HEIGHT,
-                donut_cx, donut_cy, donut_data, self.palette,
-                outer_r=56.0, inner_r=34.0,
-            )
-            # Center label
-            self._draw_text(
-                str(self.report.get("response_count", 0)),
-                donut_cx - 10, donut_cy - 4,
-                font="BodyBold", size=18, color=self.palette["text"],
-            )
-            self._draw_text(
-                "TOTAL", donut_cx - 10, donut_cy + 14,
-                font="BodyBold", size=6, color=self.palette["accent"],
-            )
-
-        if has_spark:
-            spark_x = self.MARGIN_X + self.CONTENT_WIDTH * 0.42
-            spark_y = row_top + 10
-            spark_w = self.CONTENT_WIDTH * 0.56
-            self._draw_text(
-                "LATENCY PROFILE", spark_x, spark_y,
-                font="BodyBold", size=7, color=self.palette["accent"],
-            )
-            assert self.current_page is not None
-            draw_sparkline_native(
-                self.current_page, self.PAGE_HEIGHT,
-                spark_x, spark_y + 14, latency_series, self.palette,
-                width=spark_w, height=44.0,
-            )
-            # Min/max labels
-            lo, hi = min(latency_series), max(latency_series)
-            self._draw_text(
-                f"{hi:.1f}s", spark_x + spark_w + 4, spark_y + 14,
-                font="Mono", size=6, color=self.palette["accent"],
-            )
-            self._draw_text(
-                f"{lo:.1f}s", spark_x + spark_w + 4, spark_y + 52,
-                font="Mono", size=6, color=self.palette["accent"],
-            )
-
-        self.current_y = row_top + row_height
-
-        # ── Row 2: Heatmap ──
-        if has_heat:
-            self._draw_text(
-                "DECISION PATTERN", self.MARGIN_X, self.current_y,
-                font="BodyBold", size=7, color=self.palette["accent"],
-            )
-            self.current_y += 12
-            assert self.current_page is not None
-            tw, th = draw_heatmap_native(
-                self.current_page, self.PAGE_HEIGHT,
-                self.MARGIN_X, self.current_y,
-                decision_seq, option_ids, self.palette,
-            )
-            # Row labels
-            for row, oid in enumerate(option_ids[:25]):
-                label_y = self.current_y + 12 + row * 15 + 3
-                self._draw_text(
-                    f"{{{oid}}}", self.MARGIN_X, label_y,
-                    font="Mono", size=7, color=self.palette["accent"],
-                )
-            self.current_y += th + 8
-
-    def _draw_pattern_badge(self, pattern: str) -> None:
-        """Draw a coloured pattern classification badge (Phase 5)."""
-        badge_colors = {
-            "unanimous": self.palette["success"],
-            "dominant": self.palette["success"],
-            "contested": self.palette["danger"],
-            "split": "#C9A0DC",
-            "ambiguous": self.palette["accent"],
-        }
-        color = badge_colors.get(pattern, self.palette["accent"])
-        label = pattern.upper()
-        badge_w = self._estimate_text_width(label, font="BodyBold", size=7) + 12
-        badge_h = 14
-
-        self._fill_rect(self.MARGIN_X, self.current_y, badge_w, badge_h, color)
-        # Draw text in contrasting colour
-        text_color = self.palette["bg"] if pattern in ("unanimous", "dominant", "contested") else self.palette["text"]
-        self._draw_text(
-            label, self.MARGIN_X + 6, self.current_y + 2,
-            font="BodyBold", size=7, color=text_color,
-        )
-        self.current_y += badge_h + 6
-
-    def _draw_scenario_section(self) -> None:
-        scenario_text = _clean_text(self.report.get("scenario_excerpt", self.report.get("scenario_text", "")))
-        scenario_lines = self._wrap_text(scenario_text or "Scenario text unavailable.", self.CONTENT_WIDTH - 14, font="Body", size=9.5)
-        visible_lines = min(len(scenario_lines), 25)
-        line_height = 9.5 * 1.55
-        text_height = visible_lines * line_height
-        block_height = text_height + 8
-        self._new_page_if_needed(block_height + 10)
-
-        # Left accent bar
-        self._fill_rect(self.MARGIN_X, self.current_y - 2, 2.5, block_height, self.palette["accent"])
-
-        self._draw_wrapped_lines(
-            scenario_lines[:visible_lines],
-            self.MARGIN_X + 12,
-            self.current_y,
-            font="Body",
-            size=9.5,
-            color=self.palette["text"],
-            leading=1.55,
-        )
-        self.current_y += block_height + 8
-
-    def _draw_responses(self) -> None:
-        self._section_heading("Response Ledger", "Per-iteration decisions and explanations")
-        for response in self.report.get("responses", []):
-            self._draw_response_block(response)
-
-    def _draw_response_block(self, response: Dict[str, Any]) -> None:
-        explanation = _clean_text(response.get("display_text", "")) or "No explanation recorded."
-        body_font_size = 9
-        body_leading = 1.55
-        explanation_lines = self._wrap_text(explanation, self.CONTENT_WIDTH, font="Body", size=body_font_size)
-        body_height = max(16.0, len(explanation_lines) * (body_font_size * body_leading))
-        block_height = 52 + body_height
-        if response.get("used_raw_fallback"):
-            block_height += 14
-
-        self._new_page_if_needed(block_height + 12)
-
-        # ── Iteration label + choice + token ──
-        self._draw_text(
-            f"ITERATION {response.get('iteration', '?')}",
-            self.MARGIN_X, self.current_y,
-            font="BodyBold", size=7, color=self.palette["accent"],
-        )
-        self._draw_text(
-            str(response.get("decision_token") or "null"),
-            self.PAGE_WIDTH - self.MARGIN_X - 30, self.current_y,
-            font="Mono", size=8, color=self.palette["accent"],
-        )
-        self.current_y += 14
-
-        # ── Option label ──
-        self._draw_text(
-            response.get("option_label", "Undecided"),
-            self.MARGIN_X, self.current_y,
-            font="BodyBold", size=11, color=self.palette["success"],
-        )
-        self.current_y += 16
-
-        # ── Latency / tokens (compact) ──
-        if response.get("latency_label") or response.get("token_usage_label"):
-            meta_text = "  |  ".join(
-                v for v in [response.get("latency_label", ""), response.get("token_usage_label", "")]
-                if v
-            )
-            if meta_text:
-                self._draw_text(meta_text, self.MARGIN_X, self.current_y, font="Body", size=7, color=self.palette["accent"])
-                self.current_y += 12
-
-        # ── Explanation ──
-        self.current_y += 4
-        self._draw_wrapped_lines(
-            explanation_lines, self.MARGIN_X, self.current_y,
-            font="Body", size=body_font_size, color=self.palette["text"], leading=body_leading,
-        )
-        self.current_y += body_height
-
-        if response.get("used_raw_fallback"):
-            self.current_y += 4
-            self._draw_text(
-                "Displayed from raw model output — parsed explanation field was empty.",
-                self.MARGIN_X, self.current_y,
-                font="BodyItalic", size=7, color=self.palette["danger"],
-            )
-            self.current_y += 10
-
-        # ── Thin separator rule ──
-        self.current_y += 6
-        self._draw_line(
-            self.MARGIN_X, self.current_y,
-            self.PAGE_WIDTH - self.MARGIN_X, self.current_y,
-            self.palette["accent"], width=0.3,
-        )
-        self.current_y += 10
-
-    def _draw_analysis(self) -> None:
-        analysis = self.report.get("analysis")
-        if not isinstance(analysis, dict):
-            return
-
-        self._section_heading("Analyst Assessment", "Structured synthesis of the run")
-
-        legacy_text = _clean_text(analysis.get("legacy_text", ""))
-        if legacy_text:
+        note = _clean_text(self.report.get("appendix_summary_note", ""))
+        if note:
             self._draw_flowing_text(
-                legacy_text,
+                note,
+                self.CONTENT_WIDTH,
+                font="Body",
+                size=9,
+                color=self.palette["text"],
+                leading=1.4,
+                max_height=30.0,
+            )
+        self.current_y += self._section_gap_value(tight=True)
+        self._draw_appendix_summary_table()
+        structure_note = _clean_text(self.report.get("structure_shift_note", ""))
+        if structure_note:
+            self.current_y += self._section_gap_value()
+            self._draw_callout_box("NOTE", structure_note, self.palette["accent"])
+
+    def _draw_raw_appendix_page(self) -> None:
+        self._draw_page_heading(
+            "FULL APPENDIX / RAW MATERIAL",
+            _clean_text(self.report.get("raw_appendix_title", "")),
+        )
+        note = _clean_text(self.report.get("raw_appendix_note", ""))
+        if note:
+            self._draw_flowing_text(
+                note,
+                self.CONTENT_WIDTH,
+                font="Body",
+                size=9,
+                color=self.palette["text"],
+                leading=1.4,
+                max_height=34.0,
+            )
+        self.current_y += self._section_gap_value(tight=True)
+        self._draw_prompt_block()
+        self.current_y += self._section_gap_value()
+        self._draw_metadata_block("RUN METADATA", self.report.get("metadata_items", []), roomy=True)
+        self.current_y += self._section_gap_value()
+        for response in self.report.get("raw_appendix_responses", []):
+            if isinstance(response, dict):
+                self._draw_raw_response_block(response)
+
+    def _draw_page_heading(
+        self,
+        eyebrow: str,
+        title: str,
+        subtitle: str = "",
+        *,
+        title_size: int = 22,
+    ) -> None:
+        self._draw_text(eyebrow, self.MARGIN_X, self.current_y, font="BodyBold", size=8, color=self.palette["accent"])
+        self.current_y += 20
+        title_height = self._draw_text_block(
+            title or "Untitled report",
+            self.MARGIN_X,
+            self.current_y,
+            self.CONTENT_WIDTH,
+            font="Display",
+            size=title_size,
+            color=self.palette["text"],
+            leading=1.06 if title_size <= 20 else 1.1,
+        )
+        self.current_y += max(28.0, title_height + 8)
+        if subtitle:
+            subtitle_height = self._draw_text_block(
+                subtitle,
+                self.MARGIN_X,
+                self.current_y,
                 self.CONTENT_WIDTH,
                 font="Body",
                 size=10,
+                color=self.palette["accent"],
+                leading=1.38,
+            )
+            self.current_y += subtitle_height + 16
+        else:
+            self.current_y += 10
+
+    def _section_gap_value(self, *, roomy: bool = False, tight: bool = False) -> float:
+        if tight:
+            return 12.0 if roomy else self.SECTION_GAP_TIGHT
+        return 20.0 if roomy else self.SECTION_GAP
+
+    def _block_padding(self, *, roomy: bool = False) -> Tuple[float, float]:
+        if roomy:
+            return self.ROOMY_PADDING_X, self.ROOMY_PADDING_Y
+        return self.BLOCK_PADDING_X, self.BLOCK_PADDING_Y
+
+    def _draw_metric_cards(self) -> None:
+        metrics = self.report.get("executive_metrics", [])
+        if not isinstance(metrics, list) or not metrics:
+            return
+
+        visible_metrics = [metric for metric in metrics[:4] if isinstance(metric, dict)]
+        if not visible_metrics:
+            return
+
+        columns = 2 if len(visible_metrics) > 1 else 1
+        gap_x = self.COLUMN_GAP if columns == 2 else 0.0
+        gap_y = 14.0
+        card_width = (self.CONTENT_WIDTH - gap_x * (columns - 1)) / columns
+        card_height = 72.0
+        rows = (len(visible_metrics) + columns - 1) // columns
+        total_height = rows * card_height + max(0, rows - 1) * gap_y
+        self._new_page_if_needed(total_height + 4)
+        base_y = self.current_y
+        for idx, metric in enumerate(visible_metrics):
+            row = idx // columns
+            col = idx % columns
+            x = self.MARGIN_X + col * (card_width + gap_x)
+            top_y = base_y + row * (card_height + gap_y)
+            self._draw_line(x, top_y + 4, x + card_width, top_y + 4, self.palette["accent"], width=0.6)
+            self._draw_text(
+                _clean_text(metric.get("label", "")),
+                x,
+                top_y + 14,
+                font="BodyBold",
+                size=8,
+                color=self.palette["accent"],
+            )
+            support = _clean_text(metric.get("support", ""))
+            value_size = 16 if len(_clean_text(metric.get("value", ""))) <= 8 else 14
+            value_top = top_y + 28
+            value_height = self._draw_text_block(
+                _clean_text(metric.get("value", "")),
+                x,
+                value_top,
+                card_width - 8,
+                font="BodyBold",
+                size=value_size,
                 color=self.palette["text"],
-                leading=1.35,
+                leading=1.05,
+                max_lines=2,
             )
-            self.current_y += 10
-            return
-
-        dominant_framework = _clean_text(analysis.get("dominant_framework", ""))
-        if dominant_framework:
-            self._draw_text(
-                "DOMINANT FRAMEWORK",
-                self.MARGIN_X, self.current_y,
-                font="BodyBold", size=7, color=self.palette["accent"],
-            )
-            self.current_y += 14
-            self._draw_text(
-                dominant_framework,
-                self.MARGIN_X, self.current_y,
-                font="BodyBold", size=15, color=self.palette["success"],
-            )
-            self.current_y += 28
-
-        self._draw_bullet_section("Key insights", analysis.get("key_insights", []), self.palette["text"])
-        self._draw_bullet_section("Pattern recognition", analysis.get("justifications", []), self.palette["text"])
-        self._draw_bullet_section("Consistency check", analysis.get("consistency", []), self.palette["text"])
-
-        moral_complexes = analysis.get("moral_complexes", [])
-        if isinstance(moral_complexes, list) and moral_complexes:
-            self._draw_line(
-                self.MARGIN_X, self.current_y,
-                self.PAGE_WIDTH - self.MARGIN_X, self.current_y,
-                self.palette["accent"], width=0.3,
-            )
-            self.current_y += 10
-            self._draw_text(
-                "MORAL COMPLEXES", self.MARGIN_X, self.current_y,
-                font="BodyBold", size=7, color=self.palette["accent"],
-            )
-            self.current_y += 16
-            for complex_item in moral_complexes:
-                if not isinstance(complex_item, dict):
-                    continue
-                label = _clean_text(complex_item.get("label", "Complex"))
-                count = complex_item.get("count", 0)
-                justification = _clean_text(complex_item.get("justification", ""))
-                self._new_page_if_needed(36)
-                self._draw_text(
-                    f"{label} ({count})", self.MARGIN_X, self.current_y,
-                    font="BodyBold", size=10, color=self.palette["text"],
+            if support:
+                self._draw_text_block(
+                    support,
+                    x,
+                    value_top + value_height + 7,
+                    card_width - 8,
+                    font="Body",
+                    size=8,
+                    color=self.palette["text"],
+                    leading=1.35,
+                    max_lines=3,
                 )
-                self.current_y += 14
-                if justification:
-                    self._draw_text_block(
-                        justification, self.MARGIN_X, self.current_y,
-                        self.CONTENT_WIDTH, font="Body", size=8,
-                        color=self.palette["accent"], leading=1.3, max_lines=2,
-                    )
-                    self.current_y += 22
-                else:
-                    self.current_y += 6
+        self.current_y += total_height
 
-        reasoning_quality = analysis.get("reasoning_quality")
-        if isinstance(reasoning_quality, dict):
-            self._draw_bullet_section("Rubric items noticed", reasoning_quality.get("noticed", []), self.palette["success"])
-            self._draw_bullet_section("Rubric items missed", reasoning_quality.get("missed", []), self.palette["danger"])
+    def _label_chip_text_color(self) -> str:
+        return self.palette["bg"] if self.palette["bg"] == "#121212" else self.palette["text"]
 
-    def _draw_bullet_section(self, title: str, items: object, color: str) -> None:
-        normalized = [item for item in self._normalize_items(items) if item]
-        if not normalized:
+    def _estimate_label_chip_width(self, label: str) -> float:
+        return self._estimate_text_width(label, font="BodyBold", size=7) + 16
+
+    def _draw_label_chip(self, label: str, x: float, top_y: float, fill_color: str) -> float:
+        chip_width = self._estimate_label_chip_width(label)
+        chip_height = 15.0
+        self._fill_rect(x, top_y, chip_width, chip_height, fill_color)
+        self._draw_text(
+            label,
+            x + 7,
+            top_y + 4,
+            font="BodyBold",
+            size=7,
+            color=self._label_chip_text_color(),
+        )
+        return chip_height
+
+    def _draw_section_header(
+        self,
+        label: str,
+        top_y: float,
+        *,
+        accent_color: Optional[str] = None,
+        x: Optional[float] = None,
+        width: Optional[float] = None,
+    ) -> float:
+        draw_x = self.MARGIN_X if x is None else x
+        available_width = self.CONTENT_WIDTH if width is None else width
+        color = self.palette["accent"] if accent_color is None else accent_color
+        chip_width = self._estimate_label_chip_width(label)
+        chip_height = self._draw_label_chip(label, draw_x, top_y, color)
+        line_x = draw_x + chip_width + 10
+        line_y = top_y + chip_height / 2 + 0.5
+        line_end = draw_x + available_width
+        if line_x < line_end:
+            self._draw_line(line_x, line_y, line_end, line_y, color, width=0.35)
+        return chip_height
+
+    def _estimate_wrapped_height(
+        self,
+        text: str,
+        width: float,
+        *,
+        font: str,
+        size: int,
+        leading: float,
+        max_lines: Optional[int] = None,
+    ) -> float:
+        lines = self._wrap_text(text, width, font=font, size=size)
+        if max_lines is not None:
+            lines = lines[:max_lines]
+        return len(lines) * size * leading
+
+    def _estimate_callout_height(self, text: str, width: float, *, roomy: bool = False) -> float:
+        pad_x, pad_y = self._block_padding(roomy=roomy)
+        leading = 1.5 if roomy else 1.42
+        body_width = max(72.0, width - pad_x * 2)
+        body_height = self._estimate_wrapped_height(text or "n/a", body_width, font="Body", size=10, leading=leading)
+        return pad_y + 15.0 + 12.0 + body_height + pad_y
+
+    def _parse_thesis_sections(self, text: str) -> List[Tuple[str, str]]:
+        parts = re.split(r"(Observed tendency:|Risk:|Deployment implication:)", _clean_text(text))
+        if len(parts) < 3:
+            return []
+        sections: List[Tuple[str, str]] = []
+        leading_text = parts[0].strip()
+        if leading_text:
+            sections.append(("Summary", leading_text))
+        for idx in range(1, len(parts), 2):
+            if idx + 1 >= len(parts):
+                break
+            label = parts[idx].rstrip(":")
+            content = parts[idx + 1].strip()
+            if content:
+                sections.append((label, content))
+        return sections
+
+    def _estimate_thesis_height(self, text: str) -> float:
+        sections = self._parse_thesis_sections(text)
+        if not sections:
+            return self._estimate_callout_height(text, self.CONTENT_WIDTH)
+
+        pad_x, pad_y = self._block_padding()
+        body_width = self.CONTENT_WIDTH - pad_x * 2
+        body_height = pad_y + 15.0 + 10.0
+        for idx, (_, content) in enumerate(sections):
+            body_height += 10.0
+            body_height += self._estimate_wrapped_height(content, body_width, font="Body", size=10, leading=1.45)
+            if idx < len(sections) - 1:
+                body_height += 8.0
+        return body_height + pad_y
+
+    def _draw_thesis_box(self, text: str) -> None:
+        sections = self._parse_thesis_sections(text)
+        if not sections:
+            self._draw_callout_box("THESIS", text, self.palette["accent"])
             return
 
-        self._section_heading(title, "")
-        bullet_indent = 12
-        for item in normalized:
-            lines = self._wrap_text(item, self.CONTENT_WIDTH - 22, font="Body", size=10)
-            needed_height = max(20.0, len(lines) * 13.5) + 6
-            self._new_page_if_needed(needed_height)
-            self._draw_text("-", self.MARGIN_X, self.current_y, font="BodyBold", size=12, color=color)
-            self._draw_wrapped_lines(
+        pad_x, pad_y = self._block_padding()
+        box_height = self._estimate_thesis_height(text)
+        self._new_page_if_needed(box_height + 4)
+        self._fill_rect(self.MARGIN_X, self.current_y, 4, box_height, self.palette["accent"])
+        header_y = self.current_y + pad_y
+        header_height = self._draw_section_header(
+            "THESIS",
+            header_y,
+            accent_color=self.palette["accent"],
+            x=self.MARGIN_X + 12,
+            width=self.CONTENT_WIDTH - 12,
+        )
+
+        body_width = self.CONTENT_WIDTH - pad_x * 2
+        section_y = header_y + header_height + 10
+        for idx, (label, content) in enumerate(sections):
+            self._draw_text(
+                label.upper(),
+                self.MARGIN_X + pad_x,
+                section_y,
+                font="BodyBold",
+                size=8,
+                color=self.palette["accent"],
+            )
+            section_y += 12
+            lines = self._wrap_text(content, body_width, font="Body", size=10)
+            section_y += self._draw_wrapped_lines(
                 lines,
-                self.MARGIN_X + bullet_indent,
-                self.current_y,
+                self.MARGIN_X + pad_x,
+                section_y,
                 font="Body",
                 size=10,
                 color=self.palette["text"],
-                leading=1.35,
+                leading=1.45,
             )
-            self.current_y += needed_height
-        self.current_y += 4
+            if idx < len(sections) - 1:
+                section_y += 8
+        self.current_y += box_height
 
-    def _normalize_items(self, value: object) -> List[str]:
-        if isinstance(value, list):
-            return [_clean_text(item) for item in value if _clean_text(item)]
-        if isinstance(value, str) and value.strip():
-            return [_clean_text(value)]
-        return []
-
-    def _section_heading(self, title: str, subtitle: str) -> None:
-        self._new_page_if_needed(44)
-        self._draw_text(
-            title, self.MARGIN_X, self.current_y,
-            font="BodyBold", size=14, color=self.palette["text"],
+    def _draw_callout_box(
+        self,
+        label: str,
+        text: str,
+        accent_color: str,
+        *,
+        roomy: bool = False,
+    ) -> None:
+        pad_x, pad_y = self._block_padding(roomy=roomy)
+        body_width = self.CONTENT_WIDTH - pad_x * 2
+        lines = self._wrap_text(text or "n/a", body_width, font="Body", size=10)
+        leading = 1.5 if roomy else 1.42
+        box_height = self._estimate_callout_height(text, self.CONTENT_WIDTH, roomy=roomy)
+        self._new_page_if_needed(box_height + 4)
+        self._fill_rect(self.MARGIN_X, self.current_y, 4, box_height, accent_color)
+        header_y = self.current_y + pad_y
+        header_height = self._draw_section_header(
+            label,
+            header_y,
+            accent_color=accent_color,
+            x=self.MARGIN_X + 12,
+            width=self.CONTENT_WIDTH - 12,
         )
-        self.current_y += 18
-        if subtitle:
+        self._draw_wrapped_lines(
+            lines,
+            self.MARGIN_X + pad_x,
+            header_y + header_height + 12,
+            font="Body",
+            size=10,
+            color=self.palette["text"],
+            leading=leading,
+        )
+        self.current_y += box_height
+
+    def _draw_option_distribution_block(self, title: str, option_stats: object, *, show_descriptions: bool) -> None:
+        stats = option_stats if isinstance(option_stats, list) else []
+        estimated_height = 38.0
+        for option in stats:
+            if not isinstance(option, dict):
+                continue
+            score = f"{option.get('count', 0)} | {option.get('percentage_label', '0.0%')}"
+            score_width = max(86.0, self._estimate_text_width(score, font="BodyBold", size=10) + 6)
+            label_width = self.CONTENT_WIDTH - score_width - 20
+            label = f"{option.get('token', '{?}')} {option.get('label', 'Unknown')}"
+            label_lines = self._wrap_text(label, label_width, font="BodyBold", size=10)
+            estimated_height += max(32.0, len(label_lines) * (10 * 1.2) + 20)
+            if show_descriptions:
+                description = _clean_text(option.get("description", ""))
+                if description:
+                    description_lines = self._wrap_text(description, self.CONTENT_WIDTH - 24, font="Body", size=8)
+                    estimated_height += len(description_lines[:2]) * (8 * 1.35) + 10
+        self._new_page_if_needed(estimated_height + 4)
+        header_height = self._draw_section_header("PRIMARY EXHIBIT", self.current_y + 1, accent_color=self.palette["accent"])
+        self.current_y += header_height + 10
+        title_height = self._draw_text_block(
+            title or "Choice distribution",
+            self.MARGIN_X,
+            self.current_y,
+            self.CONTENT_WIDTH - 12,
+            font="BodyBold",
+            size=12,
+            color=self.palette["text"],
+            leading=1.24,
+        )
+        self.current_y += title_height + 16
+        for option in stats:
+            if not isinstance(option, dict):
+                continue
+            is_leader = bool(option.get("is_leader"))
+            score = f"{option.get('count', 0)} | {option.get('percentage_label', '0.0%')}"
+            score_width = self._estimate_text_width(score, font="BodyBold", size=10)
+            score_column_width = max(86.0, score_width + 6)
+            label_width = self.CONTENT_WIDTH - score_column_width - 20
+            label = f"{option.get('token', '{?}')} {option.get('label', 'Unknown')}"
+            label_lines = self._wrap_text(label, label_width, font="BodyBold", size=10)
+            label_height = self._draw_wrapped_lines(
+                label_lines,
+                self.MARGIN_X,
+                self.current_y,
+                font="BodyBold",
+                size=10,
+                color=self.palette["success"] if is_leader else self.palette["text"],
+                leading=1.2,
+            )
             self._draw_text(
-                subtitle, self.MARGIN_X, self.current_y,
-                font="Body", size=9, color=self.palette["accent"],
+                score,
+                self.PAGE_WIDTH - self.MARGIN_X - score_width,
+                self.current_y + max(0.0, (label_height - 10.0) / 2),
+                font="BodyBold",
+                size=10,
+                color=self.palette["success"] if is_leader else self.palette["text"],
             )
-            self.current_y += 14
-        self._draw_line(
-            self.MARGIN_X, self.current_y,
-            self.PAGE_WIDTH - self.MARGIN_X, self.current_y,
-            self.palette["accent"], width=0.5,
+            bar_y = self.current_y + label_height + 8
+            self._draw_line(
+                self.MARGIN_X,
+                bar_y,
+                self.MARGIN_X + self.CONTENT_WIDTH,
+                bar_y,
+                self.palette["text"],
+                width=0.75,
+            )
+            fill_width = self.CONTENT_WIDTH * (float(option.get("percentage", 0.0) or 0.0) / 100.0)
+            if fill_width > 0:
+                self._draw_line(
+                    self.MARGIN_X,
+                    bar_y,
+                    self.MARGIN_X + max(4.0, fill_width),
+                    bar_y,
+                    self.palette["success"] if is_leader else self.palette["accent"],
+                    width=2.8,
+                )
+            self.current_y = bar_y + 14
+            if show_descriptions:
+                description = _clean_text(option.get("description", ""))
+                if description:
+                    description_height = self._draw_text_block(
+                        description,
+                        self.MARGIN_X + 12,
+                        self.current_y,
+                        self.CONTENT_WIDTH - 24,
+                        font="Body",
+                        size=8,
+                        color=self.palette["text"],
+                        leading=1.35,
+                        max_lines=2,
+                    )
+                    self.current_y += description_height + 8
+
+    def _draw_two_column_lists(
+        self,
+        left_title: str,
+        left_items: object,
+        right_title: str,
+        right_items: object,
+        *,
+        roomy: bool = False,
+    ) -> None:
+        left_list = [str(item) for item in left_items if str(item).strip()] if isinstance(left_items, list) else []
+        right_list = [str(item) for item in right_items if str(item).strip()] if isinstance(right_items, list) else []
+        column_width = (self.CONTENT_WIDTH - self.COLUMN_GAP) / 2
+        title_gap = 20.0 if roomy else 16.0
+        list_leading = 1.5 if roomy else 1.38
+        item_gap = 8.0 if roomy else 5.0
+        left_height = self._estimate_list_height(left_list, column_width - 8, leading=list_leading, item_gap=item_gap)
+        right_height = self._estimate_list_height(right_list, column_width - 8, leading=list_leading, item_gap=item_gap)
+        box_height = max(74.0 if roomy else 56.0, max(left_height, right_height) + title_gap + 16.0)
+        self._new_page_if_needed(box_height + 4)
+        left_x = self.MARGIN_X
+        right_x = self.MARGIN_X + column_width + self.COLUMN_GAP
+        divider_x = self.MARGIN_X + column_width + self.COLUMN_GAP / 2
+        self._draw_line(divider_x, self.current_y + 8, divider_x, self.current_y + box_height, self.palette["accent"], width=0.25)
+        label_y = self.current_y + (18 if roomy else 14)
+        list_top = label_y + title_gap
+        self._draw_text(left_title, left_x, label_y, font="BodyBold", size=9 if roomy else 8, color=self.palette["accent"])
+        self._draw_text(right_title, right_x, label_y, font="BodyBold", size=9 if roomy else 8, color=self.palette["accent"])
+        self._draw_list_lines(left_list, left_x, list_top, column_width - 8, leading=list_leading, item_gap=item_gap)
+        self._draw_list_lines(right_list, right_x, list_top, column_width - 8, leading=list_leading, item_gap=item_gap)
+        self.current_y += box_height
+
+    def _draw_heatmap_block(self, title: str) -> None:
+        decision_seq = self.report.get("decision_sequence", [])
+        option_ids = self.report.get("chart_option_ids", [])
+        if not isinstance(decision_seq, list) or not isinstance(option_ids, list) or not decision_seq or not option_ids:
+            return
+        self._new_page_if_needed(120)
+        header_height = self._draw_section_header("SUPPORTING EXHIBIT", self.current_y, accent_color=self.palette["accent"])
+        self.current_y += header_height + 10
+        title_height = self._draw_text_block(
+            title or "Decision sequence",
+            self.MARGIN_X,
+            self.current_y,
+            self.CONTENT_WIDTH - 12,
+            font="BodyBold",
+            size=11,
+            color=self.palette["text"],
+            leading=1.24,
         )
-        self.current_y += 12
+        self.current_y += title_height + 16
+        assert self.current_page is not None
+        _tw, th = draw_heatmap_native(
+            self.current_page,
+            self.PAGE_HEIGHT,
+            self.MARGIN_X + 30,
+            self.current_y,
+            decision_seq,
+            option_ids,
+            self.palette,
+        )
+        for row, option_id in enumerate(option_ids[:25]):
+            label_y = self.current_y + 12 + row * 15 + 3
+            self._draw_text(f"{{{option_id}}}", self.MARGIN_X, label_y, font="Mono", size=8, color=self.palette["accent"])
+        self.current_y += th + 8
+
+    def _draw_rationale_cluster_block(self, title: str) -> None:
+        clusters = self.report.get("rationale_clusters", [])
+        if not isinstance(clusters, list) or not clusters:
+            return
+        visible_clusters = clusters[:6]
+        row_height = 28.0
+        title_height = self._estimate_wrapped_height(
+            title or "Rationale clusters",
+            self.CONTENT_WIDTH - 12,
+            font="BodyBold",
+            size=11,
+            leading=1.24,
+        )
+        box_height = 16 + 13 + 10 + title_height + 18 + len(visible_clusters) * row_height
+        self._new_page_if_needed(box_height + 4)
+        header_height = self._draw_section_header("RATIONALE CLUSTERING", self.current_y, accent_color=self.palette["accent"])
+        title_y = self.current_y + header_height + 10
+        title_height = self._draw_text_block(
+            title or "Rationale clusters",
+            self.MARGIN_X,
+            title_y,
+            self.CONTENT_WIDTH - 12,
+            font="BodyBold",
+            size=11,
+            color=self.palette["text"],
+            leading=1.24,
+        )
+        table_y = title_y + title_height + 14
+        theme_x = self.MARGIN_X
+        count_x = self.MARGIN_X + 320
+        share_x = self.MARGIN_X + 382
+        self._draw_text("Theme", theme_x, table_y, font="BodyBold", size=7, color=self.palette["accent"])
+        self._draw_text("Count", count_x, table_y, font="BodyBold", size=7, color=self.palette["accent"])
+        self._draw_text("Share", share_x, table_y, font="BodyBold", size=7, color=self.palette["accent"])
+        self._draw_line(self.MARGIN_X, table_y + 10, self.MARGIN_X + self.CONTENT_WIDTH, table_y + 10, self.palette["accent"], width=0.3)
+        row_y = table_y + 18
+        last_cluster_index = len(visible_clusters) - 1
+        for idx, cluster in enumerate(visible_clusters):
+            if not isinstance(cluster, dict):
+                continue
+            self._draw_text_block(_clean_text(cluster.get("label", "")), theme_x, row_y, 300, font="Body", size=9, color=self.palette["text"], leading=1.32, max_lines=2)
+            self._draw_text(str(cluster.get("count", 0)), count_x, row_y, font="Body", size=9, color=self.palette["text"])
+            self._draw_text(_clean_text(cluster.get("share_label", "")), share_x, row_y, font="Body", size=9, color=self.palette["text"])
+            if idx < last_cluster_index:
+                self._draw_line(self.MARGIN_X, row_y + row_height - 6, self.MARGIN_X + self.CONTENT_WIDTH, row_y + row_height - 6, self.palette["accent"], width=0.2)
+            row_y += row_height
+        self.current_y += box_height
+
+    def _draw_list_block(self, title: str, items: object) -> None:
+        normalized = [str(item) for item in items if str(item).strip()] if isinstance(items, list) else []
+        if not normalized:
+            return
+        box_height = max(40.0, self._estimate_list_height(normalized, self.CONTENT_WIDTH - 12, item_gap=5.0) + 36)
+        self._new_page_if_needed(box_height + 4)
+        header_height = self._draw_section_header(title, self.current_y, accent_color=self.palette["accent"])
+        self._draw_list_lines(normalized, self.MARGIN_X, self.current_y + header_height + 12, self.CONTENT_WIDTH - 12, leading=1.38, item_gap=5.0)
+        self.current_y += box_height
+
+    def _draw_metadata_block(self, title: str, items: object, *, roomy: bool = False) -> None:
+        metadata = items if isinstance(items, list) else []
+        visible_items = [item for item in metadata[:8] if isinstance(item, dict)]
+        if not visible_items:
+            return
+        value_size = 10 if roomy else 9
+        value_leading = 1.45 if roomy else 1.34
+        label_size = 9 if roomy else 8
+        label_to_value_gap = 18.0 if roomy else 16.0
+        row_bottom_padding = 14.0 if roomy else 12.0
+        row_min_height = 42.0 if roomy else 36.0
+        column_gap = self.COLUMN_GAP
+        column_width = (self.CONTENT_WIDTH - column_gap) / 2
+        rows: List[Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]] = []
+        for idx in range(0, len(visible_items), 2):
+            left = visible_items[idx]
+            right = visible_items[idx + 1] if idx + 1 < len(visible_items) else None
+            rows.append((left, right))
+
+        row_heights: List[float] = []
+        for left, right in rows:
+            heights: List[float] = []
+            for item in (left, right):
+                if item is None:
+                    continue
+                value_height = self._estimate_wrapped_height(
+                    _clean_text(item.get("value", "")),
+                    column_width - 10,
+                    font="Mono" if item.get("mono") else "Body",
+                    size=value_size,
+                    leading=value_leading,
+                    max_lines=3 if roomy else 2,
+                )
+                heights.append(label_to_value_gap + value_height)
+            row_heights.append(max(row_min_height, max(heights, default=0.0) + row_bottom_padding))
+
+        header_height = 13.0
+        table_top_gap = 22.0
+        box_height = header_height + table_top_gap + sum(row_heights)
+        self._new_page_if_needed(box_height + 4)
+        drawn_header_height = self._draw_section_header(title, self.current_y, accent_color=self.palette["accent"])
+        row_y = self.current_y + drawn_header_height + table_top_gap
+        left_x = self.MARGIN_X
+        right_x = self.MARGIN_X + column_width + column_gap
+        divider_x = self.MARGIN_X + column_width + column_gap / 2
+        self._draw_line(divider_x, row_y - 2, divider_x, self.current_y + box_height - 2, self.palette["accent"], width=0.25)
+        for row_index, row_height in enumerate(row_heights):
+            left, right = rows[row_index]
+            for column_x, item in ((left_x, left), (right_x, right)):
+                if item is None:
+                    continue
+                self._draw_text(_clean_text(item.get("label", "")), column_x, row_y, font="BodyBold", size=label_size, color=self.palette["accent"])
+                self._draw_text_block(
+                    _clean_text(item.get("value", "")),
+                    column_x,
+                    row_y + label_to_value_gap,
+                    column_width - 10,
+                    font="Mono" if item.get("mono") else "Body",
+                    size=value_size,
+                    color=self.palette["text"],
+                    leading=value_leading,
+                    max_lines=3 if roomy else 2,
+                )
+            if row_index < len(row_heights) - 1:
+                self._draw_line(self.MARGIN_X, row_y + row_height - 1, self.MARGIN_X + self.CONTENT_WIDTH, row_y + row_height - 1, self.palette["accent"], width=0.2)
+            row_y += row_height
+        self.current_y += box_height
+
+    def _draw_appendix_summary_table(self) -> None:
+        responses = self.report.get("responses", [])
+        if not isinstance(responses, list) or not responses:
+            return
+        widths = [26.0, 132.0, 72.0, 98.0, 160.0]
+        x_positions = [self.MARGIN_X]
+        for width in widths[:-1]:
+            x_positions.append(x_positions[-1] + width)
+        headers = ["Iter", "Selected option", "Latency", "Theme", "Output quality"]
+        for idx, header in enumerate(headers):
+            self._draw_text(header, x_positions[idx], self.current_y, font="BodyBold", size=7, color=self.palette["accent"])
+        self._draw_line(self.MARGIN_X, self.current_y + 10, self.MARGIN_X + self.CONTENT_WIDTH, self.current_y + 10, self.palette["accent"], width=0.3)
+        self.current_y += 18
+        last_response_index = len(responses) - 1
+        for idx, response in enumerate(responses):
+            if not isinstance(response, dict):
+                continue
+            values = [
+                str(response.get("iteration", "")),
+                _clean_text(response.get("option_label", "")),
+                _clean_text(response.get("latency_label", "n/a")),
+                _clean_text(response.get("rationale_theme", "")),
+                _clean_text(response.get("output_quality_flag", "")),
+            ]
+            row_height = max(
+                22.0,
+                max(
+                    self._estimate_wrapped_height(value or "-", widths[idx] - 6, font="Body", size=8, leading=1.32, max_lines=2)
+                    for idx, value in enumerate(values)
+                )
+                + 8.0,
+            )
+            self._new_page_if_needed(row_height + 6)
+            for idx, value in enumerate(values):
+                self._draw_text_block(
+                    value or "-",
+                    x_positions[idx],
+                    self.current_y,
+                    widths[idx] - 6,
+                    font="Body",
+                    size=8,
+                    color=self.palette["text"],
+                    leading=1.32,
+                    max_lines=2,
+                )
+            self.current_y += row_height
+            if idx < last_response_index:
+                self._draw_line(self.MARGIN_X, self.current_y - 4, self.MARGIN_X + self.CONTENT_WIDTH, self.current_y - 4, self.palette["accent"], width=0.2)
+
+    def _draw_prompt_block(self) -> None:
+        prompt_text = _clean_text(self.report.get("scenario_text", "")) or "Prompt text unavailable."
+        self._new_page_if_needed(24)
+        header_height = self._draw_section_header("FULL PROMPT TEXT", self.current_y, accent_color=self.palette["accent"])
+        self.current_y += header_height + 12
+        self._draw_flowing_text(
+            prompt_text,
+            self.CONTENT_WIDTH - 8,
+            font="Body",
+            size=9,
+            color=self.palette["text"],
+            leading=1.4,
+            x=self.MARGIN_X + 4,
+        )
+
+    def _draw_raw_response_block(self, response: Dict[str, Any]) -> None:
+        raw_text = _clean_text(response.get("raw_text", "")) or "No raw output recorded."
+        self._new_page_if_needed(24)
+        self._draw_line(self.MARGIN_X, self.current_y + 4, self.MARGIN_X + self.CONTENT_WIDTH, self.current_y + 4, self.palette["accent"], width=0.3)
+        self.current_y += 16
+        self._draw_text(f"ITERATION {response.get('iteration', '?')}", self.MARGIN_X, self.current_y, font="BodyBold", size=7, color=self.palette["accent"])
+        self._draw_text_block(_clean_text(response.get("option_label", "Undecided")), self.MARGIN_X + 92, self.current_y, 240, font="BodyBold", size=9, color=self.palette["text"], leading=1.18, max_lines=1)
+        self._draw_text(_clean_text(response.get("decision_token", "null")), self.PAGE_WIDTH - self.MARGIN_X - 48, self.current_y, font="Mono", size=8, color=self.palette["accent"])
+        meta = " | ".join(
+            part
+            for part in [
+                _clean_text(response.get("latency_label", "")),
+                _clean_text(response.get("token_usage_label", "")),
+                _clean_text(response.get("rationale_theme", "")),
+                _clean_text(response.get("output_quality_flag", "")),
+            ]
+            if part
+        )
+        if meta:
+            meta_height = self._draw_text_block(meta, self.MARGIN_X, self.current_y + 12, self.CONTENT_WIDTH, font="Body", size=8, color=self.palette["text"], leading=1.32, max_lines=2)
+            self.current_y += meta_height + 14
+        else:
+            self.current_y += 12
+        self._draw_flowing_text(
+            raw_text,
+            self.CONTENT_WIDTH - 8,
+            font="Body",
+            size=8,
+            color=self.palette["text"],
+            leading=1.4,
+            x=self.MARGIN_X + 4,
+        )
+
+    def _distribution_rows(self) -> List[str]:
+        rows: List[str] = []
+        for option in self.report.get("option_stats", []):
+            if isinstance(option, dict):
+                rows.append(
+                    f"{_clean_text(option.get('label', 'Unknown'))}: {option.get('count', 0)} ({_clean_text(option.get('percentage_label', '0.0%'))})"
+                )
+        return rows
+
+    def _evidence_readout_points(self) -> List[str]:
+        combined: List[str] = []
+        seen: set[str] = set()
+        for key in ("observation_points", "interpretation_points"):
+            items = self.report.get(key, [])
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                text = str(item).strip()
+                if not text or text in seen:
+                    continue
+                seen.add(text)
+                combined.append(text)
+        return combined
+
+    def _estimate_list_height(
+        self,
+        items: List[str],
+        width: float,
+        *,
+        leading: float = 1.28,
+        item_gap: float = 4.0,
+    ) -> float:
+        line_height = 9 * leading
+        text_width = max(24.0, width - 12)
+        height = 0.0
+        for item in items:
+            lines = self._wrap_text(_clean_text(item), text_width, font="Body", size=9)
+            height += max(18.0, len(lines) * line_height) + item_gap
+        return height
+
+    def _draw_list_lines(
+        self,
+        items: List[str],
+        x: float,
+        top_y: float,
+        width: float,
+        *,
+        leading: float = 1.28,
+        item_gap: float = 4.0,
+    ) -> None:
+        line_height = 9 * leading
+        y = top_y
+        for item in items:
+            lines = self._wrap_text(_clean_text(item), width - 12, font="Body", size=9)
+            self._draw_text("-", x, y, font="BodyBold", size=9, color=self.palette["text"])
+            self._draw_wrapped_lines(lines, x + 10, y, font="Body", size=9, color=self.palette["text"], leading=leading)
+            y += max(18.0, len(lines) * line_height) + item_gap
 
     def _draw_flowing_text(
         self,
@@ -823,7 +1093,7 @@ class NativePdfReportRenderer:
         x: Optional[float] = None,
         top_y: Optional[float] = None,
         max_height: Optional[float] = None,
-        ) -> None:
+    ) -> None:
         paragraphs = _clean_text(text).split("\n")
         line_height = size * leading
         draw_x = self.MARGIN_X if x is None else x
@@ -843,7 +1113,7 @@ class NativePdfReportRenderer:
                     return
                 self._draw_text(line, draw_x, self.current_y, font=font, size=size, color=color)
                 self.current_y += line_height
-        self.current_y += 8
+        self.current_y += 6
 
     def _estimate_text_width(self, text: str, *, font: str, size: int) -> float:
         clean = _clean_text(text)
@@ -896,7 +1166,6 @@ class NativePdfReportRenderer:
         if not clean:
             return [""]
         lines: List[str] = []
-
         for raw_line in clean.split("\n"):
             stripped = raw_line.strip()
             if not stripped:
@@ -935,16 +1204,11 @@ class NativePdfReportRenderer:
         size: int,
         color: str,
         leading: float,
-        align: str = "left",
     ) -> float:
         line_height = size * leading
         y = top_y
         for line in lines:
-            line_x = x
-            if align == "right":
-                estimated_width = self._estimate_text_width(line, font=font, size=size)
-                line_x = max(x, x + (0 - estimated_width))
-            self._draw_text(line, line_x, y, font=font, size=size, color=color)
+            self._draw_text(line, x, y, font=font, size=size, color=color)
             y += line_height
         return max(0.0, y - top_y)
 
@@ -960,36 +1224,14 @@ class NativePdfReportRenderer:
         color: str,
         leading: float,
         max_lines: Optional[int] = None,
-        align: str = "left",
     ) -> float:
         lines = self._wrap_text(text, width, font=font, size=size)
         if max_lines is not None and len(lines) > max_lines:
             lines = list(lines[:max_lines])
             last_line = lines[-1]
-            lines[-1] = (last_line[:-1] + "..." if len(last_line) > 1 else "...")
-
+            lines[-1] = last_line[:-1] + "..." if len(last_line) > 1 else "..."
         line_height = size * leading
-        if align == "right":
-            for idx, line in enumerate(lines):
-                estimated_width = self._estimate_text_width(line, font=font, size=size)
-                self._draw_text(
-                    line,
-                    x + width - estimated_width,
-                    top_y + (idx * line_height),
-                    font=font,
-                    size=size,
-                    color=color,
-                )
-        else:
-            self._draw_wrapped_lines(
-                lines,
-                x,
-                top_y,
-                font=font,
-                size=size,
-                color=color,
-                leading=leading,
-            )
+        self._draw_wrapped_lines(lines, x, top_y, font=font, size=size, color=color, leading=leading)
         return len(lines) * line_height
 
     def _fill_rect(self, x: float, top_y: float, width: float, height: float, color: str) -> None:
@@ -1019,6 +1261,12 @@ class NativePdfReportRenderer:
         self.current_page.line_to(x2, self.PAGE_HEIGHT - top_y2)
         self.current_page.stroke()
         self.current_page.pop_state()
+
+    def _draw_rect_outline(self, x: float, top_y: float, width: float, height: float, color: str) -> None:
+        self._draw_line(x, top_y, x + width, top_y, color, width=0.35)
+        self._draw_line(x, top_y + height, x + width, top_y + height, color, width=0.35)
+        self._draw_line(x, top_y, x, top_y + height, color, width=0.35)
+        self._draw_line(x + width, top_y, x + width, top_y + height, color, width=0.35)
 
     def _draw_text(
         self,

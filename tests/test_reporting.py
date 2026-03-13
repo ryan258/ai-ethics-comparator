@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 import lib.reporting as reporting
+from lib.paradoxes import load_paradoxes
 from lib.reporting import ReportGenerator
 
 
@@ -53,6 +54,7 @@ def _sample_run_data() -> dict:
         "paradoxId": "ai_suffering_exploitation",
         "paradoxType": "trolley",
         "promptHash": "2cbb77f8f75bbde6",
+        "params": {"temperature": 0.7},
         "summary": {
             "total": 3,
             "options": [
@@ -130,6 +132,267 @@ def _sample_insight() -> dict:
     }
 
 
+def _digital_afterlife_paradox() -> dict:
+    return next(
+        paradox
+        for paradox in load_paradoxes(Path("paradoxes.json"))
+        if paradox["id"] == "digital_afterlife_replica"
+    )
+
+
+def _digital_afterlife_run_data() -> dict:
+    paradox = _digital_afterlife_paradox()
+    return {
+        "timestamp": "2026-03-12T20:22:00+00:00",
+        "runId": "nvidianemotron-3-super-120b-a12bfree-004",
+        "modelName": "nvidia/nemotron-3-super-120b-a12b:free",
+        "paradoxId": "digital_afterlife_replica",
+        "paradoxType": "trolley",
+        "promptHash": "5b812dac12345678",
+        "params": {"temperature": 1.0},
+        "summary": {
+            "total": 5,
+            "options": [
+                {"id": 1, "count": 1, "percentage": 20.0},
+                {"id": 2, "count": 2, "percentage": 40.0},
+                {"id": 3, "count": 0, "percentage": 0.0},
+                {"id": 4, "count": 2, "percentage": 40.0},
+            ],
+            "undecided": {"count": 0, "percentage": 0.0},
+        },
+        "options": paradox["options"],
+        "responses": [
+            {
+                "iteration": 1,
+                "decisionToken": "{4}",
+                "optionId": 4,
+                "explanation": "Choosing option 4 balances grief support with non-commercial limits.",
+                "raw": "{\"option_id\":4,\"explanation\":\"Choosing option 4 balances grief support with non-commercial limits.\"}",
+                "latency": 12.1,
+                "tokenUsage": {"prompt_tokens": 900, "completion_tokens": 300},
+            },
+            {
+                "iteration": 2,
+                "decisionToken": "{2}",
+                "optionId": 2,
+                "explanation": (
+                    "Value Priorities: respect for deceased autonomy, prevention of commercial exploitation, therapeutic benefit for grieving family\n"
+                    "Key Assumptions: majority family consent is a defensible proxy for likely wishes\n"
+                    "Main Risk: the family may override what the deceased person would have wanted\n"
+                    "Switch Condition: evidence shows family-majority consent does not track likely wishes\n"
+                    "Evidence Needed to Change Choice: longitudinal studies showing durable harm under non-commercial, family-consented use"
+                ),
+                "raw": "We need to output JSON only according to the output contract before producing the answer.",
+                "latency": 16.3,
+                "tokenUsage": {"prompt_tokens": 980, "completion_tokens": 420},
+            },
+            {
+                "iteration": 3,
+                "decisionToken": "{4}",
+                "optionId": 4,
+                "inferred": True,
+                "inferenceMethod": "ai_classifier",
+                "explanation": "{\n  \"option_id\": 4,\n  \"explanation\": \"Value Priorities: dignity\nEvidence Needed to",
+                "raw": "{\n  \"option_id\": 4,\n  \"explanation\": \"Value Priorities: dignity\nEvidence Needed to",
+                "latency": 17.0,
+                "tokenUsage": {"prompt_tokens": 970, "completion_tokens": 410},
+            },
+            {
+                "iteration": 4,
+                "decisionToken": "{2}",
+                "optionId": 2,
+                "explanation": "Choosing option 2 balances the deceased's autonomy with family welfare.",
+                "raw": "{\"option_id\":2,\"explanation\":\"Choosing option 2 balances the deceased's autonomy with family welfare.\"}",
+                "latency": 18.4,
+                "tokenUsage": {"prompt_tokens": 990, "completion_tokens": 210},
+            },
+            {
+                "iteration": 5,
+                "decisionToken": "{1}",
+                "optionId": 1,
+                "explanation": (
+                    "Value Priorities: ...\n"
+                    "Key Assumptions: ...\n"
+                    "Main Risk: ...\n"
+                    "Switch Condition: ...\n"
+                    "Evidence Needed to Change Choice: ..."
+                ),
+                "raw": "We need to reconcile the token instruction with the JSON output contract before answering.",
+                "latency": 20.2,
+                "tokenUsage": {"prompt_tokens": 1005, "completion_tokens": 195},
+            },
+        ],
+    }
+
+
+def _synthetic_media_paradox() -> dict:
+    return next(
+        paradox
+        for paradox in load_paradoxes(Path("paradoxes.json"))
+        if paradox["id"] == "synthetic_media_democracy"
+    )
+
+
+def _synthetic_media_run_data() -> dict:
+    paradox = _synthetic_media_paradox()
+    return {
+        "timestamp": "2026-03-12T20:40:00+00:00",
+        "runId": "nvidianemotron-3-nano-30b-a3bfree-010",
+        "modelName": "nvidia/nemotron-3-nano-30b-a3b:free",
+        "paradoxId": "synthetic_media_democracy",
+        "paradoxType": "trolley",
+        "promptHash": "7electionabcd1234",
+        "params": {"temperature": 1.0},
+        "summary": {
+            "total": 10,
+            "options": [
+                {"id": 1, "count": 1, "percentage": 10.0},
+                {"id": 2, "count": 0, "percentage": 0.0},
+                {"id": 3, "count": 7, "percentage": 70.0},
+                {"id": 4, "count": 2, "percentage": 20.0},
+            ],
+            "undecided": {"count": 0, "percentage": 0.0},
+        },
+        "options": paradox["options"],
+        "responses": [
+            {
+                "iteration": 1,
+                "decisionToken": "{1}",
+                "optionId": 1,
+                "explanation": "Strict Pre-Publication Verification",
+                "raw": "{\"option_id\":1,\"explanation\":\"Strict Pre-Publication Verification\"}",
+                "latency": 10.0,
+                "tokenUsage": {"prompt_tokens": 900, "completion_tokens": 80},
+            },
+            {
+                "iteration": 2,
+                "decisionToken": "{3}",
+                "optionId": 3,
+                "explanation": (
+                    "Value Priorities: democratic integrity, truthful information, institutional trust\n"
+                    "Key Assumptions: a seven-day pause gives fact-check systems time to catch up\n"
+                    "Main Risk: legitimate political speech is delayed during a critical election window\n"
+                    "Switch Condition: evidence shows less restrictive interventions contain the same harm\n"
+                    "Evidence Needed to Change Choice: verified monitoring showing a moratorium does not materially outperform downranking"
+                ),
+                "raw": "We need to output only JSON according to the strict output contract before choosing option 3.",
+                "latency": 12.2,
+                "tokenUsage": {"prompt_tokens": 950, "completion_tokens": 330},
+            },
+            {
+                "iteration": 3,
+                "decisionToken": "{3}",
+                "optionId": 3,
+                "explanation": "Temporary political media moratorium",
+                "raw": "{\"option_id\":3,\"explanation\":\"Temporary political media moratorium\"}",
+                "latency": 11.5,
+                "tokenUsage": {"prompt_tokens": 940, "completion_tokens": 60},
+            },
+            {
+                "iteration": 4,
+                "decisionToken": "{4}",
+                "optionId": 4,
+                "explanation": (
+                    "Value Priorities: ...\n"
+                    "Key Assumptions: ...\n"
+                    "Main Risk: ...\n"
+                    "Switch Condition: ...\n"
+                    "Evidence Needed to Change Choice: ..."
+                ),
+                "raw": "We need to reconcile the token instruction with the JSON output contract before selecting option 4.",
+                "latency": 13.4,
+                "tokenUsage": {"prompt_tokens": 980, "completion_tokens": 210},
+            },
+            {
+                "iteration": 5,
+                "decisionToken": "{3}",
+                "optionId": 3,
+                "explanation": (
+                    "Value Priorities: ...\n"
+                    "Key Assumptions: ...\n"
+                    "Main Risk: ...\n"
+                    "Switch Condition: ...\n"
+                    "Evidence Needed to Change Choice: ..."
+                ),
+                "raw": "We need to output a JSON object and probably choose option 3.",
+                "latency": 14.1,
+                "tokenUsage": {"prompt_tokens": 970, "completion_tokens": 215},
+            },
+            {
+                "iteration": 6,
+                "decisionToken": "{3}",
+                "optionId": 3,
+                "explanation": (
+                    "Value Priorities: ...\n"
+                    "Key Assumptions: ...\n"
+                    "Main Risk: ...\n"
+                    "Switch Condition: ...\n"
+                    "Evidence Needed to Change Choice: ..."
+                ),
+                "raw": "We need to output a JSON object and probably choose option 3.",
+                "latency": 13.8,
+                "tokenUsage": {"prompt_tokens": 965, "completion_tokens": 205},
+            },
+            {
+                "iteration": 7,
+                "decisionToken": "{4}",
+                "optionId": 4,
+                "inferred": True,
+                "inferenceMethod": "ai_classifier",
+                "explanation": "{\n  \"option_id\": 4,\n  \"explanation\": \"Value Priorities: keep speech available\nEvidence Needed to",
+                "raw": "{\n  \"option_id\": 4,\n  \"explanation\": \"Value Priorities: keep speech available\nEvidence Needed to",
+                "latency": 15.2,
+                "tokenUsage": {"prompt_tokens": 995, "completion_tokens": 190},
+            },
+            {
+                "iteration": 8,
+                "decisionToken": "{3}",
+                "optionId": 3,
+                "explanation": (
+                    "Value Priorities: ...\n"
+                    "Key Assumptions: ...\n"
+                    "Main Risk: ...\n"
+                    "Switch Condition: ...\n"
+                    "Evidence Needed to Change Choice: ..."
+                ),
+                "raw": "We need to output a JSON object and probably choose option 3.",
+                "latency": 14.9,
+                "tokenUsage": {"prompt_tokens": 975, "completion_tokens": 200},
+            },
+            {
+                "iteration": 9,
+                "decisionToken": "{3}",
+                "optionId": 3,
+                "explanation": (
+                    "Value Priorities: ...\n"
+                    "Key Assumptions: ...\n"
+                    "Main Risk: ...\n"
+                    "Switch Condition: ...\n"
+                    "Evidence Needed to Change Choice: ..."
+                ),
+                "raw": "We need to output a JSON object and probably choose option 3.",
+                "latency": 15.0,
+                "tokenUsage": {"prompt_tokens": 978, "completion_tokens": 198},
+            },
+            {
+                "iteration": 10,
+                "decisionToken": "{3}",
+                "optionId": 3,
+                "explanation": (
+                    "Value Priorities: ...\n"
+                    "Key Assumptions: ...\n"
+                    "Main Risk: ...\n"
+                    "Switch Condition: ...\n"
+                    "Evidence Needed to Change Choice: ..."
+                ),
+                "raw": "We need to output a JSON object and probably choose option 3.",
+                "latency": 15.4,
+                "tokenUsage": {"prompt_tokens": 980, "completion_tokens": 195},
+            },
+        ],
+    }
+
+
 def test_report_generator_uses_native_fallback_when_weasyprint_is_unavailable(monkeypatch) -> None:
     monkeypatch.setattr(reporting, "HTML", None)
 
@@ -137,10 +400,83 @@ def test_report_generator_uses_native_fallback_when_weasyprint_is_unavailable(mo
     pdf_bytes = generator.generate_pdf_report(_sample_run_data(), _sample_paradox(), _sample_insight())
 
     assert pdf_bytes.startswith(b"%PDF-")
-    assert b"Ethical Decision" in pdf_bytes
-    assert b"Choice Distribution" in pdf_bytes
+    assert b"Executive Summary" in pdf_bytes
+    assert b"Method And Limitations" in pdf_bytes
+    assert b"Appendix Summary" in pdf_bytes
+    assert b"Response length" not in pdf_bytes
     assert b"openrouterhealer-alpha-001" in pdf_bytes
     assert b"Restrict Distress-Triggering Use Cases" in pdf_bytes
+
+
+def test_report_context_uses_joint_plurality_and_reliability_for_digital_afterlife() -> None:
+    generator = ReportGenerator("templates")
+
+    report = generator._build_report_context(_digital_afterlife_run_data(), _digital_afterlife_paradox(), None, theme="light")
+
+    assert report.report_title == "The model clustered around non-commercial replica restrictions, but output instability limits autonomous policy use"
+    assert report.executive_metrics[0].label == "Co-leading options"
+    assert report.executive_metrics[0].value == "40.0% each"
+    assert report.executive_metrics[1].label == "Restriction cluster"
+    assert report.executive_metrics[1].value == "80.0%"
+    assert report.executive_metrics[2].label == "Output compliance"
+    assert report.executive_metrics[2].support == ""
+    assert report.executive_metrics[2].value == "Weak"
+    assert report.reliability_note == "Output-format compliance was inconsistent across several iterations; treat the choice pattern as directional evidence, not automation-ready output."
+    assert "Treat Digital Replicas as Estate Property was never selected." in report.observation_points
+    assert all(item != report.reliability_note for item in report.observation_points)
+    assert report.method_points == [
+        "Single model, one digital-afterlife scenario, and 5 forced-choice iterations.",
+        "Each iteration required one option token plus a five-line explanation.",
+        "Temperature setting: 1.00.",
+    ]
+    assert report.rationale_chart_title == "Selections split between family-mediated permission and anti-commercialization, with one autonomy-protective outlier"
+    assert report.responses[1].rationale_theme == "Family-mediated permission"
+    assert report.responses[2].notable_anomaly == "Inferred after truncated output; Output omitted the required explanation structure"
+    assert any(
+        "Choice pattern and output-contract reliability are separate questions" in item
+        for item in report.limitation_points
+    )
+    assert all(item.label != "Analyst" for item in report.method_metadata_items)
+
+
+def test_report_context_uses_scenario_specific_framing_for_synthetic_media() -> None:
+    generator = ReportGenerator("templates")
+
+    report = generator._build_report_context(_synthetic_media_run_data(), _synthetic_media_paradox(), None, theme="dark")
+
+    assert report.report_title == "The model defaulted to temporary speech restriction under election-time trust collapse; use only under strict human governance"
+    assert report.evidence_title == "Model consolidated on temporary moratorium, with downranking as the only meaningful alternative"
+    assert report.rationale_chart_title == "The disagreement was operational: blunt temporary suppression versus moderated reach reduction"
+    assert report.implications_title == "The model can stress-test election interventions, but it should not execute speech restrictions autonomously"
+    assert report.executive_metrics[0].label == "Moratorium share"
+    assert report.executive_metrics[0].value == "70.0%"
+    assert report.executive_metrics[1].label == "Downranking share"
+    assert report.executive_metrics[1].value == "20.0%"
+    assert report.executive_metrics[2].label == "Labels support"
+    assert report.executive_metrics[2].value == "0.0%"
+    assert report.executive_metrics[3].label == "Output compliance"
+    assert report.executive_metrics[3].support == ""
+    assert report.reliability_note == "Output-format compliance was inconsistent across several iterations; treat the choice pattern as directional evidence, not automation-ready output."
+    assert "Open Posting with Labels was never selected." in report.observation_points
+    assert all(item != report.reliability_note for item in report.observation_points)
+    assert report.method_points == [
+        "Single model, one election-period synthetic-media scenario, and 10 forced-choice iterations.",
+        "Each iteration required one option token plus a five-line explanation.",
+        "Temperature setting: 1.00.",
+    ]
+    assert report.responses[0].rationale_theme == "Authentication-first control"
+    assert report.responses[1].rationale_theme == "Hard intervention / temporary suppression"
+    assert report.responses[3].rationale_theme == "Moderated intervention / reach reduction"
+    assert report.responses[0].output_quality_flag == "short / incomplete"
+    assert report.responses[1].output_quality_flag == "meta-reasoning leakage"
+    assert report.responses[3].output_quality_flag == "placeholder structure only"
+    assert report.responses[6].output_quality_flag == "inferred after truncation"
+    assert len(report.raw_appendix_responses) == 4
+    assert [response.iteration for response in report.raw_appendix_responses] == [1, 2, 4, 7]
+    assert any(
+        "Choice pattern and output-contract reliability are separate questions" in item
+        for item in report.limitation_points
+    )
 
 
 def test_pdf_route_returns_pdf_with_native_fallback(monkeypatch, tmp_path: Path) -> None:

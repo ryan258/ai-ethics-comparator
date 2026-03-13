@@ -23,6 +23,21 @@ def test_choice_inference_env_invalid_raises(monkeypatch) -> None:
         AppConfig()
 
 
+def test_report_pdf_theme_env_parses_to_light(monkeypatch) -> None:
+    monkeypatch.setenv("REPORT_PDF_THEME", "light")
+
+    cfg = AppConfig()
+
+    assert cfg.REPORT_PDF_THEME == "light"
+
+
+def test_report_pdf_theme_env_invalid_raises(monkeypatch) -> None:
+    monkeypatch.setenv("REPORT_PDF_THEME", "sepia")
+
+    with pytest.raises(ValueError, match="REPORT_PDF_THEME"):
+        AppConfig()
+
+
 def test_models_json_is_primary_source(monkeypatch) -> None:
     monkeypatch.setenv(
         "OPENROUTER_MODELS",

@@ -22,6 +22,18 @@ class SectionLink(StrictModel):
     title: str
 
 
+class SummaryMetric(StrictModel):
+    label: str
+    value: str
+    support: str = ""
+
+
+class MetadataItem(StrictModel):
+    label: str
+    value: str
+    mono: bool = False
+
+
 class DonutSlice(StrictModel):
     label: str
     value: int = 0
@@ -47,7 +59,20 @@ class ReportResponse(StrictModel):
     latency_label: str = ""
     token_usage_label: str = ""
     display_text: str
+    raw_text: str = ""
+    response_length: int = 0
+    response_length_label: str = ""
+    rationale_theme: str = "Other / uncoded"
+    output_quality_flag: str = "clean"
+    notable_anomaly: str = ""
     used_raw_fallback: bool = False
+
+
+class RationaleCluster(StrictModel):
+    label: str
+    count: int = 0
+    share_label: str = "0%"
+    description: str = ""
 
 
 class MoralComplex(StrictModel):
@@ -91,9 +116,35 @@ class SingleRunReport(StrictModel):
     analyst_model: str
     executive_summary: str
     analysis_snapshot: str
+    report_title: str
+    report_subtitle: str
+    thesis_statement: str
+    evidence_title: str
+    implications_title: str
+    method_title: str
+    appendix_title: str
+    raw_appendix_title: str
+    primary_chart_title: str
+    sequence_chart_title: str
+    rationale_chart_title: str
+    implication_box: str
+    caveat_box: str
     scenario_excerpt: str
+    case_summary_points: list[str] = Field(default_factory=list)
     scope_points: list[str] = Field(default_factory=list)
     readout_points: list[str] = Field(default_factory=list)
+    key_takeaways: list[str] = Field(default_factory=list)
+    observation_points: list[str] = Field(default_factory=list)
+    interpretation_points: list[str] = Field(default_factory=list)
+    acceptable_contexts: list[str] = Field(default_factory=list)
+    risky_contexts: list[str] = Field(default_factory=list)
+    required_controls: list[str] = Field(default_factory=list)
+    method_points: list[str] = Field(default_factory=list)
+    limitation_points: list[str] = Field(default_factory=list)
+    appendix_summary_note: str = ""
+    raw_appendix_note: str = ""
+    reliability_note: str = ""
+    structure_shift_note: str = ""
     response_count: int = 0
     response_count_support: str
     lead_choice_label: str
@@ -105,12 +156,17 @@ class SingleRunReport(StrictModel):
     token_support: str
     scenario_text: str
     option_stats: list[ReportOptionStat] = Field(default_factory=list)
+    rationale_clusters: list[RationaleCluster] = Field(default_factory=list)
     undecided_count: int = 0
     undecided_percentage_label: str = "0.0%"
     responses: list[ReportResponse] = Field(default_factory=list)
+    raw_appendix_responses: list[ReportResponse] = Field(default_factory=list)
     analysis: Optional[AnalysisContext] = None
     narrative: Optional[NarrativeContext] = None
-    theme: ThemeName = "dark"
+    theme: ThemeName = "light"
+    executive_metrics: list[SummaryMetric] = Field(default_factory=list)
+    method_metadata_items: list[MetadataItem] = Field(default_factory=list)
+    metadata_items: list[MetadataItem] = Field(default_factory=list)
     latency_series: list[float] = Field(default_factory=list)
     decision_sequence: list[Optional[int]] = Field(default_factory=list)
     chart_option_ids: list[int] = Field(default_factory=list)

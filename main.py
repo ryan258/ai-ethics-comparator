@@ -806,7 +806,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             )
 
     @app.get("/api/runs/{run_id}/pdf")
-    async def download_pdf_report(request: Request, run_id: str, theme: str = "dark") -> StreamingResponse:
+    async def download_pdf_report(request: Request, run_id: str, theme: str | None = None) -> StreamingResponse:
         services = _get_services(request)
         _validate_run_id(run_id)
         try:
@@ -846,7 +846,8 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
                             narr_exc,
                         )
 
-            validated_theme = "light" if theme == "light" else "dark"
+            requested_theme = theme or services.config.REPORT_PDF_THEME
+            validated_theme = "light" if requested_theme == "light" else "dark"
             try:
                 pdf_bytes = services.report_generator.generate_pdf_report(
                     run_data, paradox, insight, narrative, theme=validated_theme
@@ -871,7 +872,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             raise HTTPException(status_code=500, detail="Failed to generate PDF") from exc
 
     @app.get("/api/compare/pdf")
-    async def download_comparison_pdf(request: Request, run_ids: str, theme: str = "dark") -> StreamingResponse:
+    async def download_comparison_pdf(request: Request, run_ids: str, theme: str | None = None) -> StreamingResponse:
         """Generate a comparative PDF for 2-4 runs on the same paradox."""
         services = _get_services(request)
         ids = [rid.strip() for rid in run_ids.split(",") if rid.strip()]
@@ -896,7 +897,8 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
                 ins = run.get("insights", [])
                 insights.append(ins[-1] if ins else None)
 
-            validated_theme = "light" if theme == "light" else "dark"
+            requested_theme = theme or services.config.REPORT_PDF_THEME
+            validated_theme = "light" if requested_theme == "light" else "dark"
             try:
                 pdf_bytes = services.report_generator.generate_comparison_pdf(
                     runs, paradox, insights, theme=validated_theme,

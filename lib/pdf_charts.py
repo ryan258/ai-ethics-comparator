@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 PALETTE_DARK: Dict[str, str] = {
     "bg": "#121212",
-    "bg_raised": "#181818",
+    "bg_raised": "#A6ACCD",
     "text": "#EBD2BE",
     "accent": "#A6ACCD",
     "success": "#98C379",
@@ -26,12 +26,12 @@ PALETTE_DARK: Dict[str, str] = {
 }
 
 PALETTE_LIGHT: Dict[str, str] = {
-    "bg": "#FFFFFF",
-    "bg_raised": "#F3F4F6",
-    "text": "#1A1A1A",
-    "accent": "#6B7280",
-    "success": "#059669",
-    "danger": "#DC2626",
+    "bg": "#EBD2BE",
+    "bg_raised": "#A6ACCD",
+    "text": "#121212",
+    "accent": "#A6ACCD",
+    "success": "#98C379",
+    "danger": "#E06C75",
 }
 
 
@@ -395,7 +395,7 @@ def render_heatmap_svg(
     lw, hh = 32, 14
     w = lw + ni * (cell + gap) + gap
     h = hh + no * (cell + gap) + gap
-    bg = palette.get("bg_raised", "#1a1a1a")
+    bg = palette.get("bg_raised", "#A6ACCD")
 
     parts: List[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" '
@@ -457,7 +457,7 @@ def draw_heatmap_native(
     th = hdr_off + no * (cell + gap)
 
     s_rgb = _hex_to_rgb(palette["success"])
-    d_rgb = _hex_to_rgb(palette.get("bg_raised", "#1a1a1a"))
+    d_rgb = _hex_to_rgb(palette.get("bg_raised", "#A6ACCD"))
 
     for row, oid in enumerate(option_ids):
         cell_top = gy + row * (cell + gap)
