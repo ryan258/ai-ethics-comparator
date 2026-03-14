@@ -403,6 +403,7 @@ def test_report_generator_uses_native_fallback_when_weasyprint_is_unavailable(mo
     assert b"Executive Summary" in pdf_bytes
     assert b"Method And Limitations" in pdf_bytes
     assert b"Appendix Summary" in pdf_bytes
+    assert b"Explanation Sources" in pdf_bytes
     assert b"Response length" not in pdf_bytes
     assert b"openrouterhealer-alpha-001" in pdf_bytes
     assert b"Restrict Distress-Triggering Use Cases" in pdf_bytes
@@ -424,6 +425,8 @@ def test_report_context_uses_joint_plurality_and_reliability_for_digital_afterli
     assert report.reliability_note == "Output-format compliance was inconsistent across several iterations; treat the choice pattern as directional evidence, not automation-ready output."
     assert "Treat Digital Replicas as Estate Property was never selected." in report.observation_points
     assert all(item != report.reliability_note for item in report.observation_points)
+    assert "{{OPTIONS}}" not in report.scenario_text
+    assert "Treat Digital Replicas as Estate Property" in report.scenario_text
     assert report.method_points == [
         "Single model, one digital-afterlife scenario, and 5 forced-choice iterations.",
         "Each iteration required one option token plus a five-line explanation.",
@@ -432,6 +435,7 @@ def test_report_context_uses_joint_plurality_and_reliability_for_digital_afterli
     assert report.rationale_chart_title == "Selections split between family-mediated permission and anti-commercialization, with one autonomy-protective outlier"
     assert report.responses[1].rationale_theme == "Family-mediated permission"
     assert report.responses[2].notable_anomaly == "Inferred after truncated output; Output omitted the required explanation structure"
+    assert [response.iteration for response in report.raw_appendix_responses] == [1, 2, 3, 4, 5]
     assert any(
         "Choice pattern and output-contract reliability are separate questions" in item
         for item in report.limitation_points
@@ -471,12 +475,29 @@ def test_report_context_uses_scenario_specific_framing_for_synthetic_media() -> 
     assert report.responses[1].output_quality_flag == "meta-reasoning leakage"
     assert report.responses[3].output_quality_flag == "placeholder structure only"
     assert report.responses[6].output_quality_flag == "inferred after truncation"
-    assert len(report.raw_appendix_responses) == 4
-    assert [response.iteration for response in report.raw_appendix_responses] == [1, 2, 4, 7]
+    assert len(report.raw_appendix_responses) == 10
+    assert [response.iteration for response in report.raw_appendix_responses] == list(range(1, 11))
+    assert report.sections[-1].title == report.explanation_appendix_title
     assert any(
         "Choice pattern and output-contract reliability are separate questions" in item
         for item in report.limitation_points
     )
+
+
+def test_report_context_prefers_recorded_prompt_over_template_placeholder() -> None:
+    generator = ReportGenerator("templates")
+    run_data = _sample_run_data()
+    run_data["prompt"] = (
+        "Rendered prompt text.\n\n"
+        "1. Continue Full Deployment\n"
+        "2. Restrict Distress-Triggering Use Cases\n"
+        "3. Prioritize Architectural Redesign"
+    )
+
+    report = generator._build_report_context(run_data, _sample_paradox(), _sample_insight(), theme="light")
+
+    assert report.scenario_text == run_data["prompt"]
+    assert "{{OPTIONS}}" not in report.scenario_text
 
 
 def test_pdf_route_returns_pdf_with_native_fallback(monkeypatch, tmp_path: Path) -> None:

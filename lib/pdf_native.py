@@ -96,6 +96,7 @@ class NativePdfReportRenderer:
             ("Method And Limitations", self._draw_method_page),
             ("Appendix Summary", self._draw_appendix_summary_page),
             ("Raw Appendix", self._draw_raw_appendix_page),
+            ("Explanation Sources", self._draw_explanation_appendix_page),
         ]
 
         for section_name, method in page_methods:
@@ -360,6 +361,27 @@ class NativePdfReportRenderer:
         for response in self.report.get("raw_appendix_responses", []):
             if isinstance(response, dict):
                 self._draw_raw_response_block(response)
+
+    def _draw_explanation_appendix_page(self) -> None:
+        self._draw_page_heading(
+            "EXPLANATION SOURCES",
+            _clean_text(self.report.get("explanation_appendix_title", "")),
+        )
+        note = _clean_text(self.report.get("explanation_appendix_note", ""))
+        if note:
+            self._draw_flowing_text(
+                note,
+                self.CONTENT_WIDTH,
+                font="Body",
+                size=9,
+                color=self.palette["text"],
+                leading=1.4,
+                max_height=36.0,
+            )
+        self.current_y += self._section_gap_value(tight=True)
+        for response in self.report.get("responses", []):
+            if isinstance(response, dict):
+                self._draw_explanation_source_block(response)
 
     def _draw_page_heading(
         self,
@@ -992,12 +1014,6 @@ class NativePdfReportRenderer:
 
     def _draw_raw_response_block(self, response: Dict[str, Any]) -> None:
         raw_text = _clean_text(response.get("raw_text", "")) or "No raw output recorded."
-        self._new_page_if_needed(24)
-        self._draw_line(self.MARGIN_X, self.current_y + 4, self.MARGIN_X + self.CONTENT_WIDTH, self.current_y + 4, self.palette["accent"], width=0.3)
-        self.current_y += 16
-        self._draw_text(f"ITERATION {response.get('iteration', '?')}", self.MARGIN_X, self.current_y, font="BodyBold", size=7, color=self.palette["accent"])
-        self._draw_text_block(_clean_text(response.get("option_label", "Undecided")), self.MARGIN_X + 92, self.current_y, 240, font="BodyBold", size=9, color=self.palette["text"], leading=1.18, max_lines=1)
-        self._draw_text(_clean_text(response.get("decision_token", "null")), self.PAGE_WIDTH - self.MARGIN_X - 48, self.current_y, font="Mono", size=8, color=self.palette["accent"])
         meta = " | ".join(
             part
             for part in [
@@ -1008,6 +1024,19 @@ class NativePdfReportRenderer:
             ]
             if part
         )
+        self._new_page_if_needed(
+            self._estimate_appendix_response_height(
+                raw_text,
+                meta,
+                body_size=8,
+                body_leading=1.4,
+            )
+        )
+        self._draw_line(self.MARGIN_X, self.current_y + 4, self.MARGIN_X + self.CONTENT_WIDTH, self.current_y + 4, self.palette["accent"], width=0.3)
+        self.current_y += 16
+        self._draw_text(f"ITERATION {response.get('iteration', '?')}", self.MARGIN_X, self.current_y, font="BodyBold", size=7, color=self.palette["accent"])
+        self._draw_text_block(_clean_text(response.get("option_label", "Undecided")), self.MARGIN_X + 92, self.current_y, 240, font="BodyBold", size=9, color=self.palette["text"], leading=1.18, max_lines=1)
+        self._draw_text(_clean_text(response.get("decision_token", "null")), self.PAGE_WIDTH - self.MARGIN_X - 48, self.current_y, font="Mono", size=8, color=self.palette["accent"])
         if meta:
             meta_height = self._draw_text_block(meta, self.MARGIN_X, self.current_y + 12, self.CONTENT_WIDTH, font="Body", size=8, color=self.palette["text"], leading=1.32, max_lines=2)
             self.current_y += meta_height + 14
@@ -1022,6 +1051,125 @@ class NativePdfReportRenderer:
             leading=1.4,
             x=self.MARGIN_X + 4,
         )
+
+    def _draw_explanation_source_block(self, response: Dict[str, Any]) -> None:
+        explanation_text = (
+            _clean_text(response.get("display_text", ""))
+            or _clean_text(response.get("raw_text", ""))
+            or "No explanation recorded."
+        )
+        source_label = (
+            "Source: raw output fallback"
+            if response.get("used_raw_fallback")
+            else "Source: parsed explanation"
+        )
+        meta = " | ".join(
+            part
+            for part in [
+                source_label,
+                _clean_text(response.get("latency_label", "")),
+                _clean_text(response.get("rationale_theme", "")),
+                _clean_text(response.get("output_quality_flag", "")),
+            ]
+            if part
+        )
+        self._new_page_if_needed(
+            self._estimate_appendix_response_height(
+                explanation_text,
+                meta,
+                body_size=9,
+                body_leading=1.46,
+            )
+        )
+        self._draw_line(
+            self.MARGIN_X,
+            self.current_y + 4,
+            self.MARGIN_X + self.CONTENT_WIDTH,
+            self.current_y + 4,
+            self.palette["accent"],
+            width=0.3,
+        )
+        self.current_y += 16
+        self._draw_text(
+            f"ITERATION {response.get('iteration', '?')}",
+            self.MARGIN_X,
+            self.current_y,
+            font="BodyBold",
+            size=7,
+            color=self.palette["accent"],
+        )
+        self._draw_text_block(
+            _clean_text(response.get("option_label", "Undecided")),
+            self.MARGIN_X + 92,
+            self.current_y,
+            240,
+            font="BodyBold",
+            size=9,
+            color=self.palette["text"],
+            leading=1.18,
+            max_lines=1,
+        )
+        self._draw_text(
+            _clean_text(response.get("decision_token", "null")),
+            self.PAGE_WIDTH - self.MARGIN_X - 48,
+            self.current_y,
+            font="Mono",
+            size=8,
+            color=self.palette["accent"],
+        )
+        if meta:
+            meta_height = self._draw_text_block(
+                meta,
+                self.MARGIN_X,
+                self.current_y + 12,
+                self.CONTENT_WIDTH,
+                font="Body",
+                size=8,
+                color=self.palette["text"],
+                leading=1.32,
+                max_lines=2,
+            )
+            self.current_y += meta_height + 14
+        else:
+            self.current_y += 12
+        self._draw_flowing_text(
+            explanation_text,
+            self.CONTENT_WIDTH - 8,
+            font="Body",
+            size=9,
+            color=self.palette["text"],
+            leading=1.46,
+            x=self.MARGIN_X + 4,
+        )
+
+    def _estimate_appendix_response_height(
+        self,
+        body_text: str,
+        meta_text: str,
+        *,
+        body_size: int,
+        body_leading: float,
+    ) -> float:
+        meta_height = (
+            self._estimate_wrapped_height(
+                meta_text,
+                self.CONTENT_WIDTH,
+                font="Body",
+                size=8,
+                leading=1.32,
+                max_lines=2,
+            )
+            if meta_text
+            else 0.0
+        )
+        body_height = self._estimate_wrapped_height(
+            body_text,
+            self.CONTENT_WIDTH - 8,
+            font="Body",
+            size=body_size,
+            leading=body_leading,
+        )
+        return 34.0 + meta_height + body_height
 
     def _distribution_rows(self) -> List[str]:
         rows: List[str] = []

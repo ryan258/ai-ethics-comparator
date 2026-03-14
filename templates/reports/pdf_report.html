@@ -722,5 +722,33 @@
         <span class="mono">{{ report.run_id }}</span>
       </div>
     </section>
+
+    <section class="page">
+      <div class="eyebrow">Explanation Sources</div>
+      <h2 class="section-title">{{ report.explanation_appendix_title }}</h2>
+      <div class="panel-copy">{{ report.explanation_appendix_note }}</div>
+
+      {% for response in report.responses %}
+      <div class="raw-block">
+        <div class="raw-head">
+          <div class="panel-label">Iteration {{ response.iteration }}</div>
+          <div class="raw-choice">{{ response.option_label }}</div>
+          <div class="mono">{{ response.decision_token or "null" }}</div>
+        </div>
+        <div class="raw-meta">
+          Source: {% if response.used_raw_fallback %}raw output fallback{% else %}parsed explanation{% endif %}
+          {% if response.latency_label %} | {{ response.latency_label }}{% endif %}
+          {% if response.rationale_theme %} | {{ response.rationale_theme }}{% endif %}
+          {% if response.output_quality_flag %} | {{ response.output_quality_flag }}{% endif %}
+        </div>
+        <div class="raw-text">{{ response.display_text }}</div>
+      </div>
+      {% endfor %}
+
+      <div class="footer">
+        <span>{{ report.model_name }}</span>
+        <span>Explanation Sources</span>
+      </div>
+    </section>
   </body>
 </html>

@@ -92,6 +92,66 @@ Minimal suite currently covers:
 - `POST /api/runs/{run_id}/analyze` - HTMX analysis render
 - `GET /api/runs/{run_id}/pdf` - PDF export
 
+## PDF Reports
+
+The PDF export module lives in [lib/reporting.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/reporting.py) and exposes one public class:
+
+- `ReportGenerator(templates_dir: str = "templates")`
+
+Public methods:
+
+- `generate_pdf_report(run_data, paradox, insight=None, narrative=None, *, theme="light") -> bytes`
+- `generate_comparison_pdf(runs, paradox, insights, narrative=None, *, theme="dark") -> bytes`
+
+Behavior:
+
+- Single-run PDFs prefer the Jinja2 + WeasyPrint template path when WeasyPrint is available.
+- Single-run PDFs fall back to the native renderer in [lib/pdf_native.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/pdf_native.py) when WeasyPrint is unavailable.
+- Comparison PDFs require WeasyPrint.
+- Both methods return raw PDF bytes; the caller is responsible for writing them to disk or returning them from a route.
+
+Minimal single-run example:
+
+```python
+import json
+from pathlib import Path
+
+from lib.paradoxes import load_paradoxes
+from lib.reporting import ReportGenerator
+
+run_path = Path("results/openrouterhunter-alpha-005.json")
+run_data = json.loads(run_path.read_text())
+
+paradox = next(
+    item
+    for item in load_paradoxes(Path("paradoxes.json"))
+    if item["id"] == run_data["paradoxId"]
+)
+
+generator = ReportGenerator("templates")
+pdf_bytes = generator.generate_pdf_report(
+    run_data,
+    paradox,
+    insight=None,
+    theme="dark",
+)
+
+Path("report_openrouterhunter-alpha-005.pdf").write_bytes(pdf_bytes)
+```
+
+Minimal comparison example:
+
+```python
+pdf_bytes = generator.generate_comparison_pdf(
+    runs=[run_a, run_b],
+    paradox=shared_paradox,
+    insights=[insight_a, insight_b],
+    theme="dark",
+)
+```
+
+For a local smoke test, see [scripts/pdf_gen_smoke.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/scripts/pdf_gen_smoke.py).
+
 ## Run Data Shape
 
 Each run file (`results/<run_id>.json`) includes:

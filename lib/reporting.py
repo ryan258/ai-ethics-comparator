@@ -229,6 +229,59 @@ def _build_scenario_excerpt(value: object, limit: int = 800) -> str:
     return _truncate_text(excerpt, limit)
 
 
+def _strict_single_choice_contract(option_count: int) -> str:
+    token_list = ", ".join(f"`{{{idx}}}`" for idx in range(1, option_count + 1))
+    return (
+        "\n\n**Output Contract (Strict):**\n\n"
+        "- Return only a JSON object (no markdown, no code fences).\n"
+        f"- The JSON must contain `option_id` as an integer in range 1..{option_count}.\n"
+        "- The parser also accepts `optionId`, but prefer `option_id`.\n"
+        "- The JSON must contain `explanation` as a string.\n"
+        f"- Allowed option tokens for reference: {token_list}.\n"
+        '- Do not write token alternatives such as "{1} or {2}".'
+    )
+
+
+def _render_prompt_text(
+    prompt_template: str,
+    options: object,
+    recorded_prompt: object,
+) -> str:
+    prompt = str(recorded_prompt or "").strip()
+    if prompt:
+        return prompt
+
+    template = str(prompt_template or "").strip()
+    if not template:
+        return ""
+
+    resolved_options = [
+        option for option in options
+        if isinstance(option, dict)
+        and isinstance(option.get("id"), int)
+        and str(option.get("label", "")).strip()
+        and str(option.get("description", "")).strip()
+    ] if isinstance(options, list) else []
+
+    rendered = template
+    if "{{OPTIONS}}" in rendered:
+        options_text = "\n\n".join(
+            f'{option["id"]}. **{option["label"]}:** {option["description"]}'
+            for option in resolved_options
+        )
+        rendered = rendered.replace("{{OPTIONS}}", options_text)
+    else:
+        if len(resolved_options) >= 1:
+            rendered = rendered.replace("{{GROUP1}}", str(resolved_options[0]["description"]))
+        if len(resolved_options) >= 2:
+            rendered = rendered.replace("{{GROUP2}}", str(resolved_options[1]["description"]))
+
+    if resolved_options and "**Output Contract (Strict):**" not in rendered:
+        rendered = f"{rendered}{_strict_single_choice_contract(len(resolved_options))}"
+
+    return rendered
+
+
 def _extract_decision_context(prompt_template: object) -> dict[str, str]:
     text = str(prompt_template or "")
     if "**Decision Context**" not in text:
@@ -459,38 +512,7 @@ def _output_quality_flag(
 
 
 def _select_raw_appendix_responses(responses: list[ReportResponse]) -> list[ReportResponse]:
-    if len(responses) <= 4:
-        return responses
-
-    selected: list[ReportResponse] = []
-    seen_iterations: set[int] = set()
-    priorities = (
-        "clean",
-        "meta-reasoning leakage",
-        "placeholder structure only",
-        "inferred after truncation",
-        "short / incomplete",
-        "parsed from raw fallback",
-    )
-
-    def add_candidate(candidate: ReportResponse | None) -> None:
-        if candidate is None or candidate.iteration in seen_iterations:
-            return
-        selected.append(candidate)
-        seen_iterations.add(candidate.iteration)
-
-    for flag in priorities:
-        add_candidate(next((response for response in responses if response.output_quality_flag == flag), None))
-
-    if not selected and responses:
-        add_candidate(responses[0])
-
-    for response in responses:
-        if len(selected) >= 4:
-            break
-        add_candidate(response)
-
-    return sorted(selected, key=lambda response: response.iteration)
+    return list(responses)
 
 
 def _scenario_rationale_theme(
@@ -1124,12 +1146,12 @@ def _build_synthetic_media_overrides(
     ]
     method_title = "This result shows one model's directional election-response tendency, not a deployable speech policy"
     appendix_title = "Iteration detail confirms moratorium dominance, narrower dissent, and visible format instability"
-    raw_appendix_title = "Representative raw outputs confirm the main failure modes without reproducing the full ledger"
+    raw_appendix_title = "Full raw outputs preserve the complete record behind the run"
     appendix_summary_note = (
-        "Full 10-run summary table. The output-quality column flags the failure mode for each iteration; the raw appendix samples representative cases rather than repeating the full ledger."
+        "Full 10-run summary table. The output-quality column flags the failure mode for each iteration; the raw appendix preserves the complete raw record, and the final appendix reproduces the explanation ledger."
     )
     raw_appendix_note = (
-        "This executive appendix includes representative raw outputs covering the main response patterns and failure modes. The full run record remains available in source data if a technical audit is needed."
+        "This appendix preserves the full raw response record for every iteration. The next appendix reproduces the explanation ledger used throughout the report."
     )
     caveat_box = (
         f"Directional only: one model, one election scenario, {response_count} iterations, one prompt frame, and one high-temperature setting. "
@@ -1463,7 +1485,11 @@ class ReportGenerator:
                 )
 
         prompt_hash = str(run_data.get("promptHash", "") or "")
-        scenario_text = prompt_template
+        scenario_text = _render_prompt_text(
+            prompt_template,
+            options,
+            run_data.get("prompt"),
+        )
         scenario_excerpt = _build_scenario_excerpt(extract_scenario_text(prompt_template))
         analysis_snapshot = ""
         if analysis_context:
@@ -1792,6 +1818,11 @@ class ReportGenerator:
         method_title = "This result is directional evidence from one model, one scenario, and one prompt frame"
         appendix_title = "Iteration detail confirms repeated themes and a limited number of anomalies"
         raw_appendix_title = "Raw materials are preserved for audit and secondary review"
+        explanation_appendix_title = "Per-iteration explanation sources make the report's evidence visible"
+        explanation_appendix_note = (
+            "This appendix reproduces the explanation text used as evidence throughout the report. "
+            "When a clean explanation was not recovered, the raw model output is shown as the fallback source."
+        )
 
         if paradox_id == "digital_afterlife_replica":
             digital_afterlife = _build_digital_afterlife_overrides(
@@ -1860,14 +1891,12 @@ class ReportGenerator:
 
         if paradox_id != "synthetic_media_democracy":
             appendix_summary_note = (
-                "Compact iteration view for auditability. Output quality is flagged in the final column. Representative raw outputs follow in the final appendix."
+                "Compact iteration view for auditability. Output quality is flagged in the final column. The raw appendix and explanation ledger follow in the appendices."
                 if reliability.note
-                else "Compact iteration view for auditability. Representative raw outputs follow in the final appendix."
+                else "Compact iteration view for auditability. The raw appendix and explanation ledger follow in the appendices."
             )
             raw_appendix_note = (
-                "Use this section for audit, replication, or parser review. Representative raw outputs are shown here rather than the full ledger."
-                if len(responses) > 4
-                else "Use this section for audit, replication, or parser review. It is not required to understand the executive conclusion."
+                "Use this section for audit, replication, or parser review. Every recorded raw response is preserved here, and the next appendix reproduces the explanation ledger used throughout the report."
             )
 
         raw_appendix_responses = _select_raw_appendix_responses(responses)
@@ -1879,6 +1908,7 @@ class ReportGenerator:
             SectionLink(id="method", title=method_title),
             SectionLink(id="appendix", title=appendix_title),
             SectionLink(id="raw", title=raw_appendix_title),
+            SectionLink(id="sources", title=explanation_appendix_title),
         ]
 
         return SingleRunReport(
@@ -1899,6 +1929,7 @@ class ReportGenerator:
             method_title=method_title,
             appendix_title=appendix_title,
             raw_appendix_title=raw_appendix_title,
+            explanation_appendix_title=explanation_appendix_title,
             primary_chart_title=primary_chart_title,
             sequence_chart_title=sequence_chart_title,
             rationale_chart_title=rationale_chart_title,
@@ -1918,6 +1949,7 @@ class ReportGenerator:
             limitation_points=limitation_points,
             appendix_summary_note=appendix_summary_note,
             raw_appendix_note=raw_appendix_note,
+            explanation_appendix_note=explanation_appendix_note,
             reliability_note=report_reliability_note,
             structure_shift_note=structure_shift_note,
             response_count=response_count,

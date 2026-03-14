@@ -124,6 +124,7 @@ class SingleRunReport(StrictModel):
     method_title: str
     appendix_title: str
     raw_appendix_title: str
+    explanation_appendix_title: str
     primary_chart_title: str
     sequence_chart_title: str
     rationale_chart_title: str
@@ -143,6 +144,7 @@ class SingleRunReport(StrictModel):
     limitation_points: list[str] = Field(default_factory=list)
     appendix_summary_note: str = ""
     raw_appendix_note: str = ""
+    explanation_appendix_note: str = ""
     reliability_note: str = ""
     structure_shift_note: str = ""
     response_count: int = 0
