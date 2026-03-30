@@ -190,3 +190,4 @@ results/
 *.pdf
 debug_*.py
 .gitnexus
+experiments/
