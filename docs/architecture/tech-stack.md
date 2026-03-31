@@ -18,6 +18,8 @@
 - `python-dotenv` — `.env` loading at import time (`main.py:39`)
 - `httpx` — transitive (used by FastAPI test client and openai SDK)
 - `python-multipart` — form data parsing for HTMX POST endpoints
+- `python-pptx` — PowerPoint export for run data (`lib/export_pptx.py`)
+- `pytest-asyncio` — async test support for `pytest` (`tests/conftest.py`)
 
 ## Storage
 - Flat JSON files in `results/` — one file per run (`<run_id>.json`)

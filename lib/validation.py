@@ -58,8 +58,7 @@ class QueryRequest(BaseModel):
     system_prompt: Optional[str] = Field(default=None, alias="systemPrompt", max_length=2000)
     params: Optional[GenerationParams] = None
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
     @field_validator('model_name')
     @classmethod
@@ -131,14 +130,13 @@ class InsightRequest(BaseModel):
         return v
 
 class ConditionConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     modelName: str = Field(..., min_length=1, max_length=200)
     systemPrompt: str = Field(default="", max_length=2000)
     params: GenerationParams = Field(default_factory=GenerationParams)
     iterations: Optional[int] = Field(default=None, ge=1, le=1000)
     shuffle_options: bool = Field(default=False, alias="shuffleOptions")
-
-    class Config:
-        populate_by_name = True
 
     @field_validator('params', mode='before')
     @classmethod
@@ -193,11 +191,10 @@ class ExperimentCreateRequest(BaseModel):
 
 class ComparisonRequest(BaseModel):
     """Request to generate a comparative PDF for multiple runs."""
+    model_config = ConfigDict(populate_by_name=True)
+
     run_ids: List[str] = Field(..., min_length=2, max_length=4, alias="runIds")
     theme: str = Field(default="dark", pattern=r"^(dark|light)$")
-
-    class Config:
-        populate_by_name = True
 
     @field_validator("run_ids")
     @classmethod

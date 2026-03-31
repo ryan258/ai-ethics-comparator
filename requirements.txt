@@ -1,16 +1,21 @@
-fastapi
-uvicorn
-pydantic
-python-dotenv
-httpx
-jinja2
-python-multipart
-markdown
-markupsafe
-openai
-weasyprint==61.2
-pydyf==0.12.1
-python-pptx
-# matplotlib
-pytest
-pytest-asyncio
+# --- App ---
+fastapi              # ASGI framework, app-factory pattern
+uvicorn              # ASGI server
+pydantic             # validation layer + config
+python-dotenv        # .env loading at import time
+httpx                # transitive: FastAPI test client + openai SDK
+jinja2               # server-rendered templates
+python-multipart     # form data parsing for HTMX POST endpoints
+markdown             # server-side markdown rendering (safe_markdown)
+markupsafe           # XSS-safe markup for Jinja2
+openai               # AsyncOpenAI client targeting OpenRouter
+
+# --- PDF / Export ---
+weasyprint==61.2     # preferred HTML-to-PDF renderer (needs GTK/Pango)
+pydyf==0.12.1        # native PDF fallback when WeasyPrint unavailable
+python-pptx          # PowerPoint export (lib/export_pptx.py)
+# matplotlib         # reserved for future chart rendering
+
+# --- Test ---
+pytest               # test runner (pythonpath = ["."] in pyproject.toml)
+pytest-asyncio       # async test support for coroutine-based tests

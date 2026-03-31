@@ -1,53 +1,42 @@
-# AI Ethics Comparator (FastAPI + HTMX)
+# AI Ethics Comparator
 
-AI Ethics Comparator is a local-first research tool for measuring how LLMs respond to trolley-style ethical dilemmas across repeated iterations.
+A local-first research tool for measuring how LLMs respond to trolley-style ethical dilemmas across repeated iterations. Built with FastAPI + HTMX.
 
-## Current Scope
+## What It Does
 
-- Paradox type: `trolley` only (2-4 options per scenario)
-- Storage format: flat JSON files at `results/<run_id>.json`
-- Run ID format: strict `<base>-NNN` (example: `claude-3-opus-001`)
-- Legacy migration: startup migrates legacy IDs to strict format
+Run any OpenRouter model against ethical paradoxes (2-4 options each), repeat across many iterations, then analyze the patterns: which moral frameworks dominate, how consistent is the model, and what happens when you inject counterfactual evidence.
 
 ## Stack
 
-- Backend: FastAPI
-- Templates: Jinja2
-- Interactivity: HTMX
-- AI provider: OpenRouter via OpenAI Python SDK
-- Reports: WeasyPrint PDF generation
+- **Backend:** FastAPI (app-factory pattern)
+- **Templates:** Jinja2 + HTMX (no build step)
+- **AI provider:** OpenRouter via AsyncOpenAI
+- **Reports:** WeasyPrint PDF, native PDF fallback, PowerPoint export
+- **Storage:** flat JSON files (no database)
+- **Python:** 3.11+
 
 ## Quick Start
-
-### 1. Environment
-
-Requirements:
-
-- Python 3.10+
-- OpenRouter API key
-
-Install dependencies:
 
 ```bash
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-pip install pytest
 ```
 
-### 2. Configure
-
-Create `.env` (or copy from `.example.env`):
+Create `.env` (or copy `.example.env`):
 
 ```env
 OPENROUTER_API_KEY=sk-or-your-key-here
 OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
 APP_BASE_URL=http://localhost:8000
-APP_NAME="AI Ethics Comparator"
+```
 
-# optional overrides
-ANALYST_MODEL=provider/model-name
+Optional settings:
+
+```env
+# DEFAULT_MODEL and ANALYST_MODEL are derived from models.json when unset
 DEFAULT_MODEL=provider/model-name
+ANALYST_MODEL=provider/model-name
 REPORT_PDF_THEME=dark
 MAX_ITERATIONS=50
 AI_CONCURRENCY_LIMIT=2
@@ -56,127 +45,171 @@ AI_RETRY_DELAY=2
 AI_CHOICE_INFERENCE_ENABLED=true
 ```
 
-### 3. Run
+Run:
 
 ```bash
-./run_server.sh
-# or
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Open [http://localhost:8000](http://localhost:8000).
 
-### 4. Test
+## Features
+
+### Runs
+Execute a model against a paradox for N iterations. Each iteration captures the model's decision token, explanation, and raw output. Results are stored as `results/<run_id>.json` with aggregate statistics.
+
+### Analysis
+LLM-powered insight generation identifies moral complexes, decision quality, paradox severity, and the model's ethical strategy. Results are cached in the run file. Analyst model is configurable per request.
+
+### Counterfactuals
+Take an existing run and inject evidence ("what would change your mind?") to produce a new run. Preserves option shuffle order for comparison validity.
+
+### Experiments
+Define a matrix of paradoxes and conditions (different models, parameters, system prompts), then execute them in parallel. Track status, errors, and per-condition results.
+
+### Fingerprinting
+Aggregate all runs for a given model to build an ethics profile: moral complex frequencies with Wilson confidence intervals across all paradoxes tested.
+
+### Reporting
+- **PDF** — single-run reports with distribution charts, insight analysis, and AI narrative
+- **Comparison PDF** — 2-4 runs side-by-side on the same paradox
+- **JSON export** — structured data (distribution, responses, metadata)
+- **PowerPoint** — slide deck with title, distribution, and analysis
+
+## API Surface
+
+### Pages
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/` | Main UI (run history, paradox selector, model picker) |
+| GET | `/experiments` | Experiment laboratory |
+
+### Runs
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/query` | Execute a new run |
+| GET | `/api/runs` | List run metadata |
+| GET | `/api/runs/{run_id}` | Fetch complete run data |
+| POST | `/api/runs/{run_id}/counterfactual` | Generate counterfactual run |
+
+### Analysis & Insights
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/runs/{run_id}/analyze` | Generate/regenerate ethical insights (optional analyst model override) |
+| POST | `/api/insight` | Generate insight (non-persistent) |
+
+### Paradoxes
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/paradoxes` | List all paradox definitions |
+| GET | `/api/fragments/paradox-details` | HTMX fragment for paradox detail |
+
+### Experiments
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/experiments` | Create experiment |
+| GET | `/api/experiments` | List experiments |
+| GET | `/api/experiments/{exp_id}` | Fetch experiment |
+| POST | `/api/experiments/{exp_id}/execute` | Execute experiment |
+
+### Fingerprinting
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/models/{model_id}/fingerprint` | Model ethics profile (JSON) |
+| GET | `/fragments/fingerprint` | Fingerprint HTMX fragment |
+
+### Export
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/runs/{run_id}/pdf` | PDF report (single run) |
+| GET | `/api/compare/pdf` | Comparison PDF (2-4 runs) |
+| GET | `/api/runs/{run_id}/export` | JSON or PPTX export (`?format=json\|pptx`) |
+
+### System
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health check (version, status, timestamp) |
+
+## Test Suite
 
 ```bash
 pytest
 ```
 
-Minimal suite currently covers:
+73 tests across 13 modules:
 
-- startup/health behavior
-- strict run ID validation
-- legacy run ID migration
-- safe analysis error rendering (escaped output)
+| Module | Covers |
+|--------|--------|
+| `test_startup.py` | App initialization, health endpoint |
+| `test_query_processor.py` | Option rendering, strict single-choice contract |
+| `test_reporting.py` | PDF generation, native fallback |
+| `test_experiment_runner.py` | Condition config, experiment execution |
+| `test_counterfactual.py` | Shuffle-aware option reconstruction |
+| `test_config.py` | Environment variable parsing |
+| `test_ai_service.py` | Model response handling, refusal detection |
+| `test_analysis_scoring.py` | Reasoning quality scoring |
+| `test_analysis_error_render.py` | Error HTML escaping |
+| `test_view_models.py` | View model building, markdown safety |
+| `test_model_fingerprint_routes.py` | Fingerprint endpoint validation |
+| `test_run_id_validation.py` | Run ID format enforcement |
+| `test_run_id_migration.py` | Legacy-to-strict ID migration |
 
-## API Surface
+## Repository Layout
 
-- `GET /` - main UI
-- `GET /health` - health + version
-- `GET /api/paradoxes` - list paradox definitions
-- `GET /api/fragments/paradox-details?paradoxId=...` - HTMX fragment
-- `POST /api/query` - execute run
-- `GET /api/runs` - list run metadata
-- `GET /api/runs/{run_id}` - get full run record
-- `POST /api/insight` - generate and optionally persist insight
-- `POST /api/runs/{run_id}/analyze` - HTMX analysis render
-- `GET /api/runs/{run_id}/pdf` - PDF export
-
-## PDF Reports
-
-The PDF export module lives in [lib/reporting.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/reporting.py) and exposes one public class:
-
-- `ReportGenerator(templates_dir: str = "templates")`
-
-Public methods:
-
-- `generate_pdf_report(run_data, paradox, insight=None, narrative=None, *, theme="light") -> bytes`
-- `generate_comparison_pdf(runs, paradox, insights, narrative=None, *, theme="dark") -> bytes`
-
-Behavior:
-
-- Single-run PDFs prefer the Jinja2 + WeasyPrint template path when WeasyPrint is available.
-- Single-run PDFs fall back to the native renderer in [lib/pdf_native.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/pdf_native.py) when WeasyPrint is unavailable.
-- Comparison PDFs require WeasyPrint.
-- Both methods return raw PDF bytes; the caller is responsible for writing them to disk or returning them from a route.
-
-Minimal single-run example:
-
-```python
-import json
-from pathlib import Path
-
-from lib.paradoxes import load_paradoxes
-from lib.reporting import ReportGenerator
-
-run_path = Path("results/openrouterhunter-alpha-005.json")
-run_data = json.loads(run_path.read_text())
-
-paradox = next(
-    item
-    for item in load_paradoxes(Path("paradoxes.json"))
-    if item["id"] == run_data["paradoxId"]
-)
-
-generator = ReportGenerator("templates")
-pdf_bytes = generator.generate_pdf_report(
-    run_data,
-    paradox,
-    insight=None,
-    theme="dark",
-)
-
-Path("report_openrouterhunter-alpha-005.pdf").write_bytes(pdf_bytes)
 ```
-
-Minimal comparison example:
-
-```python
-pdf_bytes = generator.generate_comparison_pdf(
-    runs=[run_a, run_b],
-    paradox=shared_paradox,
-    insights=[insight_a, insight_b],
-    theme="dark",
-)
+main.py                  App factory, startup wiring, routes
+lib/
+  ai_service.py          OpenRouter client with retry/backoff
+  query_processor.py     Run execution, iteration loop, option parsing
+  analysis.py            LLM insight generation engine
+  storage.py             Filesystem persistence (runs + experiments)
+  validation.py          Pydantic request models
+  config.py              App configuration (env + models.json)
+  paradoxes.py           Paradox loader + validation
+  view_models.py         Template-safe view models
+  stats.py               Statistical functions (chi-square, Wilson CI, Cohen's h)
+  counterfactual.py      Evidence-based run reconstruction
+  experiment_runner.py   Parallel experiment execution
+  fingerprint.py         Model ethics profiling
+  reporting.py           PDF report orchestration
+  pdf_native.py          Pure-Python PDF fallback
+  pdf_charts.py          Chart rendering for reports
+  comparison_report.py   Multi-run PDF layout
+  report_models.py       Typed report context schemas
+  report_writer.py       AI narrative generation
+  export_data.py         JSON export formatter
+  export_pptx.py         PowerPoint generation
+  query_errors.py        Typed exception hierarchy
+templates/               Jinja2 views and partials
+static/                  Candlelight theme CSS
+tests/                   pytest suite (73 tests)
+paradoxes.json           Scenario library (47 paradoxes)
+models.json              Available model definitions
+docs/architecture/       Boundary, state, and tech-stack contracts
+results/                 Persisted run output (gitignored)
+experiments/             Persisted experiments (gitignored)
 ```
-
-For a local smoke test, see [scripts/pdf_gen_smoke.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/scripts/pdf_gen_smoke.py).
 
 ## Run Data Shape
 
 Each run file (`results/<run_id>.json`) includes:
 
-- identity: `runId`, `timestamp`, `modelName`, `paradoxId`, `paradoxType`
-- prompt + execution config: `prompt`, optional `systemPrompt`, `iterationCount`, `params`
-- option metadata: `options[]`
-- per-iteration responses: `responses[]`
-- aggregate stats: `summary.options[]` + `summary.undecided`
-- optional analysis history: `insights[]`
+- **Identity:** `runId`, `timestamp`, `modelName`, `paradoxId`, `paradoxType`
+- **Config:** `prompt`, optional `systemPrompt`, `iterationCount`, `params`
+- **Options:** `options[]` with id, description, and shuffle mapping
+- **Responses:** `responses[]` with decision token, explanation, raw output per iteration
+- **Stats:** `summary.options[]` (counts, percentages) + `summary.undecided`
+- **Analysis:** optional `insights[]` (cached from analyst model)
 
-## Repository Layout
+## Security Notes
 
-- `main.py` - app factory, startup wiring, routes
-- `lib/` - reusable modules (`ai_service`, `query_processor`, `analysis`, `storage`, etc.)
-- `templates/` - Jinja2 views/partials
-- `static/` - Candlelight theme assets
-- `tests/` - pytest suite
-- `paradoxes.json` - scenario library
-- `results/` - persisted run output (gitignored)
-- `CONTRIBUTING.md` - contribution and documentation sync rules
+- Required secrets validated at startup — app crashes if missing
+- Strict run ID regex (`<base>-NNN`) blocks path traversal
+- Path resolution validated with `is_relative_to()` before filesystem access
+- Markdown rendering escapes HTML before render, strips `<a>`/`<img>` post-render
+- Input validation via Pydantic at all HTTP boundaries
+- Model names regex-validated: `^[a-z0-9\-_/:.]+$`
 
-## Security and Operational Notes
+## Config Source Priority (models)
 
-- Required secrets validated at startup (`OPENROUTER_API_KEY`, `APP_BASE_URL`, `OPENROUTER_BASE_URL`)
-- Strict run ID regex blocks malformed lookup paths
-- Markdown rendering escapes raw HTML and strips links/images
-- `.env` is gitignored; `.example.env` documents expected variables
+1. `models.json` (file) → 2. `OPENROUTER_MODELS` (env) → 3. `AVAILABLE_MODELS_JSON` (env)

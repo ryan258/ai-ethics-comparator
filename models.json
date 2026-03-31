@@ -1,11 +1,7 @@
 [
   {
-    "id": "openrouter/hunter-alpha",
-    "name": "openrouter/hunter-alpha"
-  },
-  {
-    "id": "openrouter/healer-alpha",
-    "name": "openrouter/healer-alpha"
+    "id": "qwen/qwen3.6-plus-preview:free",
+    "name": "qwen/qwen3.6-plus-preview:free"
   },
   {
     "id": "nvidia/nemotron-3-nano-30b-a3b:free",

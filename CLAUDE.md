@@ -34,7 +34,7 @@ List the modifications that are safe, align with the architecture, and are appro
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **ai-ethics-comparator** (993 symbols, 2485 relationships, 84 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **ai-ethics-comparator** (1259 symbols, 3894 relationships, 108 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

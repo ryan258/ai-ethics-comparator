@@ -16,7 +16,7 @@ This project is intentionally small. Keep changes minimal, typed, and synchroniz
 - User-facing workflow guide: `HANDBOOK.md`
 - Active roadmap and near-term milestones: `ROADMAP.md`
 - Dataset/schema summary: `paradoxes.md`
-- Historical snapshots (not source of truth): `n-plan.md`, `smells.md`
+- Architectural contracts: `docs/architecture/` (boundaries, state, tech-stack, decisions, execution context)
 
 ## Required Doc Sync Rules
 

@@ -62,6 +62,14 @@ The project is operating as a local-first FastAPI + HTMX modular monolith with:
 - keep `HANDBOOK.md` user-facing and implementation-accurate
 - mark historical planning/review docs as archival snapshots
 
+## Accepted Risks
+
+The following issues were identified during code review (December 2025) and explicitly deferred. They are acknowledged risks, not oversights.
+
+- **No rate limiting on expensive endpoints** (`/api/query`, `/api/insight`) — acceptable for local-first single-user usage. Revisit if the app is exposed to untrusted networks.
+- **CORS defaults to localhost with no production guard** — `APP_BASE_URL` is required at startup, but no check prevents running with localhost in a non-local context. Add an `ENV=production` guard if deploying beyond localhost.
+- **Markdown HTML stripping order** — `safe_markdown()` in `lib/view_models.py` escapes HTML before rendering, then strips `<a>`/`<img>` post-render. If the `markdown` library itself has an XSS vulnerability, the strip pass may not catch it. Consider `bleach` or an allowlist sanitizer if serving untrusted content.
+
 ## Non-Goals (Current)
 
 - no Docker/k8s/Terraform migration
