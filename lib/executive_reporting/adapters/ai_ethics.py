@@ -7,14 +7,16 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from lib.executive_reporting.models import (
-    AuditRecord,
     BriefFinding,
     BriefRecommendation,
     EvidenceMetric,
     EvidenceQuote,
+    EvidenceTable,
+    EvidenceTableColumn,
+    EvidenceTableRow,
     ExecutiveBrief,
 )
-from lib.report_models import ReportResponse, SingleRunReport, SummaryMetric
+from lib.report_models import SingleRunReport, SummaryMetric
 
 
 def single_run_report_to_executive_brief(report: SingleRunReport) -> ExecutiveBrief:
@@ -45,8 +47,10 @@ def single_run_report_to_executive_brief(report: SingleRunReport) -> ExecutiveBr
         methodology=list(report.method_points),
         limitations=limitations,
         sources=_build_provenance(report),
-        appendix_audit_records=_build_audit_records(report),
-        appendix_excerpts=_build_appendix_excerpts(report),
+        appendix_reference_text=_build_reference_scenario(report),
+        appendix_reference_table=_build_option_reference_table(report),
+        appendix_audit_records=[],
+        appendix_excerpts=_build_reference_excerpts(report),
     )
 
 
@@ -154,47 +158,57 @@ def _build_provenance(report: SingleRunReport) -> list[str]:
     return provenance
 
 
-def _build_audit_records(report: SingleRunReport) -> list[AuditRecord]:
-    records: list[AuditRecord] = []
-    for response in report.responses:
-        if response.output_quality_flag == "clean" and response.notable_anomaly == "None":
-            continue
-        summary_parts = [response.option_label]
-        if response.notable_anomaly != "None":
-            summary_parts.append(response.notable_anomaly)
-        records.append(
-            AuditRecord(
-                title=f"Iteration {response.iteration}: {response.output_quality_flag}",
-                summary=" ".join(part.strip() for part in summary_parts if part.strip()),
-                severity=_severity_for_response(response),
-                details=response.display_text,
-            )
+def _build_reference_scenario(report: SingleRunReport) -> str:
+    scenario_text = report.scenario_text.strip()
+    if not scenario_text:
+        return report.scenario_excerpt.strip()
+
+    for marker in ("**Output Contract (Strict):**", "Output Contract (Strict):"):
+        if marker in scenario_text:
+            scenario_text = scenario_text.split(marker, 1)[0].rstrip()
+            break
+    return scenario_text
+
+
+def _build_option_reference_table(report: SingleRunReport) -> EvidenceTable | None:
+    rows = [
+        EvidenceTableRow(
+            cells={
+                "token": option.token,
+                "option": option.label,
+                "description": option.description or "Description unavailable.",
+            }
         )
-    severity_rank = {"critical": 0, "warning": 1, "info": 2}
-    return sorted(records, key=lambda record: (severity_rank[record.severity], record.title))[:4]
+        for option in report.option_stats
+    ]
+    if not rows:
+        return None
+
+    return EvidenceTable(
+        title="Decision Options",
+        intro="Option set shown to the model for this run.",
+        columns=[
+            EvidenceTableColumn(key="token", label="Token"),
+            EvidenceTableColumn(key="option", label="Option"),
+            EvidenceTableColumn(key="description", label="Description"),
+        ],
+        rows=rows,
+    )
 
 
-def _build_appendix_excerpts(report: SingleRunReport) -> list[EvidenceQuote]:
+def _build_reference_excerpts(report: SingleRunReport) -> list[EvidenceQuote]:
     excerpts: list[EvidenceQuote] = []
-    for response in report.raw_appendix_responses[:2]:
-        if not response.raw_text.strip():
+    for response in report.responses:
+        raw_text = response.raw_text.strip() or response.display_text.strip()
+        if not raw_text:
             continue
         excerpts.append(
             EvidenceQuote(
                 title=f"Iteration {response.iteration}: {response.option_label}",
-                text=response.raw_text,
-                attribution=response.output_quality_flag,
+                text=raw_text,
             )
         )
     return excerpts
-
-
-def _severity_for_response(response: ReportResponse) -> str:
-    if "truncation" in response.output_quality_flag or "meta-reasoning" in response.output_quality_flag:
-        return "critical"
-    if response.output_quality_flag != "clean":
-        return "warning"
-    return "info"
 
 
 def _confidence_label(report: SingleRunReport) -> str:

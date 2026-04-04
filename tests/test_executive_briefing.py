@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from lib.executive_reporting import (
-    AuditRecord,
     BriefFinding,
     BriefRecommendation,
     EvidenceMetric,
     EvidenceQuote,
+    EvidenceTable,
+    EvidenceTableColumn,
+    EvidenceTableRow,
     ExecutiveBrief,
     ExecutiveBriefRenderer,
     StrategicAnalysisPlugin,
@@ -92,18 +94,25 @@ def _sample_brief() -> ExecutiveBrief:
             "MIT NANDA Initiative (2025)",
             "McKinsey State of AI (2025)",
         ],
-        appendix_audit_records=[
-            AuditRecord(
-                title="Evidence overlap remains directional",
-                summary="The capex and ROI figures come from different surveys and should not be read as a matched sample.",
-                severity="warning",
-            ),
-        ],
+        appendix_reference_text=(
+            "A hospital must choose whether to let an allocation model rank patients when protected variables "
+            "correlate with likely survival and treatment benefit."
+        ),
+        appendix_reference_table=EvidenceTable(
+            title="Decision Options",
+            columns=[
+                EvidenceTableColumn(key="token", label="Token"),
+                EvidenceTableColumn(key="option", label="Option"),
+            ],
+            rows=[
+                EvidenceTableRow(cells={"token": "{1}", "option": "Pause deployment"}),
+                EvidenceTableRow(cells={"token": "{2}", "option": "Deploy with governance"}),
+            ],
+        ),
         appendix_excerpts=[
             EvidenceQuote(
                 title="Representative excerpt",
                 text="People said, 'Step one: we're going to use LLMs. Step two: What should we use them for?'",
-                attribution="IBM / industry commentary",
             ),
         ],
     )
@@ -123,8 +132,34 @@ def test_strategic_analysis_plugin_builds_context() -> None:
     assert context.findings[0].confidence_label == "High"
     assert context.recommendations[0].owner == "CFO"
     assert context.top_metrics[0].label == "AI projects failing"
-    assert context.appendix_audit_records[0].severity == "warning"
+    assert "hospital must choose" in context.appendix_reference_text.lower()
+    assert context.appendix_reference_table is not None
+    assert context.appendix_reference_table.rows[0].cells["token"] == "{1}"
     assert context.appendix_excerpts[0].title == "Representative excerpt"
+    assert context.appendix_excerpts[0].is_structured is False
+
+
+def test_strategic_analysis_plugin_pretty_prints_json_excerpts() -> None:
+    plugin = StrategicAnalysisPlugin(
+        organization="Cyborg Labs",
+        publication_label="ryanleej.com",
+    )
+    brief = _sample_brief().model_copy(
+        update={
+            "appendix_excerpts": [
+                EvidenceQuote(
+                    title="Structured excerpt",
+                    text='{"option_id":2,"summary":"Permit with disclosure rules","value_priorities":["beneficence","autonomy"]}',
+                )
+            ]
+        }
+    )
+
+    context = plugin.build_context(brief)
+
+    assert context.appendix_excerpts[0].is_structured is True
+    assert '\n  "option_id": 2,' in context.appendix_excerpts[0].text
+    assert '\n  "value_priorities": [\n' in context.appendix_excerpts[0].text
 
 
 def test_executive_brief_renderer_renders_html_from_plugin() -> None:
@@ -141,7 +176,34 @@ def test_executive_brief_renderer_renders_html_from_plugin() -> None:
     assert "The Algorithmic Surrender" in html
     assert "Executive Summary" in html
     assert "Recommendations" in html
+    assert "Reference Appendix" in html
+    assert "Audit Appendix" not in html
     assert "Impose an evidence gate on AI programs above $500K." in html
+
+
+def test_executive_brief_renderer_renders_json_excerpt_in_preformatted_block() -> None:
+    renderer = ExecutiveBriefRenderer(
+        StrategicAnalysisPlugin(
+            organization="Cyborg Labs",
+            publication_label="ryanleej.com",
+        ),
+        templates_dir="templates",
+    )
+    brief = _sample_brief().model_copy(
+        update={
+            "appendix_excerpts": [
+                EvidenceQuote(
+                    title="Structured excerpt",
+                    text='{"option_id":2,"summary":"Permit with disclosure rules","value_priorities":["beneficence","autonomy"]}',
+                )
+            ]
+        }
+    )
+
+    html = renderer.render_html(brief)
+
+    assert "<pre class=\"excerpt-code\">" in html
+    assert '"option_id": 2' in html
 
 
 def test_ai_ethics_adapter_maps_single_run_report_to_executive_brief() -> None:
@@ -203,6 +265,10 @@ def test_ai_ethics_adapter_maps_single_run_report_to_executive_brief() -> None:
     assert brief.top_metrics
     assert brief.key_findings
     assert brief.recommendations
+    assert brief.appendix_reference_text
+    assert brief.appendix_reference_table is not None
+    assert len(brief.appendix_excerpts) == 2
+    assert not brief.appendix_audit_records
 
 
 def test_ai_ethics_adapter_uses_tie_aware_title_and_concise_summary() -> None:

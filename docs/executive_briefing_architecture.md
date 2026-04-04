@@ -100,6 +100,16 @@ It encodes the answer-first consulting format:
 
 Use it when the target deliverable is a strategic memo or executive briefing rather than a raw technical report.
 
+## Drop-In Component
+
+The package now exposes a single public entrypoint for other projects:
+
+1. hand it an `EvidencePackage`
+2. let the default `EvidencePackageComposer` build an `ExecutiveBrief`
+3. render through a presentation plugin such as `StrategicAnalysisPlugin`
+
+That means other repos do not need `SingleRunReport`, `ReportGenerator`, or any of the AI-ethics-specific reporting code in this project.
+
 ## Current Migration Strategy
 
 The existing AI ethics PDF system remains in place.
@@ -114,24 +124,38 @@ The new package is intentionally parallel to the current routes so we can migrat
 ## How Another Project Would Use It
 
 1. Normalize project outputs into an `EvidencePackage`.
-2. Implement an `ExecutiveBriefComposer` for that domain.
-3. Compose an `ExecutiveBrief`.
-4. Choose a plugin such as `StrategicAnalysisPlugin`.
-5. Render with `ExecutiveBriefRenderer`.
+2. Instantiate `ExecutiveBriefingComponent`.
+3. Render HTML or PDF directly from the evidence package.
+4. Optionally swap in a custom composer or plugin when a project needs domain-specific synthesis or presentation.
 
 ## Example
 
 ```python
-from lib.executive_reporting import ExecutiveBriefRenderer, StrategicAnalysisPlugin
+from lib.executive_reporting import EvidencePackage, ExecutiveBriefingComponent
 
-plugin = StrategicAnalysisPlugin(
-    organization="Cyborg Labs",
-    publication_label="ryanleej.com",
+evidence = EvidencePackage(
+    package_id="brief-001",
+    subject="Algorithmic Surrender",
+    governing_question="Why are teams scaling AI spend faster than measured returns?",
+    governing_insight="Decision-makers are rewarding momentum before evidence.",
 )
-renderer = ExecutiveBriefRenderer(plugin, templates_dir="templates")
 
-html = renderer.render_html(brief)
-pdf_bytes = renderer.render_pdf(brief)
+component = ExecutiveBriefingComponent(templates_dir="templates")
+
+brief = component.build_brief(evidence)
+html = component.render_html(evidence)
+pdf_bytes = component.render_pdf(evidence)
+```
+
+For richer domains, replace the default composer:
+
+```python
+from lib.executive_reporting import ExecutiveBriefingComponent
+
+component = ExecutiveBriefingComponent(
+    composer=MyDomainComposer(),
+    templates_dir="templates",
+)
 ```
 
 ## Boundary Rules

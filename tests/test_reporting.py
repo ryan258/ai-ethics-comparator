@@ -473,8 +473,14 @@ def test_report_context_uses_joint_plurality_and_reliability_for_digital_afterli
     assert report.responses[1].rationale_theme == "Family-mediated permission"
     assert report.responses[2].notable_anomaly == "Inferred after truncated output; Explanation used a non-standard format"
     assert [response.iteration for response in report.raw_appendix_responses] == [1, 2, 3, 5]
-    assert "Instruction-conflict / meta-reasoning leak." in report.raw_appendix_responses[1].raw_text
-    assert "output rules" in report.raw_appendix_responses[1].raw_text
+    assert (
+        report.raw_appendix_responses[1].raw_text
+        == _digital_afterlife_run_data()["responses"][1]["raw"]
+    )
+    assert (
+        report.raw_appendix_responses[2].raw_text
+        == _digital_afterlife_run_data()["responses"][2]["raw"]
+    )
     assert any(
         "Choice pattern and output-contract reliability are separate questions" in item
         for item in report.limitation_points
@@ -515,7 +521,10 @@ def test_report_context_uses_scenario_specific_framing_for_synthetic_media() -> 
     assert report.responses[3].output_quality_flag == "placeholder structure only"
     assert report.responses[6].output_quality_flag == "inferred after truncation"
     assert [response.iteration for response in report.raw_appendix_responses] == [1, 2, 4, 7]
-    assert "Instruction-conflict / meta-reasoning leak." in report.raw_appendix_responses[1].raw_text
+    assert (
+        report.raw_appendix_responses[1].raw_text
+        == _synthetic_media_run_data()["responses"][1]["raw"]
+    )
     assert report.responses[3].display_text.startswith("No usable explanation was produced.")
     assert report.sections[-1].title == report.explanation_appendix_title
     assert any(

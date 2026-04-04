@@ -60,7 +60,6 @@
 
       .executive-page .metric-row {
         margin-top: 5mm;
-        gap: 2.5mm;
       }
 
       .executive-page .metric-card {
@@ -78,7 +77,6 @@
 
       .executive-page .exec-grid {
         margin-top: 5mm;
-        gap: 3mm;
       }
 
       .executive-page .panel,
@@ -141,9 +139,14 @@
 
       .metric-row {
         margin-top: 6mm;
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 3mm;
+        display: flex;
+        margin-left: -1.5mm;
+        margin-right: -1.5mm;
+      }
+
+      .metric-row > .metric-card {
+        flex: 1 1 0;
+        margin: 0 1.5mm;
       }
 
       .metric-card,
@@ -183,24 +186,45 @@
       .exec-grid,
       .two-col,
       .three-col {
-        display: grid;
-        gap: 4mm;
+        display: flex;
+        margin-left: -2mm;
+        margin-right: -2mm;
+      }
+
+      .exec-grid > *,
+      .two-col > *,
+      .three-col > * {
+        margin: 0 2mm 4mm;
+        min-width: 0;
       }
 
       .exec-grid {
         margin-top: 6mm;
-        grid-template-columns: 1.3fr 0.95fr;
         align-items: start;
+      }
+
+      .exec-grid > :first-child {
+        flex: 1.3 1 0;
+      }
+
+      .exec-grid > :last-child {
+        flex: 0.95 1 0;
       }
 
       .two-col {
         margin-top: 5mm;
-        grid-template-columns: 1fr 1fr;
+      }
+
+      .two-col > * {
+        flex: 1 1 0;
       }
 
       .three-col {
         margin-top: 5mm;
-        grid-template-columns: repeat(3, 1fr);
+      }
+
+      .three-col > * {
+        flex: 1 1 0;
       }
 
       .stack > * + * { margin-top: 4mm; }
@@ -248,9 +272,8 @@
       .bar-row { margin-bottom: 3.4mm; }
 
       .bar-head {
-        display: grid;
-        grid-template-columns: 1fr auto;
-        gap: 4mm;
+        display: flex;
+        justify-content: space-between;
         align-items: baseline;
       }
 
@@ -268,6 +291,9 @@
       .bar-score {
         font-size: 8.6pt;
         font-weight: 700;
+        margin-left: 4mm;
+        text-align: right;
+        white-space: nowrap;
       }
 
       .bar-track {
@@ -330,12 +356,15 @@
 
       .metadata-grid {
         margin-top: 4mm;
-        display: grid;
-        grid-template-columns: repeat(2, 1fr);
-        gap: 2.5mm 4mm;
+        display: flex;
+        flex-wrap: wrap;
+        margin-left: -2mm;
+        margin-right: -2mm;
       }
 
       .metadata-item {
+        width: 48%;
+        margin: 0 2mm 2.5mm;
         padding-bottom: 2mm;
         border-bottom: 1px solid var(--rule);
       }
@@ -361,10 +390,17 @@
       }
 
       .raw-head {
-        display: grid;
-        grid-template-columns: auto 1fr auto;
-        gap: 3mm;
+        display: flex;
         align-items: baseline;
+      }
+
+      .raw-head > * + * {
+        margin-left: 3mm;
+      }
+
+      .raw-head > :nth-child(2) {
+        flex: 1 1 auto;
+        min-width: 0;
       }
 
       .raw-choice {

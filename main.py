@@ -45,6 +45,17 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
+
+# Keep the terminal focused on application events rather than dependency chatter.
+for noisy_logger_name in (
+    "httpx",
+    "httpcore",
+    "fontTools",
+    "fontTools.subset",
+    "uvicorn.access",
+):
+    logging.getLogger(noisy_logger_name).setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 MODEL_NAME_PATTERN = re.compile(r"^[a-z0-9\-_/:.]+$", re.IGNORECASE)

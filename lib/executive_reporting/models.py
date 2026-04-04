@@ -125,6 +125,8 @@ class ExecutiveBrief(BriefingModel):
     methodology: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)
+    appendix_reference_text: str = ""
+    appendix_reference_table: EvidenceTable | None = None
     appendix_audit_records: list[AuditRecord] = Field(default_factory=list)
     appendix_excerpts: list[EvidenceQuote] = Field(default_factory=list)
     metadata: list[BriefMetadataItem] = Field(default_factory=list)

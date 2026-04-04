@@ -4,23 +4,38 @@
   <meta charset="utf-8">
   <title>{{ report.title }}</title>
   <style>
+    /*
+      McKinsey-style brief blueprint for Executive Reporting
+
+      Purpose:
+      - Show how to structure an answer-first executive memo
+      - Show which context fields are expected from a plugin
+      - Give downstream projects a copyable starting point
+
+      This file is an example, not a live template wired into the app.
+      Copy it into your own templates directory, rename it, and point your
+      custom plugin's template_name at the copied file.
+    */
+
     @page {
       margin: 0.8in;
       size: letter;
     }
 
     :root {
-      --ink: #243b63;
-      --ink-soft: #5a6981;
-      --accent: #4f7ac8;
-      --line: #cad5e6;
-      --paper: #ffffff;
-      --panel: #f6f8fc;
+      --ink: #121212;
+      --paper: #EBD2BE;
+      --accent: #A6ACCD;
+      --success: #98C379;
+      --danger: #E06C75;
+      --rule: rgba(18, 18, 18, 0.16);
+      --panel: rgba(255, 255, 255, 0.28);
+      --panel-strong: rgba(255, 255, 255, 0.42);
     }
 
     body {
-      color: var(--ink);
       background: var(--paper);
+      color: var(--ink);
       font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
       font-size: 10.5pt;
       line-height: 1.45;
@@ -32,39 +47,39 @@
     }
 
     .cover {
-      min-height: 9.5in;
-      padding-top: 2.7in;
+      min-height: 9.4in;
+      padding-top: 2.4in;
     }
 
     .eyebrow {
       border-bottom: 1.5px solid var(--accent);
       color: var(--accent);
-      font-size: 10pt;
+      font-size: 9pt;
       font-weight: 700;
-      letter-spacing: 0.02em;
-      padding-bottom: 0.14in;
+      letter-spacing: 0.08em;
+      padding-bottom: 0.12in;
       text-transform: uppercase;
     }
 
     .cover h1 {
-      font-size: 26pt;
+      font-size: 28pt;
       font-weight: 700;
-      line-height: 1.12;
-      margin-top: 0.48in;
-      max-width: 5.4in;
+      line-height: 1.08;
+      margin-top: 0.45in;
+      max-width: 5.6in;
     }
 
-    .cover .subtitle {
-      font-size: 16pt;
-      line-height: 1.3;
+    .subtitle {
+      font-size: 15pt;
+      line-height: 1.28;
       margin-top: 0.14in;
       max-width: 4.8in;
     }
 
-    .cover .meta {
-      color: var(--ink-soft);
-      font-size: 10pt;
+    .meta {
       margin-top: 0.9in;
+      color: rgba(18, 18, 18, 0.72);
+      font-size: 9pt;
     }
 
     .page-break {
@@ -72,30 +87,30 @@
     }
 
     .running-head {
-      border-bottom: 1px solid var(--line);
-      color: var(--ink-soft);
-      font-size: 9pt;
+      border-bottom: 1px solid var(--rule);
+      color: rgba(18, 18, 18, 0.62);
+      font-size: 8.5pt;
       margin-bottom: 0.24in;
       padding-bottom: 0.08in;
     }
 
     .section-title {
-      color: var(--ink);
       font-size: 18pt;
       font-weight: 700;
       margin-bottom: 0.18in;
     }
 
     .governing-insight {
-      background: var(--panel);
-      border-left: 3px solid var(--accent);
+      background: var(--panel-strong);
+      border-left: 4px solid var(--accent);
       margin-bottom: 0.24in;
       padding: 0.18in 0.2in;
     }
 
     .governing-insight strong {
       display: block;
-      font-size: 10pt;
+      font-size: 9pt;
+      letter-spacing: 0.06em;
       margin-bottom: 0.04in;
       text-transform: uppercase;
     }
@@ -106,7 +121,7 @@
 
     .metric-grid {
       display: table;
-      margin-top: 0.18in;
+      margin-top: 0.2in;
       width: 100%;
     }
 
@@ -115,7 +130,7 @@
     }
 
     .metric {
-      border-top: 1px solid var(--line);
+      border-top: 1px solid var(--rule);
       display: table-cell;
       padding: 0.14in 0.12in 0.12in 0;
       vertical-align: top;
@@ -128,27 +143,27 @@
     }
 
     .metric-label {
-      color: var(--ink-soft);
-      font-size: 9pt;
+      color: rgba(18, 18, 18, 0.72);
+      font-size: 8.8pt;
       margin-top: 0.04in;
     }
 
     .metric-source {
-      color: var(--ink-soft);
-      font-size: 8.5pt;
+      color: rgba(18, 18, 18, 0.62);
+      font-size: 8.2pt;
       margin-top: 0.04in;
     }
 
     .finding {
-      border-top: 1px solid var(--line);
+      border-top: 1px solid var(--rule);
       padding-top: 0.18in;
       margin-top: 0.2in;
     }
 
     .finding-head {
+      align-items: baseline;
       display: flex;
       justify-content: space-between;
-      align-items: baseline;
       margin-bottom: 0.1in;
     }
 
@@ -161,7 +176,7 @@
 
     .confidence {
       color: var(--accent);
-      font-size: 9pt;
+      font-size: 8.5pt;
       font-weight: 700;
       margin-left: 0.2in;
       text-align: right;
@@ -169,21 +184,25 @@
       white-space: nowrap;
     }
 
-    .finding .claim {
+    .claim {
       font-size: 11pt;
       font-weight: 600;
       margin-bottom: 0.08in;
     }
 
-    .finding ul {
+    .finding ul,
+    .notes ul {
       margin: 0.08in 0 0 0.2in;
       padding: 0;
     }
 
     .finding li,
-    .implications li,
     .notes li {
       margin-bottom: 0.08in;
+    }
+
+    .implication-line {
+      margin-top: 0.08in;
     }
 
     .support-metrics {
@@ -191,9 +210,10 @@
     }
 
     .support-metrics span {
-      border: 1px solid var(--line);
+      background: var(--panel);
+      border: 1px solid var(--rule);
       display: inline-block;
-      font-size: 8.5pt;
+      font-size: 8.2pt;
       margin: 0 0.08in 0.08in 0;
       padding: 0.05in 0.08in;
     }
@@ -206,15 +226,15 @@
 
     th,
     td {
-      border-top: 1px solid var(--line);
+      border-top: 1px solid var(--rule);
       padding: 0.1in 0.08in 0.1in 0;
       text-align: left;
       vertical-align: top;
     }
 
     th {
-      color: var(--ink-soft);
-      font-size: 8.5pt;
+      color: rgba(18, 18, 18, 0.72);
+      font-size: 8pt;
       font-weight: 700;
       text-transform: uppercase;
     }
@@ -235,13 +255,16 @@
 
     .reference-block,
     .excerpt {
+      background: var(--panel);
       margin-top: 0.12in;
       padding: 0.14in 0.16in;
-      background: var(--panel);
     }
 
-    .reference-block {
+    .reference-block,
+    .excerpt-body,
+    .excerpt-code {
       white-space: pre-wrap;
+      word-break: break-word;
     }
 
     .excerpt-title {
@@ -249,27 +272,29 @@
       margin-bottom: 0.06in;
     }
 
-    .excerpt-body,
-    .excerpt-code {
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
     .excerpt-code {
       font-family: "Courier New", Courier, monospace;
-      font-size: 8.5pt;
+      font-size: 8.4pt;
       line-height: 1.5;
       margin: 0;
     }
 
     .excerpt-attribution {
-      color: var(--ink-soft);
-      font-size: 8.5pt;
+      color: rgba(18, 18, 18, 0.62);
+      font-size: 8.2pt;
       margin-top: 0.08in;
     }
   </style>
 </head>
 <body>
+  <!--
+    COVER
+    Use for:
+    - brand / practice label
+    - document title
+    - subtitle framing the question
+    - publication/date metadata
+  -->
   <section class="cover">
     <div class="eyebrow">{{ report.header_label }} | By {{ report.organization }}</div>
     <h1>{{ report.title }}</h1>
@@ -284,20 +309,33 @@
     </div>
   </section>
 
+  <!--
+    EXECUTIVE SUMMARY
+    This is the most important page.
+    The order should be:
+    1. Governing insight
+    2. 2-3 short paragraphs
+    3. Headline metrics
+  -->
   <section class="page-break">
-    <div class="running-head">{{ report.title }}{% if report.date_label %} | {{ report.date_label }}{% endif %}{% if report.publication_label %} | {{ report.publication_label }}{% endif %}</div>
+    <div class="running-head">
+      {{ report.title }}{% if report.date_label %} | {{ report.date_label }}{% endif %}{% if report.publication_label %} | {{ report.publication_label }}{% endif %}
+    </div>
     <h2 class="section-title">Executive Summary</h2>
+
     {% if report.governing_insight %}
       <div class="governing-insight">
         <strong>Governing Insight</strong>
         <p>{{ report.governing_insight }}</p>
       </div>
     {% endif %}
+
     <div class="summary">
       {% for paragraph in report.executive_summary %}
         <p>{{ paragraph }}</p>
       {% endfor %}
     </div>
+
     {% if report.top_metrics %}
       <div class="metric-grid">
         <div class="metric-row">
@@ -315,9 +353,18 @@
     {% endif %}
   </section>
 
+  <!--
+    KEY FINDINGS
+    Each finding should read like:
+    - claim
+    - evidence bullets
+    - implication
+    - confidence signal
+  -->
   <section class="page-break">
     <div class="running-head">{{ report.title }}</div>
     <h2 class="section-title">Key Findings</h2>
+
     {% for finding in report.findings %}
       <article class="finding">
         <div class="finding-head">
@@ -326,7 +373,9 @@
             <div class="confidence">{{ finding.confidence_label }}</div>
           {% endif %}
         </div>
+
         <p class="claim">{{ finding.claim }}</p>
+
         {% if finding.evidence_points %}
           <ul>
             {% for point in finding.evidence_points %}
@@ -334,9 +383,11 @@
             {% endfor %}
           </ul>
         {% endif %}
+
         {% if finding.implication %}
-          <p><strong>Implication:</strong> {{ finding.implication }}</p>
+          <p class="implication-line"><strong>Implication:</strong> {{ finding.implication }}</p>
         {% endif %}
+
         {% if finding.supporting_metrics %}
           <div class="support-metrics">
             {% for metric in finding.supporting_metrics %}
@@ -348,9 +399,14 @@
     {% endfor %}
   </section>
 
+  <!--
+    RECOMMENDATIONS
+    In a consulting-style memo, this section should convert findings into actions.
+  -->
   <section class="page-break">
     <div class="running-head">{{ report.title }}</div>
     <h2 class="section-title">Recommendations</h2>
+
     {% if report.recommendations %}
       <table>
         <thead>
@@ -376,18 +432,16 @@
       </table>
     {% endif %}
 
-    {% if report.decision_implications %}
-      <div class="notes implications">
+    <div class="notes">
+      {% if report.decision_implications %}
         <h3>Decision Implications</h3>
         <ul>
           {% for point in report.decision_implications %}
             <li>{{ point }}</li>
           {% endfor %}
         </ul>
-      </div>
-    {% endif %}
+      {% endif %}
 
-    <div class="notes">
       {% if report.methodology %}
         <h3>Method</h3>
         <ul>
@@ -396,6 +450,7 @@
           {% endfor %}
         </ul>
       {% endif %}
+
       {% if report.limitations %}
         <h3>Limitations</h3>
         <ul>
@@ -404,6 +459,7 @@
           {% endfor %}
         </ul>
       {% endif %}
+
       {% if report.sources %}
         <h3>Sources</h3>
         <ul>
@@ -415,6 +471,13 @@
     </div>
   </section>
 
+  <!--
+    REFERENCE APPENDIX
+    Keep this factual and inspectable:
+    - scenario text
+    - option set
+    - raw responses / raw evidence
+  -->
   {% if report.appendix_reference_text or report.appendix_reference_table or report.appendix_excerpts %}
     <section class="page-break">
       <div class="running-head">{{ report.title }}</div>

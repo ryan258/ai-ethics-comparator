@@ -202,6 +202,10 @@ def _normalize_appendix_text(value: object, limit: int) -> str:
     return _truncate_text(normalized, limit)
 
 
+def _normalize_verbatim_text(value: object) -> str:
+    return str(value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
 def _soften_language(value: object) -> str:
     text = " ".join(str(value or "").strip().split())
     for source, target in SOFTENED_PHRASES:
@@ -568,25 +572,8 @@ def _build_raw_appendix_text(
     explanation_text: object,
     flags: ResponseQualityFlags,
 ) -> str:
-    raw = _normalize_appendix_text(raw_text, 720)
-    explanation = _normalize_appendix_text(explanation_text, 720)
-    if flags.meta_reasoning:
-        return (
-            "Instruction-conflict / meta-reasoning leak. The model discussed contradictory "
-            "output rules instead of returning a clean answer."
-        )
-    if flags.placeholder_explanation:
-        return (
-            "Placeholder output. The model returned the required explanation headings without "
-            "substantive content."
-        )
-    if flags.truncated_output:
-        excerpt = explanation or raw
-        if excerpt:
-            return f"Truncated output excerpt:\n{excerpt}"
-        return "Truncated output. No stable excerpt was recovered."
-    if flags.used_raw_fallback and raw:
-        return raw
+    raw = _normalize_verbatim_text(raw_text)
+    explanation = _normalize_verbatim_text(explanation_text)
     return raw or explanation or "No raw output recorded."
 
 

@@ -4,15 +4,17 @@ Strategic-analysis presentation plugin.
 
 from __future__ import annotations
 
+import json
+
 from pydantic import Field
 
 from lib.executive_reporting.models import (
-    AuditRecord,
     BriefFinding,
     BriefRecommendation,
     BriefingModel,
     EvidenceMetric,
     EvidenceQuote,
+    EvidenceTable,
     ExecutiveBrief,
 )
 from lib.executive_reporting.plugins.base import ExecutiveBriefPlugin
@@ -35,6 +37,14 @@ class StrategicRecommendationRow(BriefingModel):
     key_risk: str = ""
 
 
+class StrategicExcerptBlock(BriefingModel):
+    title: str
+    text: str
+    attribution: str = ""
+    significance: str = ""
+    is_structured: bool = False
+
+
 class StrategicAnalysisContext(BriefingModel):
     brief_id: str = ""
     header_label: str
@@ -54,8 +64,9 @@ class StrategicAnalysisContext(BriefingModel):
     methodology: list[str] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)
-    appendix_audit_records: list[AuditRecord] = Field(default_factory=list)
-    appendix_excerpts: list[EvidenceQuote] = Field(default_factory=list)
+    appendix_reference_text: str = ""
+    appendix_reference_table: EvidenceTable | None = None
+    appendix_excerpts: list[StrategicExcerptBlock] = Field(default_factory=list)
 
 
 class StrategicAnalysisPlugin(ExecutiveBriefPlugin[StrategicAnalysisContext]):
@@ -111,24 +122,9 @@ class StrategicAnalysisPlugin(ExecutiveBriefPlugin[StrategicAnalysisContext]):
             methodology=list(brief.methodology),
             limitations=list(brief.limitations),
             sources=list(brief.sources),
-            appendix_audit_records=[
-                AuditRecord(
-                    title=record.title,
-                    summary=record.summary,
-                    severity=record.severity,
-                    details=record.details,
-                )
-                for record in brief.appendix_audit_records
-            ],
-            appendix_excerpts=[
-                EvidenceQuote(
-                    title=excerpt.title,
-                    text=excerpt.text,
-                    attribution=excerpt.attribution,
-                    significance=excerpt.significance,
-                )
-                for excerpt in brief.appendix_excerpts
-            ],
+            appendix_reference_text=brief.appendix_reference_text,
+            appendix_reference_table=brief.appendix_reference_table,
+            appendix_excerpts=[self._build_excerpt_block(excerpt) for excerpt in brief.appendix_excerpts],
         )
 
     def _build_finding_section(self, finding: BriefFinding) -> StrategicFindingSection:
@@ -157,3 +153,29 @@ class StrategicAnalysisPlugin(ExecutiveBriefPlugin[StrategicAnalysisContext]):
             expected_impact=item.expected_impact,
             key_risk=item.key_risk,
         )
+
+    def _build_excerpt_block(self, excerpt: EvidenceQuote) -> StrategicExcerptBlock:
+        formatted_text, is_structured = _format_excerpt_text(excerpt.text)
+        return StrategicExcerptBlock(
+            title=excerpt.title,
+            text=formatted_text,
+            attribution=excerpt.attribution,
+            significance=excerpt.significance,
+            is_structured=is_structured,
+        )
+
+
+def _format_excerpt_text(text: str) -> tuple[str, bool]:
+    normalized = text.strip()
+    if not normalized:
+        return "", False
+
+    try:
+        parsed = json.loads(normalized)
+    except json.JSONDecodeError:
+        return normalized, False
+
+    if not isinstance(parsed, dict | list):
+        return normalized, False
+
+    return json.dumps(parsed, indent=2, ensure_ascii=False), True
