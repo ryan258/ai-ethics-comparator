@@ -897,11 +897,26 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
                 ins = run.get("insights", [])
                 insights.append(ins[-1] if ins else None)
 
+            narrative = None
+            writer_model = services.config.ANALYST_MODEL
+            if writer_model:
+                try:
+                    narrative = await services.report_writer.generate_comparison_narrative(
+                        runs,
+                        paradox,
+                        NarrativeConfig(model=writer_model),
+                    )
+                except Exception as narr_exc:
+                    logger.warning(
+                        "Comparison report narrative generation failed, proceeding without: %s",
+                        narr_exc,
+                    )
+
             requested_theme = theme or services.config.REPORT_PDF_THEME
             validated_theme = "light" if requested_theme == "light" else "dark"
             try:
                 pdf_bytes = services.report_generator.generate_comparison_pdf(
-                    runs, paradox, insights, theme=validated_theme,
+                    runs, paradox, insights, narrative, theme=validated_theme,
                 )
             except RuntimeError as exc:
                 logger.warning("Comparison PDF generation unavailable: %s", exc)

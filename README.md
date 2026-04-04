@@ -13,14 +13,12 @@ Run any OpenRouter model against ethical paradoxes (2-4 options each), repeat ac
 - **AI provider:** OpenRouter via AsyncOpenAI
 - **Reports:** WeasyPrint PDF, native PDF fallback, PowerPoint export
 - **Storage:** flat JSON files (no database)
-- **Python:** 3.11+
+- **Python:** 3.12, managed with `uv`
 
 ## Quick Start
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+uv sync
 ```
 
 Create `.env` (or copy `.example.env`):
@@ -48,7 +46,7 @@ AI_CHOICE_INFERENCE_ENABLED=true
 Run:
 
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Open [http://localhost:8000](http://localhost:8000).
@@ -133,8 +131,16 @@ Aggregate all runs for a given model to build an ethics profile: moral complex f
 ## Test Suite
 
 ```bash
-pytest
+uv run pytest
 ```
+
+## Environment Management
+
+- `pyproject.toml` defines the Python version and dependency manifests.
+- `uv.lock` is the committed lockfile for reproducible installs.
+- `uv sync` is the only supported install workflow.
+- `uv run ...` is the supported way to invoke project tools.
+- After dependency changes, run `uv lock`.
 
 73 tests across 13 modules:
 

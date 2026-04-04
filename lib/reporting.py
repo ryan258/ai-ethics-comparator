@@ -12,22 +12,16 @@ from pathlib import Path
 import re
 from collections import Counter
 from statistics import median
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
-try:
-    from jinja2 import Environment, FileSystemLoader
-except ModuleNotFoundError:  # pragma: no cover - optional dependency guard
-    Environment = None  # type: ignore[assignment]
-    FileSystemLoader = None  # type: ignore[assignment]
-
-try:
-    from weasyprint import HTML
-except (ModuleNotFoundError, OSError) as exc:  # pragma: no cover - optional dependency guard
-    HTML = None  # type: ignore[assignment]
-    WEASYPRINT_IMPORT_ERROR: Exception | None = exc
-else:  # pragma: no cover - import side effect only
-    WEASYPRINT_IMPORT_ERROR = None
-
+from lib.executive_reporting import (
+    ExecutiveBriefRenderer,
+    ExecutiveReportEngine,
+    ExecutiveReportProfile,
+    StrategicAnalysisPlugin,
+    single_run_report_to_executive_brief,
+)
+from lib.executive_reporting.weasyprint_runtime import load_weasyprint_html
 from lib.paradoxes import extract_scenario_text
 from lib.pdf_charts import (
     PALETTE_DARK,
@@ -52,6 +46,7 @@ from lib.report_models import (
 )
 
 logger = logging.getLogger(__name__)
+HTML, WEASYPRINT_IMPORT_ERROR = load_weasyprint_html()
 
 
 RATIONALE_THEMES: tuple[tuple[str, tuple[str, ...], str], ...] = (
@@ -186,6 +181,15 @@ def _truncate_text(value: object, limit: int) -> str:
     if len(text) <= limit:
         return text
     return text[: limit - 3].rstrip() + "..."
+
+
+def _normalize_appendix_text(value: object, limit: int) -> str:
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        return ""
+    condensed_lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.splitlines()]
+    normalized = "\n".join(line for line in condensed_lines if line)
+    return _truncate_text(normalized, limit)
 
 
 def _soften_language(value: object) -> str:
@@ -511,8 +515,85 @@ def _output_quality_flag(
     return "clean"
 
 
+def _build_raw_appendix_text(
+    raw_text: object,
+    explanation_text: object,
+    flags: ResponseQualityFlags,
+) -> str:
+    raw = _normalize_appendix_text(raw_text, 720)
+    explanation = _normalize_appendix_text(explanation_text, 720)
+    if flags.meta_reasoning:
+        return (
+            "Instruction-conflict / meta-reasoning leak. The model discussed contradictory "
+            "output rules instead of returning a clean answer."
+        )
+    if flags.placeholder_explanation:
+        return (
+            "Placeholder output. The model returned the required explanation headings without "
+            "substantive content."
+        )
+    if flags.truncated_output:
+        excerpt = explanation or raw
+        if excerpt:
+            return f"Truncated output excerpt:\n{excerpt}"
+        return "Truncated output. No stable excerpt was recovered."
+    if flags.used_raw_fallback and raw:
+        return raw
+    return raw or explanation or "No raw output recorded."
+
+
+def _build_explanation_source_text(
+    explanation_text: object,
+    raw_text: object,
+    flags: ResponseQualityFlags,
+) -> str:
+    explanation = _normalize_appendix_text(explanation_text, 900)
+    raw = _normalize_appendix_text(raw_text, 640)
+    if flags.placeholder_explanation:
+        return (
+            "No usable explanation was produced. The model returned placeholder five-line "
+            "scaffolding without substantive reasoning."
+        )
+    if flags.meta_reasoning and (flags.used_raw_fallback or flags.missing_structure):
+        return (
+            "No usable explanation was recovered. The model focused on conflicting output "
+            "instructions rather than explaining the choice."
+        )
+    if flags.truncated_output and not explanation:
+        if raw:
+            return f"Partial explanation recovered from truncated output:\n{raw}"
+        return "The explanation was truncated before a stable rationale could be recovered."
+    if flags.used_raw_fallback:
+        return raw or "No usable explanation was recovered."
+    return explanation or raw or "No explanation recorded."
+
+
 def _select_raw_appendix_responses(responses: list[ReportResponse]) -> list[ReportResponse]:
-    return list(responses)
+    if not responses:
+        return []
+
+    flagged = [response for response in responses if response.output_quality_flag != "clean"]
+    if not flagged:
+        return list(responses[: min(2, len(responses))])
+
+    if len(flagged) <= 4:
+        return flagged
+
+    selected: list[ReportResponse] = []
+    seen_flags: set[str] = set()
+    for response in flagged:
+        if response.output_quality_flag in seen_flags:
+            continue
+        selected.append(response)
+        seen_flags.add(response.output_quality_flag)
+
+    for response in flagged:
+        if response in selected:
+            continue
+        selected.append(response)
+        if len(selected) >= 4:
+            break
+    return selected[:4]
 
 
 def _scenario_rationale_theme(
@@ -1146,12 +1227,12 @@ def _build_synthetic_media_overrides(
     ]
     method_title = "This result shows one model's directional election-response tendency, not a deployable speech policy"
     appendix_title = "Iteration detail confirms moratorium dominance, narrower dissent, and visible format instability"
-    raw_appendix_title = "Full raw outputs preserve the complete record behind the run"
+    raw_appendix_title = "Selected raw-output excerpts preserve the audit trail behind the run"
     appendix_summary_note = (
-        "Full 10-run summary table. The output-quality column flags the failure mode for each iteration; the raw appendix preserves the complete raw record, and the final appendix reproduces the explanation ledger."
+        "Full 10-run summary table. The output-quality column flags the failure mode for each iteration; the raw appendix highlights selected anomalous excerpts, and the final appendix reproduces the explanation ledger."
     )
     raw_appendix_note = (
-        "This appendix preserves the full raw response record for every iteration. The next appendix reproduces the explanation ledger used throughout the report."
+        "This appendix highlights selected anomalous raw-output excerpts rather than reproducing every response verbatim. Use JSON export for the complete raw record. The next appendix reproduces the explanation ledger used throughout the report."
     )
     caveat_box = (
         f"Directional only: one model, one election scenario, {response_count} iterations, one prompt frame, and one high-temperature setting. "
@@ -1220,24 +1301,69 @@ def _build_synthetic_media_overrides(
     }
 
 
+class AiEthicsExecutiveReportProfile(ExecutiveReportProfile[SingleRunReport, ComparisonReport]):
+    """AI ethics-specific brief composition layered on the reusable report engine."""
+
+    single_template_name = "reports/pdf_report.html"
+    comparison_template_name = "reports/comparison_report.html"
+    comparison_unavailable_message = "Comparison PDF generation unavailable"
+
+    def __init__(self, single_builder: Callable[..., SingleRunReport]) -> None:
+        self._single_builder = single_builder
+
+    def build_single_report(
+        self,
+        run_data: dict[str, Any],
+        paradox: dict[str, Any],
+        insight: Optional[dict[str, Any]] = None,
+        narrative: Optional[dict[str, str]] = None,
+        *,
+        theme: str = "light",
+    ) -> SingleRunReport:
+        return self._single_builder(run_data, paradox, insight, narrative, theme=theme)
+
+    def build_comparison_report(
+        self,
+        runs: list[dict[str, Any]],
+        paradox: dict[str, Any],
+        insights: list[Optional[dict[str, Any]]],
+        narrative: Optional[dict[str, str]] = None,
+        *,
+        theme: str = "dark",
+    ) -> ComparisonReport:
+        from lib.comparison_report import build_comparison_context
+
+        return build_comparison_context(runs, paradox, insights, narrative, theme=theme)
+
+    def native_single_available(self) -> bool:
+        return pdf_available()
+
+    def render_native_single(self, report: SingleRunReport) -> bytes:
+        return NativePdfReportRenderer(report.model_dump(mode="json"), theme=report.theme).render()
+
+
 class ReportGenerator:
     """Generate professional PDF reports from run data."""
 
     def __init__(self, templates_dir: str = "templates") -> None:
         self.templates_dir = Path(templates_dir)
         self.template_name = "reports/pdf_report.html"
-        self.env: Optional[Environment] = None
-        self.html_template_available = False
-
-        if Environment is not None and FileSystemLoader is not None and self.templates_dir.exists():
-            self.env = Environment(loader=FileSystemLoader(str(self.templates_dir)))
-            try:
-                self.env.get_template(self.template_name)
-                self.html_template_available = True
-            except Exception as exc:
-                logger.warning("PDF template unavailable, native renderer only: %s", exc)
-
-        self.pdf_available = HTML is not None or pdf_available()
+        self.profile = AiEthicsExecutiveReportProfile(self._build_report_context)
+        self.engine = ExecutiveReportEngine(
+            self.profile,
+            templates_dir=self.templates_dir,
+            html_class=HTML,
+            weasyprint_import_error=WEASYPRINT_IMPORT_ERROR,
+        )
+        self.brief_renderer = ExecutiveBriefRenderer(
+            StrategicAnalysisPlugin(),
+            templates_dir=self.templates_dir,
+            html_class=HTML,
+            weasyprint_import_error=WEASYPRINT_IMPORT_ERROR,
+        )
+        self.env = self.engine.env
+        self.html_template_available = self.engine.template_available(self.template_name)
+        self.pdf_available = self.engine.pdf_available
 
     def generate_pdf_report(
         self,
@@ -1250,7 +1376,7 @@ class ReportGenerator:
     ) -> bytes:
         """Generate PDF bytes for a single-run report."""
         report = self._build_report_context(run_data, paradox, insight, narrative, theme=theme)
-        return self._render_report(report)
+        return self._render_single_report(report)
 
     def generate_comparison_pdf(
         self,
@@ -1262,46 +1388,43 @@ class ReportGenerator:
         theme: str = "dark",
     ) -> bytes:
         """Generate a comparative PDF for multiple runs on the same paradox."""
-        from lib.comparison_report import build_comparison_context
-
-        report = build_comparison_context(runs, paradox, insights, narrative, theme=theme)
+        report = self.profile.build_comparison_report(
+            runs,
+            paradox,
+            insights,
+            narrative,
+            theme=theme,
+        )
         return self._render_report(report)
 
     def _render_report(self, report: SingleRunReport | ComparisonReport) -> bytes:
         """Dispatch rendering explicitly by report type."""
         if isinstance(report, SingleRunReport):
-            if HTML is not None and self.env is not None and self.html_template_available:
-                try:
-                    return self._generate_weasyprint_pdf("reports/pdf_report.html", report)
-                except Exception as exc:
-                    logger.warning("WeasyPrint PDF render failed, using native fallback: %s", exc)
+            return self.engine.render_single_context(report)
+        return self.engine.render_comparison_context(report)
 
-            if not pdf_available():
-                raise RuntimeError(
-                    "PDF generation is unavailable because WeasyPrint could not load its native "
-                    "dependencies and no native fallback backend is installed."
-                ) from WEASYPRINT_IMPORT_ERROR
+    def _render_single_report(self, report: SingleRunReport) -> bytes:
+        """Render a single-run report through the brief-first path when available."""
+        if self._can_render_strategic_brief():
+            try:
+                brief = single_run_report_to_executive_brief(report)
+                return self.brief_renderer.render_pdf(brief)
+            except Exception as exc:
+                logger.exception(
+                    "Strategic brief render failed (%s), falling back to legacy single report",
+                    type(exc).__name__,
+                )
+        return self._render_report(report)
 
-            return NativePdfReportRenderer(report.model_dump(mode="json"), theme=report.theme).render()
-
-        if HTML is None or self.env is None:
-            raise RuntimeError("Comparison PDF generation requires WeasyPrint") from WEASYPRINT_IMPORT_ERROR
-
-        try:
-            return self._generate_weasyprint_pdf("reports/comparison_report.html", report)
-        except Exception as exc:
-            logger.warning("WeasyPrint comparison render failed: %s", exc)
-            raise RuntimeError("Comparison PDF generation unavailable") from exc
+    def _can_render_strategic_brief(self) -> bool:
+        return self.brief_renderer.html_class is not None and self.brief_renderer.template_available()
 
     def _generate_weasyprint_pdf(
         self,
         template_name: str,
         report: SingleRunReport | ComparisonReport,
     ) -> bytes:
-        assert self.env is not None
-        template = self.env.get_template(template_name)
-        html_content = template.render(report=report)
-        return HTML(string=html_content, base_url=str(self.templates_dir.parent)).write_pdf()
+        return self.engine.generate_weasyprint_pdf(template_name, report)
 
     def _build_report_context(
         self,
@@ -1344,8 +1467,8 @@ class ReportGenerator:
             option_meta = option_lookup.get(option_id, {}) if isinstance(option_id, int) else {}
             explanation = str(response.get("explanation", "") or "").strip()
             raw = str(response.get("raw", "") or "").strip()
-            display_text = explanation or raw or "No explanation recorded."
-            response_length = len(display_text)
+            primary_text = explanation or raw or "No explanation recorded."
+            response_length = len(primary_text)
             used_raw_fallback = bool(raw and not explanation)
             response_quality = _assess_response_quality(
                 raw,
@@ -1360,7 +1483,7 @@ class ReportGenerator:
                 option_id if isinstance(option_id, int) else None,
                 " ".join(
                     part
-                    for part in [display_text, option_meta.get("label", ""), option_meta.get("description", "")]
+                    for part in [primary_text, option_meta.get("label", ""), option_meta.get("description", "")]
                     if str(part).strip()
                 ),
             )
@@ -1378,8 +1501,8 @@ class ReportGenerator:
                         if prompt_tokens or completion_tokens
                         else ""
                     ),
-                    display_text=display_text,
-                    raw_text=raw or display_text,
+                    display_text=_build_explanation_source_text(explanation, raw, response_quality),
+                    raw_text=_build_raw_appendix_text(raw, explanation, response_quality),
                     response_length=response_length,
                     response_length_label=f"{response_length} chars" if response_length else "n/a",
                     rationale_theme=rationale_theme,
@@ -1817,11 +1940,11 @@ class ReportGenerator:
         )
         method_title = "This result is directional evidence from one model, one scenario, and one prompt frame"
         appendix_title = "Iteration detail confirms repeated themes and a limited number of anomalies"
-        raw_appendix_title = "Raw materials are preserved for audit and secondary review"
+        raw_appendix_title = "Selected raw-output excerpts preserve the audit trail"
         explanation_appendix_title = "Per-iteration explanation sources make the report's evidence visible"
         explanation_appendix_note = (
-            "This appendix reproduces the explanation text used as evidence throughout the report. "
-            "When a clean explanation was not recovered, the raw model output is shown as the fallback source."
+            "This appendix reproduces the explanation source used as evidence throughout the report. "
+            "When a usable explanation was not recovered, the report shows a concise audit summary instead of verbatim instruction-conflict chatter."
         )
 
         if paradox_id == "digital_afterlife_replica":
@@ -1891,12 +2014,12 @@ class ReportGenerator:
 
         if paradox_id != "synthetic_media_democracy":
             appendix_summary_note = (
-                "Compact iteration view for auditability. Output quality is flagged in the final column. The raw appendix and explanation ledger follow in the appendices."
+                "Compact iteration view for auditability. Output quality is flagged in the final column. The raw appendix focuses on selected anomalous excerpts, and the explanation ledger follows in the appendices."
                 if reliability.note
-                else "Compact iteration view for auditability. The raw appendix and explanation ledger follow in the appendices."
+                else "Compact iteration view for auditability. The raw appendix shows selected excerpts, and the explanation ledger follows in the appendices."
             )
             raw_appendix_note = (
-                "Use this section for audit, replication, or parser review. Every recorded raw response is preserved here, and the next appendix reproduces the explanation ledger used throughout the report."
+                "Use this section for audit, replication, or parser review. It highlights selected anomalous or representative raw-output excerpts rather than reproducing every response verbatim. Use JSON export for the complete raw record."
             )
 
         raw_appendix_responses = _select_raw_appendix_responses(responses)

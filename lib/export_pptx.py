@@ -35,7 +35,7 @@ def generate_pptx(
     if Presentation is None:
         raise RuntimeError(
             "python-pptx is required for PowerPoint export.  "
-            "Install it with: pip install python-pptx"
+            "Install project dependencies with: uv sync"
         )
 
     prs = Presentation()

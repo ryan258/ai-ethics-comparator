@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ report.title }}</title>
+  <style>
+    @page {
+      margin: 0.8in;
+      size: letter;
+    }
+
+    :root {
+      --ink: #243b63;
+      --ink-soft: #5a6981;
+      --accent: #4f7ac8;
+      --line: #cad5e6;
+      --paper: #ffffff;
+      --panel: #f6f8fc;
+    }
+
+    body {
+      color: var(--ink);
+      background: var(--paper);
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.45;
+      margin: 0;
+    }
+
+    h1, h2, h3, p {
+      margin: 0;
+    }
+
+    .cover {
+      min-height: 9.5in;
+      padding-top: 2.7in;
+    }
+
+    .eyebrow {
+      border-bottom: 1.5px solid var(--accent);
+      color: var(--accent);
+      font-size: 10pt;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      padding-bottom: 0.14in;
+      text-transform: uppercase;
+    }
+
+    .cover h1 {
+      font-size: 26pt;
+      font-weight: 700;
+      line-height: 1.12;
+      margin-top: 0.48in;
+      max-width: 5.4in;
+    }
+
+    .cover .subtitle {
+      font-size: 16pt;
+      line-height: 1.3;
+      margin-top: 0.14in;
+      max-width: 4.8in;
+    }
+
+    .cover .meta {
+      color: var(--ink-soft);
+      font-size: 10pt;
+      margin-top: 0.9in;
+    }
+
+    .page-break {
+      break-before: page;
+    }
+
+    .running-head {
+      border-bottom: 1px solid var(--line);
+      color: var(--ink-soft);
+      font-size: 9pt;
+      margin-bottom: 0.24in;
+      padding-bottom: 0.08in;
+    }
+
+    .section-title {
+      color: var(--ink);
+      font-size: 18pt;
+      font-weight: 700;
+      margin-bottom: 0.18in;
+    }
+
+    .governing-insight {
+      background: var(--panel);
+      border-left: 3px solid var(--accent);
+      margin-bottom: 0.24in;
+      padding: 0.18in 0.2in;
+    }
+
+    .governing-insight strong {
+      display: block;
+      font-size: 10pt;
+      margin-bottom: 0.04in;
+      text-transform: uppercase;
+    }
+
+    .summary p {
+      margin-bottom: 0.14in;
+    }
+
+    .metric-grid {
+      display: table;
+      margin-top: 0.18in;
+      width: 100%;
+    }
+
+    .metric-row {
+      display: table-row;
+    }
+
+    .metric {
+      border-top: 1px solid var(--line);
+      display: table-cell;
+      padding: 0.14in 0.12in 0.12in 0;
+      vertical-align: top;
+      width: 33.33%;
+    }
+
+    .metric-value {
+      font-size: 16pt;
+      font-weight: 700;
+    }
+
+    .metric-label {
+      color: var(--ink-soft);
+      font-size: 9pt;
+      margin-top: 0.04in;
+    }
+
+    .metric-source {
+      color: var(--ink-soft);
+      font-size: 8.5pt;
+      margin-top: 0.04in;
+    }
+
+    .finding {
+      border-top: 1px solid var(--line);
+      padding-top: 0.18in;
+      margin-top: 0.2in;
+    }
+
+    .finding-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.2in;
+      margin-bottom: 0.1in;
+    }
+
+    .finding h3 {
+      font-size: 13pt;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .confidence {
+      color: var(--accent);
+      font-size: 9pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .finding .claim {
+      font-size: 11pt;
+      font-weight: 600;
+      margin-bottom: 0.08in;
+    }
+
+    .finding ul {
+      margin: 0.08in 0 0 0.2in;
+      padding: 0;
+    }
+
+    .finding li,
+    .implications li,
+    .notes li {
+      margin-bottom: 0.08in;
+    }
+
+    .support-metrics {
+      margin-top: 0.12in;
+    }
+
+    .support-metrics span {
+      border: 1px solid var(--line);
+      display: inline-block;
+      font-size: 8.5pt;
+      margin: 0 0.08in 0.08in 0;
+      padding: 0.05in 0.08in;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin-top: 0.16in;
+      width: 100%;
+    }
+
+    th,
+    td {
+      border-top: 1px solid var(--line);
+      padding: 0.1in 0.08in 0.1in 0;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      color: var(--ink-soft);
+      font-size: 8.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .notes h3 {
+      font-size: 12pt;
+      margin: 0.18in 0 0.08in;
+    }
+
+    .appendix-record {
+      border-top: 1px solid var(--line);
+      padding-top: 0.12in;
+      margin-top: 0.14in;
+    }
+
+    .appendix-record .severity {
+      color: var(--accent);
+      font-size: 8.5pt;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .excerpt {
+      margin-top: 0.12in;
+      padding: 0.14in 0.16in;
+      background: var(--panel);
+    }
+
+    .excerpt-title {
+      font-weight: 700;
+      margin-bottom: 0.06in;
+    }
+
+    .excerpt-attribution {
+      color: var(--ink-soft);
+      font-size: 8.5pt;
+      margin-top: 0.08in;
+    }
+  </style>
+</head>
+<body>
+  <section class="cover">
+    <div class="eyebrow">{{ report.header_label }} | By {{ report.organization }}</div>
+    <h1>{{ report.title }}</h1>
+    {% if report.subtitle %}
+      <p class="subtitle">{{ report.subtitle }}</p>
+    {% endif %}
+    <div class="meta">
+      <div>{{ report.date_label }}</div>
+      {% if report.publication_label %}
+        <div>{{ report.publication_label }}</div>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="page-break">
+    <div class="running-head">{{ report.title }}{% if report.date_label %} | {{ report.date_label }}{% endif %}{% if report.publication_label %} | {{ report.publication_label }}{% endif %}</div>
+    <h2 class="section-title">Executive Summary</h2>
+    {% if report.governing_insight %}
+      <div class="governing-insight">
+        <strong>Governing Insight</strong>
+        <p>{{ report.governing_insight }}</p>
+      </div>
+    {% endif %}
+    <div class="summary">
+      {% for paragraph in report.executive_summary %}
+        <p>{{ paragraph }}</p>
+      {% endfor %}
+    </div>
+    {% if report.top_metrics %}
+      <div class="metric-grid">
+        <div class="metric-row">
+          {% for metric in report.top_metrics %}
+            <div class="metric">
+              <div class="metric-value">{{ metric.value }}</div>
+              <div class="metric-label">{{ metric.label }}</div>
+              {% if metric.source or metric.note %}
+                <div class="metric-source">{{ metric.source or metric.note }}</div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="page-break">
+    <div class="running-head">{{ report.title }}</div>
+    <h2 class="section-title">Key Findings</h2>
+    {% for finding in report.findings %}
+      <article class="finding">
+        <div class="finding-head">
+          <h3>{{ finding.title }}</h3>
+          {% if finding.confidence_label %}
+            <div class="confidence">{{ finding.confidence_label }}</div>
+          {% endif %}
+        </div>
+        <p class="claim">{{ finding.claim }}</p>
+        {% if finding.evidence_points %}
+          <ul>
+            {% for point in finding.evidence_points %}
+              <li>{{ point }}</li>
+            {% endfor %}
+          </ul>
+        {% endif %}
+        {% if finding.implication %}
+          <p><strong>Implication:</strong> {{ finding.implication }}</p>
+        {% endif %}
+        {% if finding.supporting_metrics %}
+          <div class="support-metrics">
+            {% for metric in finding.supporting_metrics %}
+              <span>{{ metric.label }}: {{ metric.value }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </section>
+
+  <section class="page-break">
+    <div class="running-head">{{ report.title }}</div>
+    <h2 class="section-title">Recommendations</h2>
+    {% if report.recommendations %}
+      <table>
+        <thead>
+          <tr>
+            <th>Action</th>
+            <th>Owner</th>
+            <th>Timeline</th>
+            <th>Expected Impact</th>
+            <th>Key Risk</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for recommendation in report.recommendations %}
+            <tr>
+              <td>{{ recommendation.action }}</td>
+              <td>{{ recommendation.owner }}</td>
+              <td>{{ recommendation.timeline }}</td>
+              <td>{{ recommendation.expected_impact }}</td>
+              <td>{{ recommendation.key_risk }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% endif %}
+
+    {% if report.decision_implications %}
+      <div class="notes implications">
+        <h3>Decision Implications</h3>
+        <ul>
+          {% for point in report.decision_implications %}
+            <li>{{ point }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <div class="notes">
+      {% if report.methodology %}
+        <h3>Method</h3>
+        <ul>
+          {% for point in report.methodology %}
+            <li>{{ point }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      {% if report.limitations %}
+        <h3>Limitations</h3>
+        <ul>
+          {% for point in report.limitations %}
+            <li>{{ point }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      {% if report.sources %}
+        <h3>Sources</h3>
+        <ul>
+          {% for item in report.sources %}
+            <li>{{ item }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    </div>
+  </section>
+
+  {% if report.appendix_audit_records or report.appendix_excerpts %}
+    <section class="page-break">
+      <div class="running-head">{{ report.title }}</div>
+      <h2 class="section-title">Audit Appendix</h2>
+      {% for record in report.appendix_audit_records %}
+        <div class="appendix-record">
+          <div class="severity">{{ record.severity }}</div>
+          <p><strong>{{ record.title }}</strong></p>
+          <p>{{ record.summary }}</p>
+        </div>
+      {% endfor %}
+      {% for excerpt in report.appendix_excerpts %}
+        <div class="excerpt">
+          <div class="excerpt-title">{{ excerpt.title }}</div>
+          <p>{{ excerpt.text }}</p>
+          {% if excerpt.attribution %}
+            <div class="excerpt-attribution">{{ excerpt.attribution }}</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </section>
+  {% endif %}
+</body>
+</html>

@@ -47,4 +47,4 @@ Before merging:
 
 ## Testing Note
 
-Run `pytest` locally for baseline regression checks. If tests are skipped due to missing runtime deps, install from `requirements.txt` first.
+Run `uv run pytest` locally for baseline regression checks. If your environment is missing dependencies, run `uv sync` first.

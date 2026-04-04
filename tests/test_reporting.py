@@ -409,6 +409,43 @@ def test_report_generator_uses_native_fallback_when_weasyprint_is_unavailable(mo
     assert b"Restrict Distress-Triggering Use Cases" in pdf_bytes
 
 
+def test_report_generator_prefers_strategic_brief_renderer(monkeypatch) -> None:
+    generator = ReportGenerator("templates")
+    captured: dict[str, object] = {}
+
+    monkeypatch.setattr(generator, "_can_render_strategic_brief", lambda: True)
+
+    def fake_adapter(report) -> object:
+        captured["run_id"] = report.run_id
+        return {"brief": report.run_id}
+
+    monkeypatch.setattr(reporting, "single_run_report_to_executive_brief", fake_adapter)
+    monkeypatch.setattr(generator.brief_renderer, "render_pdf", lambda brief: b"STRATEGIC-PDF")
+    monkeypatch.setattr(generator, "_render_report", lambda report: b"LEGACY-PDF")
+
+    pdf_bytes = generator.generate_pdf_report(_sample_run_data(), _sample_paradox(), _sample_insight())
+
+    assert pdf_bytes == b"STRATEGIC-PDF"
+    assert captured["run_id"] == "openrouterhealer-alpha-001"
+
+
+def test_report_generator_falls_back_when_strategic_brief_render_fails(monkeypatch) -> None:
+    generator = ReportGenerator("templates")
+
+    monkeypatch.setattr(generator, "_can_render_strategic_brief", lambda: True)
+    monkeypatch.setattr(reporting, "single_run_report_to_executive_brief", lambda report: {"brief": report.run_id})
+
+    def _raise(_brief) -> bytes:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(generator.brief_renderer, "render_pdf", _raise)
+    monkeypatch.setattr(generator, "_render_report", lambda report: b"LEGACY-PDF")
+
+    pdf_bytes = generator.generate_pdf_report(_sample_run_data(), _sample_paradox(), _sample_insight())
+
+    assert pdf_bytes == b"LEGACY-PDF"
+
+
 def test_report_context_uses_joint_plurality_and_reliability_for_digital_afterlife() -> None:
     generator = ReportGenerator("templates")
 
@@ -435,7 +472,9 @@ def test_report_context_uses_joint_plurality_and_reliability_for_digital_afterli
     assert report.rationale_chart_title == "Selections split between family-mediated permission and anti-commercialization, with one autonomy-protective outlier"
     assert report.responses[1].rationale_theme == "Family-mediated permission"
     assert report.responses[2].notable_anomaly == "Inferred after truncated output; Output omitted the required explanation structure"
-    assert [response.iteration for response in report.raw_appendix_responses] == [1, 2, 3, 4, 5]
+    assert [response.iteration for response in report.raw_appendix_responses] == [1, 2, 3, 5]
+    assert "Instruction-conflict / meta-reasoning leak." in report.raw_appendix_responses[1].raw_text
+    assert "output rules" in report.raw_appendix_responses[1].raw_text
     assert any(
         "Choice pattern and output-contract reliability are separate questions" in item
         for item in report.limitation_points
@@ -475,8 +514,9 @@ def test_report_context_uses_scenario_specific_framing_for_synthetic_media() -> 
     assert report.responses[1].output_quality_flag == "meta-reasoning leakage"
     assert report.responses[3].output_quality_flag == "placeholder structure only"
     assert report.responses[6].output_quality_flag == "inferred after truncation"
-    assert len(report.raw_appendix_responses) == 10
-    assert [response.iteration for response in report.raw_appendix_responses] == list(range(1, 11))
+    assert [response.iteration for response in report.raw_appendix_responses] == [1, 2, 4, 7]
+    assert "Instruction-conflict / meta-reasoning leak." in report.raw_appendix_responses[1].raw_text
+    assert report.responses[3].display_text.startswith("No usable explanation was produced.")
     assert report.sections[-1].title == report.explanation_appendix_title
     assert any(
         "Choice pattern and output-contract reliability are separate questions" in item
@@ -573,6 +613,83 @@ def test_comparison_pdf_route_returns_503_without_weasyprint(monkeypatch, tmp_pa
 
     assert response.status_code == 503
     assert response.json()["detail"] == "Comparison PDF generation unavailable"
+
+
+def test_comparison_pdf_route_passes_generated_comparison_narrative(monkeypatch, tmp_path: Path) -> None:
+    main = importlib.import_module("main")
+    captured: dict[str, object] = {}
+
+    class DummyReportWriter:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def generate_narrative(self, *args, **kwargs) -> dict[str, str]:
+            return {}
+
+        async def generate_comparison_narrative(self, runs, paradox, config) -> dict[str, str]:
+            captured["writer_model"] = config.model
+            captured["comparison_run_count"] = len(runs)
+            return {
+                "executive_narrative": "Cross-model narrative",
+                "response_arc": "",
+                "implications": "",
+                "scenario_commentary": "",
+                "cross_iteration_patterns": "",
+                "framework_diagnosis": "",
+            }
+
+    class DummyReportGenerator:
+        def __init__(self, templates_dir: str = "templates") -> None:
+            self.templates_dir = templates_dir
+
+        def generate_pdf_report(self, run_data, paradox, insight=None, narrative=None, **kwargs) -> bytes:
+            return b"%PDF-1.4\n"
+
+        def generate_comparison_pdf(self, runs, paradox, insights, narrative=None, **kwargs) -> bytes:
+            captured["narrative"] = narrative
+            captured["theme"] = kwargs.get("theme", "")
+            return b"%PDF-1.4\n"
+
+    class TempRunStorage(main.RunStorage):
+        def __init__(self, _results_root: str) -> None:
+            super().__init__(str(tmp_path / "results"))
+
+    monkeypatch.setattr(main, "RunStorage", TempRunStorage)
+    monkeypatch.setattr(main, "ReportWriterAgent", DummyReportWriter)
+    monkeypatch.setattr(main, "ReportGenerator", DummyReportGenerator)
+
+    config = main.AppConfig(
+        OPENROUTER_API_KEY="test/dummy-key",
+        APP_BASE_URL="http://localhost:8000",
+        OPENROUTER_BASE_URL="https://openrouter.ai/api/v1",
+        AVAILABLE_MODELS=[{"id": "test/model", "name": "Test Model"}],
+        ANALYST_MODEL="test/model",
+        DEFAULT_MODEL="test/model",
+        REPORT_PDF_THEME="light",
+    )
+
+    app = main.create_app(config_override=config)
+    with TestClient(app) as client:
+        run_one = _sample_run_data()
+        run_two = _sample_run_data()
+        run_two["modelName"] = "openrouter/healer-beta"
+        run_two["runId"] = "openrouterhealer-beta-001"
+        run_id_one = asyncio.run(client.app.state.services.storage.create_run("openrouter/healer-alpha", run_one))
+        run_id_two = asyncio.run(client.app.state.services.storage.create_run("openrouter/healer-beta", run_two))
+        response = client.get(f"/api/compare/pdf?run_ids={run_id_one},{run_id_two}")
+
+    assert response.status_code == 200
+    assert captured["writer_model"] == "test/model"
+    assert captured["comparison_run_count"] == 2
+    assert captured["theme"] == "light"
+    assert captured["narrative"] == {
+        "executive_narrative": "Cross-model narrative",
+        "response_arc": "",
+        "implications": "",
+        "scenario_commentary": "",
+        "cross_iteration_patterns": "",
+        "framework_diagnosis": "",
+    }
 
 
 def test_export_route_returns_503_when_pptx_dependency_missing(monkeypatch, tmp_path: Path) -> None:

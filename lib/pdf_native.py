@@ -1431,6 +1431,15 @@ class NativePdfReportRenderer:
         self.current_page.begin_text()
         self.current_page.set_font_size(font, size)
         self.current_page.set_color_rgb(*_hex_to_rgb(color))
-        self.current_page.set_text_matrix(1, 0, 0, 1, x, pdf_y)
-        self.current_page.show_text_string(_clean_text(text))
+        # pydyf 0.10 uses text_matrix/show_text; newer releases expose
+        # set_text_matrix/show_text_string. Support both while the repo pins a
+        # WeasyPrint-compatible pydyf range.
+        if hasattr(self.current_page, "set_text_matrix"):
+            self.current_page.set_text_matrix(1, 0, 0, 1, x, pdf_y)
+        else:
+            self.current_page.text_matrix(1, 0, 0, 1, x, pdf_y)
+        if hasattr(self.current_page, "show_text_string"):
+            self.current_page.show_text_string(_clean_text(text))
+        else:
+            self.current_page.show_text(_clean_text(text))
         self.current_page.end_text()

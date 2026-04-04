@@ -30,10 +30,7 @@ Current scope:
 ### Setup
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-pip install pytest
+uv sync
 ```
 
 Create `.env` with required values:
@@ -62,7 +59,7 @@ Run the app:
 ```bash
 ./run_server.sh
 # or
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Open [http://localhost:8000](http://localhost:8000).
@@ -169,7 +166,7 @@ Minimal pytest suite is included under `tests/`.
 Run:
 
 ```bash
-pytest
+uv run pytest
 ```
 
 Coverage focus today:
@@ -204,7 +201,7 @@ Coverage focus today:
 Install runtime dependencies first:
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 ## 12. Research Practices
