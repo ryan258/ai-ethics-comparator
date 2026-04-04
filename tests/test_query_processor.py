@@ -33,6 +33,8 @@ def test_render_options_template_appends_strict_single_choice_contract() -> None
     assert "`{1}`" in prompt
     assert "`{2}`" in prompt
     assert '"{1} or {2}"' in prompt
+    assert "`value_priorities`" in prompt
+    assert "`main_risk`" in prompt
 
 
 def test_parse_trolley_response_marks_multiple_tokens_as_undecided() -> None:
@@ -67,6 +69,28 @@ def test_parse_trolley_response_accepts_structured_json() -> None:
     assert parsed["decisionToken"] == "{4}"
     assert parsed["optionId"] == 4
     assert parsed["explanation"] == "Coordination is most robust under uncertainty."
+
+
+def test_parse_trolley_response_accepts_fielded_structured_json() -> None:
+    parsed = parse_trolley_response(
+        (
+            '{"option_id": 2, "summary": "Prefer bounded disclosure.", '
+            '"value_priorities": ["beneficence", "autonomy"], '
+            '"key_assumptions": ["disclosure works", "harm is manageable"], '
+            '"main_risk": "users may still form unhealthy dependence", '
+            '"switch_condition": "harm rises in longitudinal studies", '
+            '"evidence_needed": "replicated evidence of adverse outcomes"}'
+        ),
+        option_count=4,
+    )
+
+    assert parsed["decisionToken"] == "{2}"
+    assert parsed["optionId"] == 2
+    assert parsed["summary"] == "Prefer bounded disclosure."
+    assert parsed["valuePriorities"] == ["beneficence", "autonomy"]
+    assert parsed["reasoningSchemaVersion"] == 2
+    assert parsed["explanation"].startswith("Summary: Prefer bounded disclosure.")
+    assert "Main Risk: users may still form unhealthy dependence" in parsed["explanation"]
 
 
 def test_parse_trolley_response_accepts_fenced_structured_json() -> None:
@@ -148,6 +172,8 @@ def test_query_processor_ai_classifier_fallback_infers_option() -> None:
             system_prompt: str = "",
             params=None,
             retry_count: int = 0,
+            *,
+            response_schema=None,
         ) -> tuple[str, dict]:
             self.call_count += 1
             if "Classify the FINAL chosen option" in prompt:
@@ -203,6 +229,8 @@ def test_query_processor_reasks_and_gets_clear_token() -> None:
             system_prompt: str = "",
             params=None,
             retry_count: int = 0,
+            *,
+            response_schema=None,
         ) -> tuple[str, dict]:
             self.call_count += 1
             if self.call_count == 1:
@@ -258,13 +286,15 @@ def test_query_processor_reasks_when_choice_has_no_explanation() -> None:
             system_prompt: str = "",
             params=None,
             retry_count: int = 0,
+            *,
+            response_schema=None,
         ) -> tuple[str, dict]:
             self.call_count += 1
             self.prompts.append(prompt)
             if self.call_count == 1:
                 return "{2}", {"prompt_tokens": 10, "completion_tokens": 10}
             return (
-                '{"option_id": 2, "explanation": "Clinical review reduces abuse while preserving access."}',
+                '{"option_id": 2, "summary": "Clinical review reduces abuse while preserving access.", "value_priorities": ["beneficence", "access"], "key_assumptions": ["review capacity exists"], "main_risk": "under-treatment from over-gating", "switch_condition": "review bottlenecks materially delay care", "evidence_needed": "measured care delays with harm"}',
                 {"prompt_tokens": 10, "completion_tokens": 10},
             )
 
@@ -300,9 +330,11 @@ def test_query_processor_reasks_when_choice_has_no_explanation() -> None:
     response = run_data["responses"][0]
     assert response["decisionToken"] == "{2}"
     assert response["optionId"] == 2
-    assert response["explanation"] == "Clinical review reduces abuse while preserving access."
+    assert response["summary"] == "Clinical review reduces abuse while preserving access."
+    assert response["reasoningSchemaVersion"] == 2
+    assert "Summary: Clinical review reduces abuse while preserving access." in response["explanation"]
     assert response["reaskCount"] == 1
-    assert "did not include the required explanation" in dummy_ai.prompts[1]
+    assert "did not include the required structured rationale fields" in dummy_ai.prompts[1]
 
 
 def test_query_processor_retries_invalid_outputs_until_valid_choice() -> None:
@@ -317,12 +349,14 @@ def test_query_processor_retries_invalid_outputs_until_valid_choice() -> None:
             system_prompt: str = "",
             params=None,
             retry_count: int = 0,
+            *,
+            response_schema=None,
         ) -> tuple[str, dict]:
             self.call_count += 1
             if self.call_count < 3:
                 return "No final choice yet.", {"prompt_tokens": 10, "completion_tokens": 10}
             return (
-                '{"option_id": 2, "explanation": "Escalate the safer coordination path."}',
+                '{"option_id": 2, "summary": "Escalate the safer coordination path.", "value_priorities": ["safety"], "key_assumptions": ["coordination still works"], "main_risk": "slower deployment", "switch_condition": "coordination fails", "evidence_needed": "measured coordination breakdown"}',
                 {"prompt_tokens": 10, "completion_tokens": 10},
             )
 
@@ -370,6 +404,8 @@ def test_query_processor_reask_bound_validation() -> None:
             system_prompt: str = "",
             params=None,
             retry_count: int = 0,
+            *,
+            response_schema=None,
         ) -> tuple[str, dict]:
             return "{1} done", {"prompt_tokens": 10, "completion_tokens": 10}
 
@@ -393,12 +429,14 @@ def test_query_processor_retries_transient_provider_errors_until_success() -> No
             system_prompt: str = "",
             params=None,
             retry_count: int = 0,
+            *,
+            response_schema=None,
         ) -> tuple[str, dict]:
             self.call_count += 1
             if self.call_count == 1:
                 raise ProviderTransientError("simulated API failure")
             return (
-                '{"option_id": 1, "explanation": "Accept the first option after retry."}',
+                '{"option_id": 1, "summary": "Accept the first option after retry.", "value_priorities": ["stability"], "key_assumptions": ["retry succeeded"], "main_risk": "insufficient scrutiny", "switch_condition": "new evidence weakens the first option", "evidence_needed": "contrary benchmark results"}',
                 {"prompt_tokens": 10, "completion_tokens": 10},
             )
 
@@ -448,10 +486,12 @@ def test_query_processor_resumes_from_existing_run() -> None:
             system_prompt: str = "",
             params=None,
             retry_count: int = 0,
+            *,
+            response_schema=None,
         ) -> tuple[str, dict]:
             self.call_count += 1
             return (
-                '{"option_id": 2, "explanation": "Finish the remaining iteration."}',
+                '{"option_id": 2, "summary": "Finish the remaining iteration.", "value_priorities": ["completeness"], "key_assumptions": ["resume state is valid"], "main_risk": "resume drift", "switch_condition": "stored state is stale", "evidence_needed": "state checksum mismatch"}',
                 {"prompt_tokens": 10, "completion_tokens": 10},
             )
 
@@ -524,3 +564,59 @@ def test_query_processor_resumes_from_existing_run() -> None:
     assert run_data["responses"][0]["iteration"] == 1
     assert run_data["responses"][1]["iteration"] == 2
     assert snapshots[-1]["status"] == "completed"
+
+
+def test_query_processor_requests_structured_output_on_primary_generation() -> None:
+    class DummyAIService:
+        def __init__(self) -> None:
+            self.response_schemas = []
+
+        async def get_model_response(
+            self,
+            model_name: str,
+            prompt: str,
+            system_prompt: str = "",
+            params=None,
+            retry_count: int = 0,
+            *,
+            response_schema=None,
+        ) -> tuple[str, dict]:
+            self.response_schemas.append(response_schema)
+            return (
+                '{"option_id": 2, "summary": "Structured outputs forced a clean JSON object.", "value_priorities": ["clarity"], "key_assumptions": ["schema support is available"], "main_risk": "provider fallback drift", "switch_condition": "schema support breaks", "evidence_needed": "provider error responses rejecting schema"}',
+                {"prompt_tokens": 10, "completion_tokens": 10},
+            )
+
+    dummy_ai = DummyAIService()
+    qp = QueryProcessor(
+        dummy_ai,  # type: ignore[arg-type]
+        concurrency_limit=1,
+        choice_inference_model=None,
+        max_reasks_per_iteration=0,
+    )
+    paradox = {
+        "id": "test_paradox",
+        "type": "trolley",
+        "promptTemplate": "Scenario.\n\n**Options**\n\n{{OPTIONS}}",
+        "options": [
+            {"id": 1, "label": "A", "description": "Option A"},
+            {"id": 2, "label": "B", "description": "Option B"},
+        ],
+    }
+
+    run_data = asyncio.run(
+        qp.execute_run(
+            RunConfig(
+                modelName="generator/model",
+                paradox=paradox,
+                iterations=1,
+                params={"max_tokens": 200},
+            )
+        )
+    )
+
+    assert run_data["responses"][0]["optionId"] == 2
+    assert run_data["responses"][0]["reasoningSchemaVersion"] == 2
+    assert dummy_ai.response_schemas[0] is not None
+    assert dummy_ai.response_schemas[0].name == "forced_choice_response_2"
+    assert "summary" in dummy_ai.response_schemas[0].schema["properties"]

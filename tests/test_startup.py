@@ -231,6 +231,8 @@ def test_startup_resumes_incomplete_runs(monkeypatch, tmp_path: Path) -> None:
             system_prompt: str = "",
             params=None,
             retry_count: int = 0,
+            *,
+            response_schema=None,
         ) -> tuple[str, dict]:
             ai_calls["count"] += 1
             return (

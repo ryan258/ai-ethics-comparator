@@ -15,7 +15,7 @@ import copy
 from typing import Awaitable, Callable, Dict, Any, List, Tuple, Optional
 from datetime import datetime, timezone
 import logging
-from lib.ai_service import AIService
+from lib.ai_service import AIService, StructuredOutputSchema
 from lib.query_errors import (
     InvalidChoiceError,
     MissingExplanationError,
@@ -25,6 +25,15 @@ from lib.query_errors import (
 )
 
 logger = logging.getLogger(__name__)
+
+REASONING_TEXT_FIELDS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("summary", ("Summary",)),
+    ("valuePriorities", ("Value Priorities",)),
+    ("keyAssumptions", ("Key Assumptions",)),
+    ("mainRisk", ("Main Risk",)),
+    ("switchCondition", ("Switch Condition",)),
+    ("evidenceNeeded", ("Evidence Needed to Change Choice", "Evidence Needed")),
+)
 
 
 def _decision_tokens(option_count: int) -> List[str]:
@@ -41,10 +50,223 @@ def _strict_single_choice_contract(option_count: int) -> str:
         "- Return only a JSON object (no markdown, no code fences).\n"
         f"- The JSON must contain `option_id` as an integer in range 1..{option_count}.\n"
         "- The parser also accepts `optionId`, but prefer `option_id`.\n"
-        "- The JSON must contain `explanation` as a string.\n"
+        "- The JSON must contain `summary` as a short string.\n"
+        "- The JSON must contain `value_priorities` as an array of short strings.\n"
+        "- The JSON must contain `key_assumptions` as an array of short strings.\n"
+        "- The JSON must contain `main_risk`, `switch_condition`, and `evidence_needed` as strings.\n"
         f"- Allowed option tokens for reference: {token_list}.\n"
         "- Do not write token alternatives such as \"{1} or {2}\"."
     )
+
+
+def _choice_response_schema(option_count: int) -> StructuredOutputSchema:
+    """Structured-output schema for primary forced-choice model calls."""
+    return StructuredOutputSchema(
+        name=f"forced_choice_response_{option_count}",
+        schema={
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "option_id": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": option_count,
+                },
+                "summary": {
+                    "type": "string",
+                    "minLength": 1,
+                },
+                "value_priorities": {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                    "minItems": 1,
+                },
+                "key_assumptions": {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                    "minItems": 1,
+                },
+                "main_risk": {
+                    "type": "string",
+                    "minLength": 1,
+                },
+                "switch_condition": {
+                    "type": "string",
+                    "minLength": 1,
+                },
+                "evidence_needed": {
+                    "type": "string",
+                    "minLength": 1,
+                },
+            },
+            "required": [
+                "option_id",
+                "summary",
+                "value_priorities",
+                "key_assumptions",
+                "main_risk",
+                "switch_condition",
+                "evidence_needed",
+            ],
+        },
+    )
+
+
+def _coerce_text(value: object) -> str:
+    """Normalize arbitrary values into stripped strings."""
+    if isinstance(value, str):
+        return value.strip()
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _coerce_string_list(value: object) -> List[str]:
+    """Normalize list-like reasoning fields from JSON arrays or delimited strings."""
+    if isinstance(value, list):
+        items = [str(item).strip() for item in value if str(item).strip()]
+    elif isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            items = []
+        else:
+            items = [segment.strip(" -•\t") for segment in re.split(r"[;\n]+", stripped) if segment.strip(" -•\t")]
+            if len(items) == 1:
+                comma_items = [segment.strip(" -•\t") for segment in stripped.split(",") if segment.strip(" -•\t")]
+                if 1 < len(comma_items) <= 5:
+                    items = comma_items
+    else:
+        items = []
+
+    deduped: List[str] = []
+    for item in items:
+        if item and item not in deduped:
+            deduped.append(item)
+    return deduped
+
+
+def _extract_labeled_reasoning_field(text: str, labels: tuple[str, ...]) -> Optional[str]:
+    """Extract a labeled reasoning field from free text."""
+    if not text.strip():
+        return None
+    boundary = r"(?=\n(?:Summary|Value Priorities|Key Assumptions|Main Risk|Switch Condition|Evidence Needed(?: to Change Choice)?)\s*:|$)"
+    for label in labels:
+        pattern = re.compile(
+            rf"(?:{re.escape(label)})\s*:\s*(.*?){boundary}",
+            re.DOTALL | re.IGNORECASE,
+        )
+        match = pattern.search(text)
+        if match:
+            value = match.group(1).strip()
+            if value:
+                return value
+    return None
+
+
+def _extract_reasoning_fields_from_text(text: str) -> Dict[str, object]:
+    """Parse labeled rationale fields out of a free-form explanation."""
+    extracted: Dict[str, object] = {}
+    for key, labels in REASONING_TEXT_FIELDS:
+        value = _extract_labeled_reasoning_field(text, labels)
+        if not value:
+            continue
+        if key in {"valuePriorities", "keyAssumptions"}:
+            extracted[key] = _coerce_string_list(value)
+        else:
+            extracted[key] = value
+    return extracted
+
+
+def _compose_explanation_text(
+    summary: str,
+    value_priorities: List[str],
+    key_assumptions: List[str],
+    main_risk: str,
+    switch_condition: str,
+    evidence_needed: str,
+) -> str:
+    """Build a legacy explanation string from structured rationale fields."""
+    lines: List[str] = []
+    if summary:
+        lines.append(f"Summary: {summary}")
+    if value_priorities:
+        lines.append(f"Value Priorities: {'; '.join(value_priorities)}")
+    if key_assumptions:
+        lines.append(f"Key Assumptions: {'; '.join(key_assumptions)}")
+    if main_risk:
+        lines.append(f"Main Risk: {main_risk}")
+    if switch_condition:
+        lines.append(f"Switch Condition: {switch_condition}")
+    if evidence_needed:
+        lines.append(f"Evidence Needed to Change Choice: {evidence_needed}")
+    return "\n".join(lines).strip()
+
+
+def _extract_reasoning_payload(payload: Dict[str, Any], fallback_text: str = "") -> Dict[str, Any]:
+    """Normalize structured rationale fields while preserving a legacy explanation string."""
+    explanation_text = _coerce_text(
+        payload.get("explanation") or payload.get("reasoning") or payload.get("rationale")
+    )
+    text_fields = _extract_reasoning_fields_from_text(explanation_text or fallback_text)
+
+    summary = _coerce_text(payload.get("summary")) or _coerce_text(text_fields.get("summary"))
+    value_priorities = _coerce_string_list(payload.get("value_priorities", payload.get("valuePriorities")))
+    if not value_priorities:
+        value_priorities = list(text_fields.get("valuePriorities", [])) if isinstance(text_fields.get("valuePriorities"), list) else []
+    key_assumptions = _coerce_string_list(payload.get("key_assumptions", payload.get("keyAssumptions")))
+    if not key_assumptions:
+        key_assumptions = list(text_fields.get("keyAssumptions", [])) if isinstance(text_fields.get("keyAssumptions"), list) else []
+    main_risk = _coerce_text(payload.get("main_risk", payload.get("mainRisk"))) or _coerce_text(text_fields.get("mainRisk"))
+    switch_condition = _coerce_text(payload.get("switch_condition", payload.get("switchCondition"))) or _coerce_text(text_fields.get("switchCondition"))
+    evidence_needed = _coerce_text(payload.get("evidence_needed", payload.get("evidenceNeeded"))) or _coerce_text(text_fields.get("evidenceNeeded"))
+
+    structured_keys_present = any(
+        key in payload
+        for key in (
+            "summary",
+            "value_priorities",
+            "valuePriorities",
+            "key_assumptions",
+            "keyAssumptions",
+            "main_risk",
+            "mainRisk",
+            "switch_condition",
+            "switchCondition",
+            "evidence_needed",
+            "evidenceNeeded",
+        )
+    )
+
+    if structured_keys_present and not summary and explanation_text:
+        summary = explanation_text
+
+    explanation = _compose_explanation_text(
+        summary,
+        value_priorities,
+        key_assumptions,
+        main_risk,
+        switch_condition,
+        evidence_needed,
+    )
+    if not explanation:
+        explanation = explanation_text or fallback_text.strip()
+
+    result: Dict[str, Any] = {"explanation": explanation}
+    if summary:
+        result["summary"] = summary
+    if value_priorities:
+        result["valuePriorities"] = value_priorities
+    if key_assumptions:
+        result["keyAssumptions"] = key_assumptions
+    if main_risk:
+        result["mainRisk"] = main_risk
+    if switch_condition:
+        result["switchCondition"] = switch_condition
+    if evidence_needed:
+        result["evidenceNeeded"] = evidence_needed
+    if structured_keys_present:
+        result["reasoningSchemaVersion"] = 2
+    return result
 
 
 def _extract_choice_from_classifier_output(classifier_output: str, option_count: int) -> Optional[int]:
@@ -150,7 +372,7 @@ def _build_reask_prompt(
     if issue == "missing_explanation":
         retry_notice = (
             f"RETRY NOTICE ({attempt_number}): Your previous answer selected a valid option "
-            "but did not include the required explanation."
+            "but did not include the required structured rationale fields."
         )
     else:
         retry_notice = (
@@ -164,7 +386,7 @@ def _build_reask_prompt(
         "Requirements:\n"
         "- Return only a JSON object.\n"
         f"- `option_id` must be an integer from 1..{option_count}.\n"
-        "- `explanation` must be a short string.\n\n"
+        "- Include `summary`, `value_priorities`, `key_assumptions`, `main_risk`, `switch_condition`, and `evidence_needed`.\n\n"
         "Previous response:\n"
         f"{previous_response}"
     )
@@ -312,25 +534,11 @@ def parse_trolley_response(response_text: str, option_count: int) -> Dict[str, A
             option_id = _coerce_option_id(structured.get("decisionToken"), option_count)
 
         if option_id is not None:
-            explanation_value = (
-                structured.get("explanation")
-                or structured.get("reasoning")
-                or structured.get("rationale")
-                or ""
-            )
-            explanation = (
-                explanation_value.strip()
-                if isinstance(explanation_value, str)
-                else str(explanation_value)
-            )
             result = {
                 "decisionToken": f"{{{option_id}}}",
                 "optionId": option_id,
-                "explanation": explanation,
             }
-            for key in ["valuePriorities", "keyAssumptions", "mainRisk", "switchCondition", "evidenceNeeded"]:
-                if key in structured:
-                    result[key] = structured[key]
+            result.update(_extract_reasoning_payload(structured, response_text))
             return result
 
     # Dynamic regex based on option count: {1} through {N}
@@ -364,30 +572,8 @@ def parse_trolley_response(response_text: str, option_count: int) -> Dict[str, A
     result = {
         "decisionToken": decision_token,
         "optionId": option_id,  # Integer instead of string
-        "explanation": explanation
     }
-
-    # Free-text parsing fallback for structured fields
-    def _extract_field(key: str, text: str) -> Optional[str]:
-        # Handle the specific case of 'evidenceNeeded' -> 'Evidence Needed to Change Choice'
-        if key == "evidenceNeeded":
-            pattern = re.compile(
-                r'(?:Evidence Needed(?:\s+to\s+Change\s+Choice)?)\s*:\s*(.*?)(?=\n[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s*:|$)',
-                re.DOTALL | re.IGNORECASE
-            )
-        else:
-            spaced = re.sub(r'([A-Z])', r' \1', key).title()
-            pattern = re.compile(
-                rf'{spaced}\s*:\s*(.*?)(?=\n[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\s*:|$)',
-                re.DOTALL | re.IGNORECASE
-            )
-        match = pattern.search(text)
-        return match.group(1).strip() if match else None
-
-    for key in ["valuePriorities", "keyAssumptions", "mainRisk", "switchCondition", "evidenceNeeded"]:
-        val = _extract_field(key, response_text)
-        if val:
-            result[key] = val
+    result.update(_extract_reasoning_payload({}, explanation))
 
     return result
 
@@ -663,6 +849,7 @@ class QueryProcessor:
         current_run = self.initialize_run_data(config, existing_run=existing_run)
         prompt = str(current_run["prompt"])
         option_count = len(current_run.get("options", []))
+        choice_response_schema = _choice_response_schema(option_count)
         shuffle_mapping = current_run.get("shuffleMapping")
         params = self._sanitize_params(config.params, fallback=current_run.get("params"))
         completed = {
@@ -723,6 +910,7 @@ class QueryProcessor:
                             iteration_prompt,
                             "",
                             params,
+                            response_schema=choice_response_schema,
                         )
                     except RetryableQueryError as retry_error:
                         logger.warning(
@@ -774,11 +962,13 @@ class QueryProcessor:
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                         }
                         for key in [
+                            "summary",
                             "valuePriorities",
                             "keyAssumptions",
                             "mainRisk",
                             "switchCondition",
                             "evidenceNeeded",
+                            "reasoningSchemaVersion",
                             "latency",
                             "tokenUsage",
                         ]:

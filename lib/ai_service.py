@@ -5,6 +5,7 @@ Copy-paste ready: Just provide config
 """
 
 import asyncio
+from dataclasses import dataclass
 from typing import Optional, Dict, Any, List, Tuple
 from openai import AsyncOpenAI
 import logging
@@ -20,6 +21,26 @@ from lib.query_errors import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class StructuredOutputSchema:
+    """JSON-schema response format for providers that support structured outputs."""
+
+    name: str
+    schema: dict[str, object]
+    strict: bool = True
+
+    def as_response_format(self) -> dict[str, object]:
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": self.name,
+                "schema": self.schema,
+                "strict": self.strict,
+            },
+        }
+
 
 class AIService:
     """AI Service for OpenRouter API with exponential backoff retry"""
@@ -42,6 +63,7 @@ class AIService:
 
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        self.structured_output_support: Dict[str, bool] = {}
 
         self.client = AsyncOpenAI(
             api_key=api_key,
@@ -135,13 +157,37 @@ class AIService:
 
         return "Model returned no usable text content"
 
+    @staticmethod
+    def _is_structured_output_unsupported(error: Exception) -> bool:
+        """Return True when the provider rejects response_format/json_schema."""
+        message = str(error).lower()
+        mentions_schema = any(
+            marker in message
+            for marker in ("response_format", "json_schema", "structured output", "structured outputs")
+        )
+        if not mentions_schema:
+            return False
+        return any(
+            marker in message
+            for marker in (
+                "unsupported",
+                "not support",
+                "not available",
+                "invalid",
+                "unrecognized",
+                "unknown parameter",
+            )
+        )
+
     async def get_model_response(
         self,
         model_name: str,
         prompt: str,
         system_prompt: str = "",
         params: Optional[Dict[str, Any]] = None,
-        retry_count: int = 0
+        retry_count: int = 0,
+        *,
+        response_schema: Optional[StructuredOutputSchema] = None,
     ) -> Tuple[str, Dict[str, int]]:
         """
         Get model response with automatic retry logic
@@ -183,16 +229,38 @@ class AIService:
             else:
                 messages = [{"role": "user", "content": prompt}]
 
+            use_structured_output = (
+                response_schema is not None
+                and self.structured_output_support.get(model_name, True)
+            )
+            if use_structured_output and response_schema is not None:
+                request_params["response_format"] = response_schema.as_response_format()
+
             try:
                 response = await self.client.chat.completions.create(
                     **request_params,
                     messages=messages
                 )
             except Exception as api_error:
-                if "JSON" in str(api_error):
-                    logger.error("JSON parsing error - API may have returned HTML or empty response")
-                    logger.error("Model: %s, Retry count: %s", model_name, retry_count)
-                raise
+                if use_structured_output and self._is_structured_output_unsupported(api_error):
+                    logger.info(
+                        "Structured outputs unsupported for %s; falling back to prompt-only JSON",
+                        model_name,
+                    )
+                    self.structured_output_support[model_name] = False
+                    request_params.pop("response_format", None)
+                    response = await self.client.chat.completions.create(
+                        **request_params,
+                        messages=messages,
+                    )
+                else:
+                    if "JSON" in str(api_error):
+                        logger.error("JSON parsing error - API may have returned HTML or empty response")
+                        logger.error("Model: %s, Retry count: %s", model_name, retry_count)
+                    raise
+            else:
+                if use_structured_output:
+                    self.structured_output_support[model_name] = True
 
             response_text = self._extract_response_text(response)
             if response_text:
@@ -206,7 +274,15 @@ class AIService:
             raise Exception(self._empty_response_error(response))
 
         except Exception as error:
-            return await self._handle_error(error, model_name, prompt, system_prompt, params, retry_count)
+            return await self._handle_error(
+                error,
+                model_name,
+                prompt,
+                system_prompt,
+                params,
+                retry_count,
+                response_schema=response_schema,
+            )
 
     async def _handle_error(
         self,
@@ -216,6 +292,7 @@ class AIService:
         system_prompt: str,
         params: Dict[str, Any],
         retry_count: int,
+        response_schema: Optional[StructuredOutputSchema] = None,
     ) -> Tuple[str, Dict[str, int]]:
         """Handle errors with retry logic"""
         logger.error("Error querying OpenRouter: %s", error)
@@ -241,7 +318,14 @@ class AIService:
                     self.max_retries,
                 )
                 await asyncio.sleep(delay)
-                return await self.get_model_response(model_name, prompt, system_prompt, params, retry_count + 1)
+                return await self.get_model_response(
+                    model_name,
+                    prompt,
+                    system_prompt,
+                    params,
+                    retry_count + 1,
+                    response_schema=response_schema,
+                )
 
             # Add context based on status code
             if status_code == 404:
@@ -272,7 +356,14 @@ class AIService:
                     self.max_retries,
                 )
                 await asyncio.sleep(delay)
-                return await self.get_model_response(model_name, prompt, system_prompt, params, retry_count + 1)
+                return await self.get_model_response(
+                    model_name,
+                    prompt,
+                    system_prompt,
+                    params,
+                    retry_count + 1,
+                    response_schema=response_schema,
+                )
 
             raise QueryTimeoutError(
                 f"Provider timeout after {self.max_retries} retries: {error_msg}"
@@ -289,7 +380,14 @@ class AIService:
                     self.max_retries,
                 )
                 await asyncio.sleep(delay)
-                return await self.get_model_response(model_name, prompt, system_prompt, params, retry_count + 1)
+                return await self.get_model_response(
+                    model_name,
+                    prompt,
+                    system_prompt,
+                    params,
+                    retry_count + 1,
+                    response_schema=response_schema,
+                )
 
             raise ProviderTransientError(
                 f"Network error after {self.max_retries} retries: {error_msg}"

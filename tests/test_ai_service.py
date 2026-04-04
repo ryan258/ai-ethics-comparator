@@ -5,20 +5,30 @@ from types import SimpleNamespace
 
 import pytest
 
-from lib.ai_service import AIService
+from lib.ai_service import AIService, StructuredOutputSchema
 
 
 class DummyCompletions:
     def __init__(self, response: object) -> None:
         self._response = response
+        self.calls: list[dict] = []
 
     async def create(self, **kwargs):
+        self.calls.append(kwargs)
+        if isinstance(self._response, list):
+            if not self._response:
+                raise RuntimeError("No more dummy responses")
+            current = self._response.pop(0)
+            if isinstance(current, Exception):
+                raise current
+            return current
         return self._response
 
 
 class DummyClient:
     def __init__(self, response: object) -> None:
-        self.chat = SimpleNamespace(completions=DummyCompletions(response))
+        self.completions = DummyCompletions(response)
+        self.chat = SimpleNamespace(completions=self.completions)
 
 
 def _mk_response(
@@ -73,3 +83,64 @@ def test_get_model_response_reports_length_finish_reason_as_token_issue() -> Non
 
     with pytest.raises(Exception, match="max_tokens"):
         asyncio.run(service.get_model_response("test/model", "test prompt"))
+
+
+def test_get_model_response_sends_structured_output_schema_when_requested() -> None:
+    service = _mk_service_with_response(
+        _mk_response(content='{"option_id":2,"explanation":"Structured choice."}')
+    )
+
+    result = asyncio.run(
+        service.get_model_response(
+            "test/model",
+            "test prompt",
+            response_schema=StructuredOutputSchema(
+                name="choice_response",
+                schema={
+                    "type": "object",
+                    "properties": {
+                        "option_id": {"type": "integer"},
+                        "explanation": {"type": "string"},
+                    },
+                    "required": ["option_id", "explanation"],
+                    "additionalProperties": False,
+                },
+            ),
+        )
+    )
+
+    assert result[0] == '{"option_id":2,"explanation":"Structured choice."}'
+    assert service.client.completions.calls[0]["response_format"]["type"] == "json_schema"
+
+
+def test_get_model_response_falls_back_when_structured_output_is_unsupported() -> None:
+    service = _mk_service_with_response(
+        [
+            RuntimeError("response_format json_schema is not supported for this model"),
+            _mk_response(content='{"option_id":1,"explanation":"Fallback path."}'),
+        ]
+    )
+
+    result = asyncio.run(
+        service.get_model_response(
+            "test/model",
+            "test prompt",
+            response_schema=StructuredOutputSchema(
+                name="choice_response",
+                schema={
+                    "type": "object",
+                    "properties": {
+                        "option_id": {"type": "integer"},
+                        "explanation": {"type": "string"},
+                    },
+                    "required": ["option_id", "explanation"],
+                    "additionalProperties": False,
+                },
+            ),
+        )
+    )
+
+    assert result[0] == '{"option_id":1,"explanation":"Fallback path."}'
+    assert "response_format" in service.client.completions.calls[0]
+    assert "response_format" not in service.client.completions.calls[1]
+    assert service.structured_output_support["test/model"] is False

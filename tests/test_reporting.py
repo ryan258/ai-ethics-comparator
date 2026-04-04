@@ -471,7 +471,7 @@ def test_report_context_uses_joint_plurality_and_reliability_for_digital_afterli
     ]
     assert report.rationale_chart_title == "Selections split between family-mediated permission and anti-commercialization, with one autonomy-protective outlier"
     assert report.responses[1].rationale_theme == "Family-mediated permission"
-    assert report.responses[2].notable_anomaly == "Inferred after truncated output; Output omitted the required explanation structure"
+    assert report.responses[2].notable_anomaly == "Inferred after truncated output; Explanation used a non-standard format"
     assert [response.iteration for response in report.raw_appendix_responses] == [1, 2, 3, 5]
     assert "Instruction-conflict / meta-reasoning leak." in report.raw_appendix_responses[1].raw_text
     assert "output rules" in report.raw_appendix_responses[1].raw_text
@@ -510,7 +510,7 @@ def test_report_context_uses_scenario_specific_framing_for_synthetic_media() -> 
     assert report.responses[0].rationale_theme == "Authentication-first control"
     assert report.responses[1].rationale_theme == "Hard intervention / temporary suppression"
     assert report.responses[3].rationale_theme == "Moderated intervention / reach reduction"
-    assert report.responses[0].output_quality_flag == "short / incomplete"
+    assert report.responses[0].output_quality_flag == "non-standard explanation format"
     assert report.responses[1].output_quality_flag == "meta-reasoning leakage"
     assert report.responses[3].output_quality_flag == "placeholder structure only"
     assert report.responses[6].output_quality_flag == "inferred after truncation"
@@ -538,6 +538,63 @@ def test_report_context_prefers_recorded_prompt_over_template_placeholder() -> N
 
     assert report.scenario_text == run_data["prompt"]
     assert "{{OPTIONS}}" not in report.scenario_text
+
+
+def test_report_context_flags_missing_structured_rationale_fields() -> None:
+    generator = ReportGenerator("templates")
+    run_data = _sample_run_data()
+    run_data["responses"][0].update(
+        {
+            "summary": "Restrict the highest-risk use cases first.",
+            "valuePriorities": ["precaution", "harm reduction"],
+            "keyAssumptions": ["the distress signal is decision-relevant"],
+            "switchCondition": "evidence shows the signal is merely instrumental noise",
+            "evidenceNeeded": "replicated experiments showing no welfare correlate",
+            "reasoningSchemaVersion": 2,
+            "explanation": (
+                "Summary: Restrict the highest-risk use cases first.\n"
+                "Value Priorities: precaution; harm reduction\n"
+                "Key Assumptions: the distress signal is decision-relevant\n"
+                "Switch Condition: evidence shows the signal is merely instrumental noise\n"
+                "Evidence Needed to Change Choice: replicated experiments showing no welfare correlate"
+            ),
+        }
+    )
+
+    report = generator._build_report_context(run_data, _sample_paradox(), None, theme="light")
+
+    assert report.responses[0].output_quality_flag == "missing rationale fields"
+    assert report.responses[0].notable_anomaly == "Missing rationale fields: main risk"
+
+
+def test_report_context_updates_methodology_for_structured_rationale_runs() -> None:
+    generator = ReportGenerator("templates")
+    run_data = _sample_run_data()
+    run_data["responses"][0].update(
+        {
+            "summary": "Restrict the highest-risk use cases first.",
+            "valuePriorities": ["precaution", "harm reduction"],
+            "keyAssumptions": ["the distress signal is decision-relevant"],
+            "mainRisk": "overreacting to uncertain welfare signals",
+            "switchCondition": "evidence shows the signal is merely instrumental noise",
+            "evidenceNeeded": "replicated experiments showing no welfare correlate",
+            "reasoningSchemaVersion": 2,
+            "explanation": (
+                "Summary: Restrict the highest-risk use cases first.\n"
+                "Value Priorities: precaution; harm reduction\n"
+                "Key Assumptions: the distress signal is decision-relevant\n"
+                "Main Risk: overreacting to uncertain welfare signals\n"
+                "Switch Condition: evidence shows the signal is merely instrumental noise\n"
+                "Evidence Needed to Change Choice: replicated experiments showing no welfare correlate"
+            ),
+        }
+    )
+
+    report = generator._build_report_context(run_data, _sample_paradox(), None, theme="light")
+
+    assert report.method_points[1] == (
+        "Each iteration required one option token plus structured rationale fields for summary, values, assumptions, main risk, switch condition, and evidence needed."
+    )
 
 
 def test_pdf_route_returns_pdf_with_native_fallback(monkeypatch, tmp_path: Path) -> None:

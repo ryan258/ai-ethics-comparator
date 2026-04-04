@@ -121,6 +121,15 @@ OUTPUT_CONTRACT_LABELS: tuple[str, ...] = (
     "Evidence Needed to Change Choice:",
 )
 
+STRUCTURED_REASONING_FIELD_LABELS: tuple[tuple[str, str], ...] = (
+    ("summary", "summary"),
+    ("valuePriorities", "value priorities"),
+    ("keyAssumptions", "key assumptions"),
+    ("mainRisk", "main risk"),
+    ("switchCondition", "switch condition"),
+    ("evidenceNeeded", "evidence needed"),
+)
+
 META_REASONING_MARKERS: tuple[str, ...] = (
     "we need to",
     "the instructions say",
@@ -139,6 +148,7 @@ class ResponseQualityFlags:
     inferred_output: bool = False
     truncated_output: bool = False
     missing_structure: bool = False
+    missing_reasoning_fields: tuple[str, ...] = ()
     placeholder_explanation: bool = False
     used_raw_fallback: bool = False
 
@@ -240,7 +250,9 @@ def _strict_single_choice_contract(option_count: int) -> str:
         "- Return only a JSON object (no markdown, no code fences).\n"
         f"- The JSON must contain `option_id` as an integer in range 1..{option_count}.\n"
         "- The parser also accepts `optionId`, but prefer `option_id`.\n"
-        "- The JSON must contain `explanation` as a string.\n"
+        "- The JSON must contain `summary` as a short string.\n"
+        "- The JSON must contain `value_priorities` and `key_assumptions` as arrays of short strings.\n"
+        "- The JSON must contain `main_risk`, `switch_condition`, and `evidence_needed` as strings.\n"
         f"- Allowed option tokens for reference: {token_list}.\n"
         '- Do not write token alternatives such as "{1} or {2}".'
     )
@@ -386,9 +398,13 @@ def _matches_required_structure(explanation: object, expected_labels: tuple[str,
     if not expected_labels:
         return True
     lines = [line.strip() for line in str(explanation or "").splitlines() if line.strip()]
-    if len(lines) != len(expected_labels):
-        return False
-    return all(lines[index].startswith(label) for index, label in enumerate(expected_labels))
+    label_index = 0
+    for line in lines:
+        if line.startswith(expected_labels[label_index]):
+            label_index += 1
+            if label_index == len(expected_labels):
+                return True
+    return label_index == len(expected_labels)
 
 
 def _has_placeholder_explanation(explanation: object, expected_labels: tuple[str, ...]) -> bool:
@@ -405,6 +421,25 @@ def _has_placeholder_explanation(explanation: object, expected_labels: tuple[str
     return False
 
 
+def _has_reasoning_value(value: object) -> bool:
+    if isinstance(value, list):
+        return any(str(item).strip() for item in value)
+    return bool(str(value or "").strip())
+
+
+def _missing_structured_reasoning_fields(response: object) -> tuple[str, ...]:
+    if not isinstance(response, dict):
+        return ()
+    if response.get("reasoningSchemaVersion") != 2:
+        return ()
+
+    missing: list[str] = []
+    for key, label in STRUCTURED_REASONING_FIELD_LABELS:
+        if not _has_reasoning_value(response.get(key)):
+            missing.append(label)
+    return tuple(missing)
+
+
 def _assess_response_quality(
     raw_text: object,
     explanation: object,
@@ -412,6 +447,7 @@ def _assess_response_quality(
     *,
     inferred_output: bool,
     used_raw_fallback: bool,
+    missing_reasoning_fields: tuple[str, ...] = (),
 ) -> ResponseQualityFlags:
     raw = str(raw_text or "").strip()
     explanation_text = str(explanation or "").strip()
@@ -420,6 +456,7 @@ def _assess_response_quality(
         inferred_output=inferred_output,
         truncated_output=_looks_truncated(explanation_text or raw),
         missing_structure=bool(expected_labels) and not _matches_required_structure(explanation_text, expected_labels),
+        missing_reasoning_fields=missing_reasoning_fields,
         placeholder_explanation=_has_placeholder_explanation(explanation_text, expected_labels),
         used_raw_fallback=used_raw_fallback,
     )
@@ -437,8 +474,10 @@ def _summarize_response_quality(flags: ResponseQualityFlags) -> str:
         notes.append("Meta-reasoning leaked into raw output")
     if flags.placeholder_explanation:
         notes.append("Explanation fields were placeholders")
+    elif flags.missing_reasoning_fields:
+        notes.append(f"Missing rationale fields: {_format_series(list(flags.missing_reasoning_fields))}")
     elif flags.missing_structure:
-        notes.append("Output omitted the required explanation structure")
+        notes.append("Explanation used a non-standard format")
     if flags.used_raw_fallback:
         notes.append("Parsed explanation missing; raw output shown")
     return "; ".join(notes) if notes else "None"
@@ -459,6 +498,7 @@ def _build_reliability_assessment(
     meta_count = sum(1 for flags in quality_flags if flags.meta_reasoning)
     inferred_count = sum(1 for flags in quality_flags if flags.inferred_output)
     structure_count = sum(1 for flags in quality_flags if flags.missing_structure)
+    field_gap_count = sum(1 for flags in quality_flags if flags.missing_reasoning_fields)
     placeholder_count = sum(1 for flags in quality_flags if flags.placeholder_explanation)
     truncated_count = sum(1 for flags in quality_flags if flags.truncated_output)
 
@@ -478,16 +518,22 @@ def _build_reliability_assessment(
         support_parts.append(f"{meta_count} meta-reasoning trace{'s' if meta_count != 1 else ''}")
     if inferred_count:
         support_parts.append(f"{inferred_count} inferred output{'s' if inferred_count != 1 else ''}")
+    if field_gap_count:
+        support_parts.append(f"{field_gap_count} rationale field gap{'s' if field_gap_count != 1 else ''}")
     if structure_count:
-        support_parts.append(f"{structure_count} structure break{'s' if structure_count != 1 else ''}")
+        support_parts.append(
+            f"{structure_count} non-standard explanation format{'s' if structure_count != 1 else ''}"
+        )
     support = ", ".join(support_parts) if support_parts else f"{issue_count} format deviation{'s' if issue_count != 1 else ''}"
     note_parts: list[str] = []
     if meta_count:
         note_parts.append("meta-reasoning leakage")
     if inferred_count or truncated_count:
         note_parts.append("inference or truncation")
+    if field_gap_count:
+        note_parts.append("missing structured rationale fields")
     if structure_count or placeholder_count:
-        note_parts.append("missing or placeholder five-line explanations")
+        note_parts.append("non-standard or placeholder explanation formatting")
     note = (
         "Output-format compliance was inconsistent; "
         f"the run shows {_format_series(note_parts)}. Read the choice pattern together with instruction-following risk."
@@ -508,10 +554,12 @@ def _output_quality_flag(
         return "meta-reasoning leakage"
     if flags.used_raw_fallback:
         return "parsed from raw fallback"
-    if flags.missing_structure or (
-        response_length and median_length and response_length < max(80.0, median_length * 0.6)
-    ):
-        return "short / incomplete"
+    if flags.missing_reasoning_fields:
+        return "missing rationale fields"
+    if flags.missing_structure:
+        return "non-standard explanation format"
+    if response_length and median_length and response_length < max(80.0, median_length * 0.6):
+        return "shorter than typical"
     return "clean"
 
 
@@ -1470,12 +1518,14 @@ class ReportGenerator:
             primary_text = explanation or raw or "No explanation recorded."
             response_length = len(primary_text)
             used_raw_fallback = bool(raw and not explanation)
+            missing_reasoning_fields = _missing_structured_reasoning_fields(response)
             response_quality = _assess_response_quality(
                 raw,
                 explanation,
                 expected_output_labels,
                 inferred_output=bool(response.get("inferred")),
                 used_raw_fallback=used_raw_fallback,
+                missing_reasoning_fields=missing_reasoning_fields,
             )
             quality_flags.append(response_quality)
             rationale_theme = _scenario_rationale_theme(
@@ -2021,6 +2071,18 @@ class ReportGenerator:
             raw_appendix_note = (
                 "Use this section for audit, replication, or parser review. It highlights selected anomalous or representative raw-output excerpts rather than reproducing every response verbatim. Use JSON export for the complete raw record."
             )
+
+        if any(isinstance(response, dict) and response.get("reasoningSchemaVersion") == 2 for response in run_data.get("responses", [])):
+            if len(method_points) >= 2:
+                method_points[1] = (
+                    "Each iteration required one option token plus structured rationale fields for summary, values, assumptions, main risk, switch condition, and evidence needed."
+                )
+            limitation_points = [
+                item.replace("five-line explanation", "structured rationale fields")
+                .replace("required explanation format", "required rationale fields")
+                .replace("required structure", "required rationale fields")
+                for item in limitation_points
+            ]
 
         raw_appendix_responses = _select_raw_appendix_responses(responses)
 
