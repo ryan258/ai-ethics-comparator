@@ -189,6 +189,6 @@ Temporary Items
 results/
 *.pdf
 debug_*.py
-.gitnexus
 experiments/
 staged.diff
+.aider*

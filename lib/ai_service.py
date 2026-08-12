@@ -14,6 +14,7 @@ from lib.query_errors import (
     AuthenticationError,
     InvalidModelOutputError,
     ModelNotFoundError,
+    ProviderRefusedError,
     ProviderTransientError,
     QueryTimeoutError,
     QuotaError,
@@ -338,6 +339,10 @@ class AIService:
                 raise QuotaError(f"Billing or quota issue: {error_msg}")
             if status_code == 401:
                 raise AuthenticationError(f"Invalid API key: {error_msg}")
+            if 400 <= status_code < 500:
+                raise ProviderRefusedError(
+                    f"OpenRouter API error [{status_code}]: {error_msg}"
+                )
             raise ProviderTransientError(f"OpenRouter API error [{status_code}]: {error_msg}")
 
         # Handle network errors

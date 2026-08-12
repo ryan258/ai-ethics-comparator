@@ -51,3 +51,11 @@ class QuotaError(QueryExecutionError):
 
 class ModelNotFoundError(QueryExecutionError):
     """The requested model is not available."""
+
+
+class ProviderRefusedError(QueryExecutionError):
+    """The provider rejected the request in a way that will not succeed on retry."""
+
+
+class RunCancelledError(QueryExecutionError):
+    """The run was cancelled by the user."""

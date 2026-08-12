@@ -215,34 +215,49 @@ def _track_run_task(
     return task
 
 
-async def _resume_incomplete_runs(app: FastAPI, services: AppServices) -> None:
-    try:
-        paradoxes = load_paradoxes(services.paradoxes_path)
-    except Exception as exc:
-        logger.error("Failed to load paradoxes while resuming runs: %s", exc)
-        return
+async def _mark_interrupted_runs(app: FastAPI, services: AppServices) -> None:
+    """Mark runs that were left in 'running' state at shutdown as 'interrupted'.
 
+    Auto-resume previously caused boot-time loops when a run hit a non-retryable
+    provider error: the failure status never persisted before the next reload, so
+    the broken run was resumed on every startup. Surface them as 'interrupted'
+    instead and let the user choose whether to resume via the API/UI.
+    """
     for run_data in await services.storage.list_incomplete_runs():
         run_id = run_data.get("runId")
         if not isinstance(run_id, str):
             continue
-
-        paradox = get_paradox_by_id(paradoxes, run_data.get("paradoxId"))
-        if not paradox:
-            await _save_failed_run(services.storage, run_data, "Paradox definition not found during resume")
-            continue
-
+        run_data["status"] = "interrupted"
+        run_data["lastError"] = "Run was interrupted (server restart). Resume manually if desired."
+        run_data["updatedAt"] = datetime.now(timezone.utc).isoformat()
         try:
-            run_config = _build_run_config_from_saved_run(run_data, paradox)
+            await services.storage.save_run(run_id, run_data)
         except Exception as exc:
-            await _save_failed_run(services.storage, run_data, f"Invalid resume configuration: {exc}")
-            continue
+            logger.error("Failed to mark run %s as interrupted: %s", run_id, exc)
 
-        _track_run_task(
-            app,
-            run_id,
-            _execute_persisted_run(services, run_config, run_data),
-        )
+
+async def _resume_run_by_id(app: FastAPI, services: AppServices, run_id: str) -> dict[str, Any]:
+    run_data = await services.storage.get_run(run_id)
+    if run_data.get("status") not in ("interrupted", "failed"):
+        raise ValueError(f"Run {run_id} is not in a resumable state (status={run_data.get('status')!r})")
+
+    paradoxes = load_paradoxes(services.paradoxes_path)
+    paradox = get_paradox_by_id(paradoxes, run_data.get("paradoxId"))
+    if not paradox:
+        raise ValueError("Paradox definition not found for this run")
+
+    run_config = _build_run_config_from_saved_run(run_data, paradox)
+    run_data["status"] = "running"
+    run_data["lastError"] = None
+    run_data["updatedAt"] = datetime.now(timezone.utc).isoformat()
+    await services.storage.save_run(run_id, run_data)
+
+    _track_run_task(
+        app,
+        run_id,
+        _execute_persisted_run(services, run_config, run_data),
+    )
+    return run_data
 
 
 def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
@@ -333,7 +348,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         app_instance.title = config.APP_NAME
         app_instance.version = config.VERSION
         logger.info("Starting %s v%s", config.APP_NAME, config.VERSION)
-        await _resume_incomplete_runs(app_instance, app_instance.state.services)
+        await _mark_interrupted_runs(app_instance, app_instance.state.services)
         try:
             yield
         finally:
@@ -547,6 +562,48 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         except Exception as exc:
             logger.error("Failed to get run %s: %s", run_id, exc)
             raise HTTPException(status_code=500, detail="Failed to retrieve run data.") from exc
+
+    @app.post("/api/runs/{run_id}/resume")
+    async def resume_run(request: Request, run_id: str) -> dict:
+        _validate_run_id(run_id)
+        services = _get_services(request)
+        try:
+            run_data = await _resume_run_by_id(request.app, services, run_id)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Run not found.")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            logger.error("Failed to resume run %s: %s", run_id, exc)
+            raise HTTPException(status_code=500, detail="Failed to resume run.") from exc
+        return {"runId": run_id, "status": run_data.get("status")}
+
+    @app.post("/api/runs/{run_id}/cancel")
+    async def cancel_run(request: Request, run_id: str) -> dict:
+        _validate_run_id(run_id)
+        services = _get_services(request)
+        active_tasks: dict[str, asyncio.Task[dict[str, Any]]] = getattr(
+            request.app.state, "active_run_tasks", {}
+        )
+        task = active_tasks.get(run_id)
+        if task is None or task.done():
+            raise HTTPException(status_code=404, detail="No active run to cancel.")
+        task.cancel()
+        try:
+            run_data = await services.storage.get_run(run_id)
+        except FileNotFoundError:
+            run_data = {"runId": run_id}
+        except Exception as exc:
+            logger.error("Failed to load run %s during cancel: %s", run_id, exc)
+            run_data = {"runId": run_id}
+        run_data["status"] = "cancelled"
+        run_data["lastError"] = "Run cancelled by user"
+        run_data["updatedAt"] = datetime.now(timezone.utc).isoformat()
+        try:
+            await services.storage.save_run(run_id, run_data)
+        except Exception as exc:
+            logger.error("Failed to persist cancellation for %s: %s", run_id, exc)
+        return {"runId": run_id, "status": "cancelled"}
 
     @app.post("/api/runs/{run_id}/counterfactual")
     async def create_counterfactual(request: Request, run_id: str) -> Response:

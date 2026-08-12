@@ -653,13 +653,17 @@ class QueryProcessor:
         concurrency_limit: int = 2,
         choice_inference_model: Optional[str] = None,
         max_reasks_per_iteration: int = 2,
+        max_provider_retries_per_iteration: int = 3,
     ) -> None:
         if max_reasks_per_iteration < 0 or max_reasks_per_iteration > 10:
             raise ValueError("max_reasks_per_iteration must be between 0 and 10")
+        if max_provider_retries_per_iteration < 0 or max_provider_retries_per_iteration > 10:
+            raise ValueError("max_provider_retries_per_iteration must be between 0 and 10")
         self.ai_service = ai_service
         self.semaphore = asyncio.Semaphore(concurrency_limit)
         self.choice_inference_model = choice_inference_model
         self.max_reasks_per_iteration = max_reasks_per_iteration
+        self.max_provider_retries_per_iteration = max_provider_retries_per_iteration
 
     @staticmethod
     def _sanitize_params(
@@ -887,6 +891,7 @@ class QueryProcessor:
             async with self.semaphore:
                 response = ""
                 reask_count = 0
+                provider_retry_count = 0
                 next_reask_issue = "invalid_choice"
                 total_latency = 0.0
                 total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
@@ -913,9 +918,19 @@ class QueryProcessor:
                             response_schema=choice_response_schema,
                         )
                     except RetryableQueryError as retry_error:
+                        provider_retry_count += 1
+                        if provider_retry_count > self.max_provider_retries_per_iteration:
+                            logger.error(
+                                "Iteration %s exceeded provider retry cap (%s); aborting",
+                                iteration_number,
+                                self.max_provider_retries_per_iteration,
+                            )
+                            raise
                         logger.warning(
-                            "Retrying iteration %s after provider error: %s",
+                            "Retrying iteration %s after provider error (%s/%s): %s",
                             iteration_number,
+                            provider_retry_count,
+                            self.max_provider_retries_per_iteration,
                             retry_error,
                         )
                         continue

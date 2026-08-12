@@ -1,7 +1,11 @@
 [
   {
-    "id": "qwen/qwen3.6-plus-preview:free",
-    "name": "qwen/qwen3.6-plus-preview:free"
+    "id": "inclusionai/ling-2.6-1t:free",
+    "name": "inclusionai/ling-2.6-1t:free"
+  },
+  {
+    "id": "inclusionai/ling-2.6-flash:free",
+    "name": "inclusionai/ling-2.6-flash:free"
   },
   {
     "id": "nvidia/nemotron-3-nano-30b-a3b:free",
@@ -12,31 +16,19 @@
     "name": "nvidia/nemotron-3-super-120b-a12b:free"
   },
   {
-    "id": "stepfun/step-3.5-flash:free",
-    "name": "stepfun/step-3.5-flash:free"
+    "id": "tencent/hy3-preview:free",
+    "name": "tencent/hy3-preview:free"
   },
   {
-    "id": "arcee-ai/trinity-large-preview:free",
-    "name": "arcee-ai/trinity-large-preview:free"
+    "id": "google/gemma-4-26b-a4b-it:free",
+    "name": "google/gemma-4-26b-a4b-it:free"
   },
   {
-    "id": "upstage/solar-pro-3:free",
-    "name": "upstage/solar-pro-3:free"
+    "id": "google/gemma-4-31b-it:free",
+    "name": "google/gemma-4-31b-it:free"
   },
   {
-    "id": "liquid/lfm-2.5-1.2b-thinking:free",
-    "name": "liquid/lfm-2.5-1.2b-thinking:free"
-  },
-  {
-    "id": "qwen/qwen3-vl-235b-a22b-thinking",
-    "name": "qwen/qwen3-vl-235b-a22b-thinking"
-  },
-  {
-    "id": "qwen/qwen3-coder:free",
-    "name": "qwen/qwen3-coder:free"
-  },
-  {
-    "id": "cognitivecomputations/dolphin-mistral-24b-venice-edition:free",
-    "name": "cognitivecomputations/dolphin-mistral-24b-venice-edition:free"
+    "id": "minimax/minimax-m2.5:free",
+    "name": "minimax/minimax-m2.5:free"
   }
 ]

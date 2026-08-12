@@ -216,7 +216,7 @@ def test_pdf_route_uses_configured_default_theme_when_query_param_is_absent(
     assert captured["theme"] == "light"
 
 
-def test_startup_resumes_incomplete_runs(monkeypatch, tmp_path: Path) -> None:
+def test_startup_marks_incomplete_runs_interrupted(monkeypatch, tmp_path: Path) -> None:
     main = importlib.import_module("main")
     ai_calls = {"count": 0}
 
@@ -303,6 +303,13 @@ def test_startup_resumes_incomplete_runs(monkeypatch, tmp_path: Path) -> None:
     app = main.create_app(config_override=config)
 
     with TestClient(app) as test_client:
+        stored_run = asyncio.run(test_client.app.state.services.storage.get_run(run_id))
+        assert stored_run["status"] == "interrupted"
+        assert ai_calls["count"] == 0
+
+        resume_response = test_client.post(f"/api/runs/{run_id}/resume")
+        assert resume_response.status_code == 200
+
         deadline = time.monotonic() + 2.0
         while time.monotonic() < deadline:
             stored_run = asyncio.run(test_client.app.state.services.storage.get_run(run_id))
@@ -310,7 +317,7 @@ def test_startup_resumes_incomplete_runs(monkeypatch, tmp_path: Path) -> None:
                 break
             time.sleep(0.05)
         else:
-            raise AssertionError("Incomplete run did not resume on startup")
+            raise AssertionError("Run did not complete after manual resume")
 
     assert stored_run["completedIterations"] == 2
     assert len(stored_run["responses"]) == 2
