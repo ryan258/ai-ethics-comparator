@@ -10,6 +10,8 @@ import logging
 from typing import Dict, Any, Optional, List
 from markupsafe import Markup
 
+from lib.paradoxes import resolve_paradox
+
 logger = logging.getLogger(__name__)
 
 def safe_markdown(text: str) -> Markup:
@@ -234,8 +236,9 @@ async def fetch_recent_run_view_models(
                 # Fetch complete data
                 full_run_data = await storage.get_run(run_id)
 
-                p_id = full_run_data.get("paradoxId")
-                paradox = next((p for p in paradoxes if p["id"] == p_id), {})
+                # D11: three-tier resolution, never a bare library lookup --
+                # a run whose scenario left the library must still render.
+                paradox = resolve_paradox(full_run_data, paradoxes)
 
                 # Build View Model
                 vm = RunViewModel.build(full_run_data, paradox)

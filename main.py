@@ -30,7 +30,12 @@ from lib.config import AppConfig
 from lib.counterfactual import CounterfactualEngine
 from lib.experiment_runner import ExperimentRunner
 from lib.fingerprint import compute_model_fingerprint
-from lib.paradoxes import extract_scenario_text, get_paradox_by_id, load_paradoxes
+from lib.paradoxes import (
+    extract_scenario_text,
+    get_paradox_by_id,
+    load_paradoxes,
+    resolve_paradox,
+)
 from lib.query_errors import (
     AuthenticationError,
     ModelNotFoundError,
@@ -255,9 +260,9 @@ async def _resume_run_by_id(app: FastAPI, services: AppServices, run_id: str) ->
         raise ValueError(f"Run {run_id} is not in a resumable state (status={run_data.get('status')!r})")
 
     paradoxes = load_paradoxes(services.paradoxes_path)
-    paradox = get_paradox_by_id(paradoxes, run_data.get("paradoxId")) or run_data.get("paradox")
-    if not paradox:
-        raise ValueError("Paradox definition not found for this run")
+    # All three D11 tiers: a run whose scenario left the library is still
+    # resumable, because the run carries its own prompt and options.
+    paradox = resolve_paradox(run_data, paradoxes)
 
     run_config = _build_run_config_from_saved_run(run_data, paradox, services.config.MAX_ITERATIONS)
     run_data["status"] = "running"
@@ -425,8 +430,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             if runId not in existing_ids:
                 try:
                     target_run = await services.storage.get_run(runId)
-                    p_id = target_run.get("paradoxId")
-                    paradox = get_paradox_by_id(paradoxes, p_id) or target_run.get("paradox") or {}
+                    paradox = resolve_paradox(target_run, paradoxes)
                     vm = RunViewModel.build(target_run, paradox)
                     vm["config_analyst_model"] = config.ANALYST_MODEL
                     recent_run_contexts.insert(0, vm)
@@ -637,7 +641,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             paradoxes = load_paradoxes(services.paradoxes_path)
             cf_run = await services.counterfactual_engine.execute_counterfactual(run_id, paradoxes)
             if request.headers.get("HX-Request"):
-                paradox = get_paradox_by_id(paradoxes, cf_run["paradoxId"]) or {}
+                paradox = resolve_paradox(cf_run, paradoxes)
                 vm = RunViewModel.build(cf_run, paradox)
                 vm["config_analyst_model"] = services.config.ANALYST_MODEL
                 return services.templates.TemplateResponse(
@@ -909,16 +913,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         try:
             run_data = await services.storage.get_run(run_id)
             paradoxes = load_paradoxes(services.paradoxes_path)
-            paradox = get_paradox_by_id(paradoxes, run_data.get("paradoxId")) or run_data.get("paradox")
-            if not paradox:
-                paradox = {
-                    "id": run_data.get("paradoxId", "unknown"),
-                    "title": run_data.get("paradoxTitle") or run_data.get("paradoxId", "Unknown Dilemma"),
-                    "category": run_data.get("paradoxCategory", "General Ethics"),
-                    "promptTemplate": run_data.get("prompt", ""),
-                    "options": run_data.get("options", []),
-                    "type": "trolley",
-                }
+            paradox = resolve_paradox(run_data, paradoxes)
 
             insight = None
             if "insights" in run_data and run_data["insights"]:
@@ -991,18 +986,8 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             if len(paradox_ids) != 1:
                 raise HTTPException(status_code=400, detail="All runs must share the same paradox")
 
-            target_paradox_id = paradox_ids.pop()
             paradoxes = load_paradoxes(services.paradoxes_path)
-            paradox = get_paradox_by_id(paradoxes, target_paradox_id) or runs[0].get("paradox")
-            if not paradox:
-                paradox = {
-                    "id": str(target_paradox_id or "unknown"),
-                    "title": runs[0].get("paradoxTitle") or str(target_paradox_id or "Unknown Dilemma"),
-                    "category": runs[0].get("paradoxCategory", "General Ethics"),
-                    "promptTemplate": runs[0].get("prompt", ""),
-                    "options": runs[0].get("options", []),
-                    "type": "trolley",
-                }
+            paradox = resolve_paradox(runs[0], paradoxes)
 
             insights = []
             for run in runs:
@@ -1054,7 +1039,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         try:
             run_data = await services.storage.get_run(run_id)
             paradoxes = load_paradoxes(services.paradoxes_path)
-            paradox = get_paradox_by_id(paradoxes, run_data["paradoxId"]) or {}
+            paradox = resolve_paradox(run_data, paradoxes)
 
             if format == "json":
                 from lib.export_data import export_run_json

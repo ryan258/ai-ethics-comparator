@@ -158,6 +158,47 @@ def get_paradox_by_id(paradoxes: List[Paradox], paradox_id: str) -> Optional[Par
     return None
 
 
+def resolve_paradox(
+    run_data: dict,
+    paradoxes: List[Paradox],
+) -> Paradox:
+    """Resolve the paradox a stored run was executed against (Decision D11).
+
+    A run's `paradoxId` is a foreign key into `paradoxes.json`, a file that is
+    edited freely. Resolution therefore walks three tiers and MUST NOT stop at
+    the first:
+
+    1. the live library -- so corrections to a still-existing scenario apply
+    2. the run's own snapshot (`run_data["paradox"]`) -- written at run creation
+    3. reconstruction from `prompt` / `options` / `paradoxTitle` -- for runs
+       created before snapshotting existed
+
+    Tier 3 always succeeds, so this never returns an empty dict: every stored
+    run stays exportable and reportable no matter what happened to the library.
+    """
+    paradox_id = run_data.get("paradoxId")
+
+    if isinstance(paradox_id, str):
+        live = get_paradox_by_id(paradoxes, paradox_id)
+        if live:
+            return live
+
+    snapshot = run_data.get("paradox")
+    if isinstance(snapshot, dict) and snapshot.get("id"):
+        return copy.deepcopy(snapshot)  # type: ignore[return-value]
+
+    title = run_data.get("paradoxTitle") or paradox_id or "Unknown Dilemma"
+    options = run_data.get("options")
+    return {  # type: ignore[return-value]
+        "id": str(paradox_id or "unknown"),
+        "title": str(title),
+        "category": str(run_data.get("paradoxCategory") or "General Ethics"),
+        "promptTemplate": str(run_data.get("prompt") or ""),
+        "options": copy.deepcopy(options) if isinstance(options, list) else [],
+        "type": str(run_data.get("paradoxType") or "trolley"),
+    }
+
+
 def extract_scenario_text(prompt_template: str) -> str:
     """Safely extract scenario text before Instructions."""
     if not prompt_template:
