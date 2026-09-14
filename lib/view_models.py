@@ -200,9 +200,6 @@ class RunViewModel:
             "insight_html": insight_html,
             "insight_model": insight_model,
 
-            # Raw Data (lazy-loaded via HTMX from /api/runs/{id})
-            "run_data_json": "",
-
             # Audit / Counterfactual Metadata
             "is_counterfactual": run_data.get("isCounterfactual", False),
             "original_run_id": run_data.get("originalRunId", ""),

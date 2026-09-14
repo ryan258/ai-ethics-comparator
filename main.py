@@ -569,6 +569,11 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         try:
             run_data = await services.storage.get_run(run_id)
             if request.headers.get("HX-Request"):
+                # This body is verbatim model output and is NOT escaped. HTMX
+                # ignores Content-Type and swaps with innerHTML by default, so
+                # the caller MUST use hx-swap="textContent"
+                # (templates/partials/result_item.html). Removing that attribute
+                # reintroduces model-controlled HTML into the DOM.
                 return Response(
                     content=json.dumps(run_data, indent=2),
                     media_type="text/plain",

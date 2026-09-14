@@ -231,6 +231,7 @@
           hx-get="/api/runs/{{ ctx.run_id }}"
           hx-target="#json-dump-{{ ctx.run_id }}"
           hx-trigger="click once"
+          hx-swap="textContent"
         >View Run JSON</summary>
         <pre id="json-dump-{{ ctx.run_id }}" class="json-dump">Loading run data...</pre>
       </details>
