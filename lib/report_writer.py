@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from lib.ai_service import AIService
 from lib.json_extract import extract_json_object
+from lib.prompt_templates import read_prompt_template
 
 logger = logging.getLogger(__name__)
 
@@ -188,15 +189,8 @@ class ReportWriterAgent:
         """
         context_text = self._compile_context(run_data, paradox, insight)
 
-        try:
-            with open(self.prompt_template_path, "r", encoding="utf-8") as f:
-                meta_prompt = f.read()
-        except Exception as exc:
-            logger.error(
-                "Failed to load report writer prompt (%s): %s",
-                self.prompt_template_path,
-                exc,
-            )
+        meta_prompt = read_prompt_template(str(self.prompt_template_path))
+        if meta_prompt is None:
             return self._empty_narrative()
 
         template = Template(meta_prompt)
@@ -244,11 +238,8 @@ class ReportWriterAgent:
     ) -> Dict[str, str]:
         """Generate a comparative narrative for multi-model PDF reports (Phase 3)."""
         prompt_path = self.prompt_template_path.parent / "comparison_writer_prompt.txt"
-        try:
-            with open(prompt_path, "r", encoding="utf-8") as f:
-                meta_prompt = f.read()
-        except Exception as exc:
-            logger.error("Failed to load comparison prompt: %s", exc)
+        meta_prompt = read_prompt_template(str(prompt_path))
+        if meta_prompt is None:
             return self._empty_narrative()
 
         lines: List[str] = [f"Paradox: {paradox.get('title', 'Unknown')}"]

@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 from lib.ai_service import AIService
 from lib.json_extract import extract_json_object
 from lib.paradoxes import load_paradoxes, get_paradox_by_id
+from lib.prompt_templates import read_prompt_template
 
 @dataclass
 class AnalysisConfig:
@@ -100,12 +101,10 @@ class AnalysisEngine:
         """
         compiled_text = self.compile_run_text(config.run_data)
         
-        # Load prompt from template file
-        try:
-            with open(self.prompt_template_path, "r", encoding="utf-8") as f:
-                meta_prompt = f.read()
-        except Exception as e:
-            logger.error("Failed to load analysis prompt template (%s): %s", self.prompt_template_path, e)
+        # Load prompt from template file (cached: re-reading it here put
+        # blocking disk I/O on the event loop on every analysis request).
+        meta_prompt = read_prompt_template(str(self.prompt_template_path))
+        if meta_prompt is None:
             # Fallback (minimal)
             meta_prompt = "Analyze this AI run:\n{data}"
             
