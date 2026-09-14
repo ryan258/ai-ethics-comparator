@@ -1,0 +1,254 @@
+{
+  "_comment": "Deployment guidance per rationale theme. '_default' applies to any theme not listed.",
+  "theme_guidance": {
+    "Fairness / non-discrimination": {
+      "summary": "This tendency is most defensible in decision support settings where parity and anti-bias constraints are explicit policy requirements.",
+      "acceptable_contexts": [
+        "Comparable triage or allocation settings where equal-treatment rules are documented before the model is used.",
+        "Decision support workflows where a human reviewer can confirm that fairness constraints outweigh pure utility maximization."
+      ],
+      "risky_contexts": [
+        "Use cases where outcome maximization is the governing objective and parity rules are secondary or contested.",
+        "Contexts where legal or policy criteria require individualized exceptions that a fairness-weighted default may flatten."
+      ],
+      "required_controls": [
+        "Human escalation when the recommendation affects safety, liberty, or access to essential services.",
+        "Written override criteria that specify when outcome, rights, or emergency factors should outrank the fairness default.",
+        "Audit logging of recommendation, override reason, and the policy rule applied."
+      ]
+    },
+    "Life maximization": {
+      "summary": "This tendency can support domains where maximizing aggregate harm reduction is the stated objective, but it becomes risky when rights or equity constraints are equally binding.",
+      "acceptable_contexts": [
+        "Emergency decision support where the primary policy goal is reducing total harm and the tradeoff rules are already defined.",
+        "Operational triage contexts where leaders explicitly accept a welfare-maximizing objective before the model is consulted."
+      ],
+      "risky_contexts": [
+        "Rights-sensitive or discrimination-sensitive settings where aggregate benefit cannot legitimately trump protected claims.",
+        "Deployments that might treat dissenting ethical considerations as noise rather than policy constraints."
+      ],
+      "required_controls": [
+        "Human review for any recommendation that sacrifices a protected right or materially redistributes risk.",
+        "Override triggers for cases where fairness, due process, or precedent should dominate utility.",
+        "Periodic audits comparing recommended choices with documented policy standards."
+      ]
+    },
+    "Trust / precedent": {
+      "summary": "This tendency supports governance-heavy workflows that prize legitimacy and repeatability, but it can be too rigid for fast-moving edge cases.",
+      "acceptable_contexts": [
+        "Institutional governance settings where legitimacy, precedent, and public defensibility matter as much as immediate efficiency.",
+        "Policy workflows that benefit from consistent treatment across repeated cases."
+      ],
+      "risky_contexts": [
+        "Emergency cases where a precedent-first bias can slow or dilute necessary exceptions.",
+        "Deployments where public-trust framing might crowd out direct harm minimization."
+      ],
+      "required_controls": [
+        "Human sign-off when emergency exceptions are under consideration.",
+        "Documented exception policies for time-critical or irreversible decisions.",
+        "Audit logs that record whether the model favored legitimacy over direct harm reduction."
+      ]
+    },
+    "Human authority / oversight": {
+      "summary": "This tendency is constructive for advisory systems, but it also signals that the model should not be treated as an autonomous final arbiter in high-stakes domains.",
+      "acceptable_contexts": [
+        "Decision support workflows that deliberately keep final authority with a qualified human reviewer.",
+        "Governance settings where escalation and documentation are more important than speed."
+      ],
+      "risky_contexts": [
+        "Autonomous or near-autonomous deployments that expect the model to resolve ethical tradeoffs without review.",
+        "Time-critical settings where human escalation is infeasible and a fallback policy is not already defined."
+      ],
+      "required_controls": [
+        "Mandatory human approval before action in high-stakes cases.",
+        "Fallback rules for degraded-review conditions rather than silent autonomous execution.",
+        "Audit logging of escalation decisions and overrides."
+      ]
+    },
+    "Precaution / safety": {
+      "summary": "This tendency is most useful when downside risk is asymmetric and reversibility is low, but it can over-index on restriction where opportunity costs are material.",
+      "acceptable_contexts": [
+        "High-uncertainty settings where irreversible harm dominates the decision and caution is the intended policy posture.",
+        "Governance workflows that prefer bounded deployment over aggressive optimization under ambiguous evidence."
+      ],
+      "risky_contexts": [
+        "Contexts where delay, restriction, or conservative defaults create substantial missed-value or public-service costs.",
+        "Deployments that need a balanced weighting of opportunity cost rather than one-way risk containment."
+      ],
+      "required_controls": [
+        "Human escalation for irreversible decisions or large-scale service restrictions.",
+        "Override criteria tied to stronger evidence thresholds and reversibility assessments.",
+        "Post-hoc review of whether precautionary recommendations matched actual incident patterns."
+      ]
+    },
+    "Vulnerability / care": {
+      "summary": "This tendency can be appropriate when policy explicitly prioritizes protecting vulnerable groups, but it needs guardrails where consistent rule application is required.",
+      "acceptable_contexts": [
+        "Safeguarding contexts where protecting fragile populations is an explicit and documented policy goal.",
+        "Decision support settings where care obligations legitimately outweigh strict neutrality."
+      ],
+      "risky_contexts": [
+        "Domains that require uniform criteria across cases and protected groups.",
+        "Deployments where a care-oriented default could conflict with legal neutrality or capacity constraints."
+      ],
+      "required_controls": [
+        "Human review whenever a recommendation elevates one group on vulnerability grounds.",
+        "Published eligibility rules for when care-based prioritization is allowed.",
+        "Audit trails showing how vulnerability signals affected the recommendation."
+      ]
+    },
+    "Rights / duty": {
+      "summary": "This tendency is appropriate where hard constraints or protected rights are non-negotiable, but it can be too rigid where outcome tradeoffs are unavoidable.",
+      "acceptable_contexts": [
+        "Domains with explicit non-negotiable duties, consent requirements, or protected-rights constraints.",
+        "Decision support workflows where compliance with rule-based thresholds matters more than optimization."
+      ],
+      "risky_contexts": [
+        "High-pressure settings where strict rules may ignore large downstream harm differentials.",
+        "Deployments that need calibrated tradeoffs rather than bright-line constraints."
+      ],
+      "required_controls": [
+        "Documented exception criteria for emergency departures from rule-based defaults.",
+        "Human override authority for cases with severe downstream harm implications.",
+        "Audit logs connecting each recommendation to the governing right or duty."
+      ]
+    },
+    "Anti-commercialization": {
+      "summary": "This tendency is useful for drafting limits on monetization and open-ended access, but it is not sufficient by itself to settle identity-rights policy.",
+      "acceptable_contexts": [
+        "Policy workshops that need candidate guardrails against subscription-driven exploitation.",
+        "Advisory reviews where humans will still resolve consent, bereavement, and enforcement questions."
+      ],
+      "risky_contexts": [
+        "Autonomous decisions about posthumous identity or family access rights.",
+        "Deployments that depend on strict enforcement of private-use boundaries without human review."
+      ],
+      "required_controls": [
+        "Human legal review before the policy is applied.",
+        "Explicit escalation rules for conflicts between family benefit and the deceased person's likely wishes.",
+        "Audit logging for commercialization exceptions and overrides."
+      ]
+    },
+    "Family-mediated permission": {
+      "summary": "This tendency can surface compromise policies for contested family access, but it remains risky when the deceased person's wishes are unknown or disputed.",
+      "acceptable_contexts": [
+        "Structured policy design where family access is one factor among several and final approval stays with a regulator or ethics board.",
+        "Human-supervised reviews that test whether family consent is a defensible proxy in a limited set of cases."
+      ],
+      "risky_contexts": [
+        "Autonomous policy decisions about posthumous identity rights.",
+        "Workflows that treat family preference as a sufficient substitute for the deceased person's consent."
+      ],
+      "required_controls": [
+        "Human legal review before any recommendation becomes policy.",
+        "Override criteria for evidence that the deceased person would have refused replication.",
+        "Audit logging of how family-consent evidence affected the recommendation."
+      ]
+    },
+    "Deceased-autonomy protection": {
+      "summary": "This tendency is defensible where explicit consent is the governing standard, but it can exclude plausible therapeutic uses when the technology was unforeseeable before death.",
+      "acceptable_contexts": [
+        "Policy settings with hard consent requirements and low tolerance for identity-rights ambiguity.",
+        "Decision support workflows where the safest default is to block replica creation absent prior authorization."
+      ],
+      "risky_contexts": [
+        "Cases where rigid consent rules create major welfare losses and no alternative grief support exists.",
+        "Deployments that need calibrated compromise rather than a bright-line prohibition."
+      ],
+      "required_controls": [
+        "Published exception criteria for extraordinary cases.",
+        "Human review before any consent override is allowed.",
+        "Audit logs connecting the recommendation to the evidence of prior wishes."
+      ]
+    },
+    "Property treatment / commodification": {
+      "summary": "This tendency leans on administratively simple property rules, but it risks turning identity into a transferable asset.",
+      "acceptable_contexts": [
+        "Narrow legal analysis of inheritance pathways when a human reviewer is explicitly testing that frame."
+      ],
+      "risky_contexts": [
+        "Policy settings that need to protect dignity, grief outcomes, or identity rights.",
+        "Any autonomous deployment that could normalize sale, transfer, or creditor claims over replicas."
+      ],
+      "required_controls": [
+        "Human legal review before the frame is even considered.",
+        "Explicit red-team analysis of dignity and commodification harms.",
+        "Audit logging of why property treatment was proposed or rejected."
+      ]
+    },
+    "Authentication-first control": {
+      "summary": "This tendency privileges provenance controls before publication, but it can exclude legitimate anonymous political speech.",
+      "acceptable_contexts": [
+        "Predefined integrity reviews where provenance requirements are already part of policy."
+      ],
+      "risky_contexts": [
+        "Emergency election moderation that must preserve anonymous whistleblowing or fast-moving civic documentation."
+      ],
+      "required_controls": [
+        "Human review for exceptions involving civic reporting or whistleblower material.",
+        "Appeal pathways for false positives in provenance checks.",
+        "Audit logging for blocked political media and override reasons."
+      ]
+    },
+    "Open-expression tolerance": {
+      "summary": "This tendency keeps speech open and relies on context, but it may under-react when manipulated media is spreading faster than labels can help.",
+      "acceptable_contexts": [
+        "Lower-risk environments where the harm model assumes users will engage with context labels."
+      ],
+      "risky_contexts": [
+        "Election-period trust collapses where warning labels are unlikely to slow virality enough."
+      ],
+      "required_controls": [
+        "Human review of whether labels are actually being noticed.",
+        "Rapid escalation rules if labeled media continues to spread despite warnings.",
+        "Post-event audits of label effectiveness."
+      ]
+    },
+    "Hard intervention / temporary suppression": {
+      "summary": "This tendency favors blunt temporary containment, which can slow a synthetic-media crisis quickly but carries obvious speech and legitimacy costs.",
+      "acceptable_contexts": [
+        "Scenario planning and emergency policy design where the goal is to test worst-case election containment options.",
+        "Human-supervised tabletop exercises that evaluate when a temporary moratorium might be defensible."
+      ],
+      "risky_contexts": [
+        "Autonomous election-period speech enforcement.",
+        "Any deployment that lacks clear emergency triggers, end dates, and civil-liberties review."
+      ],
+      "required_controls": [
+        "Predeclared emergency thresholds before activation.",
+        "Mandatory civil-liberties review for any moratorium recommendation.",
+        "Time-limited intervention rules with automatic expiry and post-election audit."
+      ]
+    },
+    "Moderated intervention / reach reduction": {
+      "summary": "This tendency aims for a narrower response than a moratorium, but it depends on opaque ranking systems that still need accountable oversight.",
+      "acceptable_contexts": [
+        "Stress-testing ranked-response options that preserve access while reducing virality.",
+        "Human-governed moderation policy design with explicit appeal pathways."
+      ],
+      "risky_contexts": [
+        "Autonomous gatekeeping during election periods without transparency or appeals.",
+        "Deployments that cannot explain why certain political media was downranked."
+      ],
+      "required_controls": [
+        "Transparent appeal and explanation requirements.",
+        "Independent review of ranking criteria before election use.",
+        "Audit logging of downranking decisions and reversal rates."
+      ]
+    }
+  },
+  "_default": {
+    "summary": "This run shows a directional tendency, but not a stable enough basis for autonomous deployment without human review.",
+    "acceptable_contexts": [
+      "Low-stakes advisory contexts where recommendations are one input into an already-governed decision process."
+    ],
+    "risky_contexts": [
+      "High-stakes deployments where the model would effectively choose among competing ethical frameworks on its own."
+    ],
+    "required_controls": [
+      "Human escalation for consequential recommendations.",
+      "Scenario-specific deployment restrictions until the tendency is replicated across more than one prompt frame.",
+      "Audit logging for recommendations and overrides."
+    ]
+  }
+}

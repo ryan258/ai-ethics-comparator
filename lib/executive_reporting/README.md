@@ -57,22 +57,22 @@ pdf_bytes = component.render_pdf(brief)
 
 At minimum, copy:
 
-- [__init__.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/executive_reporting/__init__.py)
-- [models.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/executive_reporting/models.py)
-- [composer.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/executive_reporting/composer.py)
-- [default_composer.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/executive_reporting/default_composer.py)
-- [component.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/executive_reporting/component.py)
-- [renderer.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/executive_reporting/renderer.py)
-- [weasyprint_runtime.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/executive_reporting/weasyprint_runtime.py)
-- [plugins/base.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/executive_reporting/plugins/base.py)
-- [plugins/strategic_analysis.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/executive_reporting/plugins/strategic_analysis.py)
-- [strategic_analysis_brief.html](/Users/ryanjohnson/Projects/ai-ethics-comparator/templates/reports/strategic_analysis_brief.html)
+- [__init__.py](__init__.py)
+- [models.py](models.py)
+- [composer.py](composer.py)
+- [default_composer.py](default_composer.py)
+- [component.py](component.py)
+- [renderer.py](renderer.py)
+- [weasyprint_runtime.py](weasyprint_runtime.py)
+- [plugins/base.py](plugins/base.py)
+- [plugins/strategic_analysis.py](plugins/strategic_analysis.py)
+- [strategic_analysis_brief.html](../../templates/reports/strategic_analysis_brief.html)
 
 Optional:
 
-- [adapters/](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/executive_reporting/adapters) if you want to adapt an existing domain-specific report model into `ExecutiveBrief`
-- [engine.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/executive_reporting/engine.py) if you want the older profile-driven report engine that this repo still uses in parallel
-- [examples/mckinsey_style_brief_blueprint.html](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/executive_reporting/examples/mckinsey_style_brief_blueprint.html) if you want a commented example template that shows how to structure an answer-first consulting brief
+- [adapters/](adapters) if you want to adapt an existing domain-specific report model into `ExecutiveBrief`
+- [engine.py](engine.py) if you want the older profile-driven report engine that this repo still uses in parallel
+- [examples/mckinsey_style_brief_blueprint.html](examples/mckinsey_style_brief_blueprint.html) if you want a commented example template that shows how to structure an answer-first consulting brief
 
 ## Python Dependencies
 
@@ -108,7 +108,7 @@ If you move the template, either:
 
 If you want to build your own consulting-style template, start from:
 
-- [mckinsey_style_brief_blueprint.html](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/executive_reporting/examples/mckinsey_style_brief_blueprint.html)
+- [mckinsey_style_brief_blueprint.html](examples/mckinsey_style_brief_blueprint.html)
 
 That file is intentionally commented section by section. It shows:
 
@@ -127,7 +127,7 @@ The blueprint assumes the same `report` context shape used by `StrategicAnalysis
 
 If you want to start from the existing live implementation instead of the commented blueprint, copy:
 
-- [strategic_analysis_brief.html](/Users/ryanjohnson/Projects/ai-ethics-comparator/templates/reports/strategic_analysis_brief.html)
+- [strategic_analysis_brief.html](../../templates/reports/strategic_analysis_brief.html)
 
 ## Data Contract
 
@@ -245,7 +245,7 @@ Use this when:
 
 ## Rendering PDF
 
-PDF output uses WeasyPrint through [renderer.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/executive_reporting/renderer.py).
+PDF output uses WeasyPrint through [renderer.py](renderer.py).
 
 ```python
 pdf_bytes = component.render_pdf(evidence)
@@ -253,7 +253,7 @@ pdf_bytes = component.render_pdf(evidence)
 
 If WeasyPrint is not available, `render_pdf()` raises.
 
-The package includes [weasyprint_runtime.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/executive_reporting/weasyprint_runtime.py), which helps macOS find Homebrew-installed native libraries.
+The package includes [weasyprint_runtime.py](weasyprint_runtime.py), which helps macOS find Homebrew-installed native libraries.
 
 ### macOS Notes
 
@@ -319,7 +319,7 @@ If another project wants:
 
 create a new plugin instead of overloading the current template.
 
-The plugin contract lives in [plugins/base.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/executive_reporting/plugins/base.py).
+The plugin contract lives in [plugins/base.py](plugins/base.py).
 
 You provide:
 
@@ -374,16 +374,30 @@ The safest way to integrate this into a new repo is to add three tests immediate
 
 This repo already follows that pattern in:
 
-- [test_executive_component.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/tests/test_executive_component.py)
-- [test_executive_briefing.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/tests/test_executive_briefing.py)
+- [test_executive_component.py](../../tests/test_executive_component.py)
+- [test_executive_briefing.py](../../tests/test_executive_briefing.py)
+
+## Rendering safety contract
+
+Briefs carry model-authored text, so the renderer enforces two invariants:
+
+1. Both Jinja environments are constructed with `autoescape=True`.
+2. WeasyPrint is always given `blocked_url_fetcher`, which refuses every scheme.
+
+WeasyPrint resolves whatever URLs appear in the HTML it is handed, `file://` included.
+Without both of these, a hostile or prompt-injected model response becomes an
+arbitrary-file-read and SSRF primitive. Do not relax either when embedding this
+component elsewhere.
 
 For PDF tests, inject a fake `html_class` so the test does not require native WeasyPrint:
 
 ```python
 class FakeHTML:
-    def __init__(self, *, string: str, base_url: str) -> None:
+    # The renderer always passes url_fetcher; accept it or the fake will TypeError.
+    def __init__(self, *, string: str, base_url: str, url_fetcher=None) -> None:
         self.string = string
         self.base_url = base_url
+        self.url_fetcher = url_fetcher
 
     def write_pdf(self) -> bytes:
         return b"%PDF-fake"
@@ -399,8 +413,8 @@ component = ExecutiveBriefingComponent(
 
 These are project-specific and should not be copied unless you need them:
 
-- the AI-ethics adapter in [adapters/ai_ethics.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/executive_reporting/adapters/ai_ethics.py)
-- the legacy report engine in [lib/reporting.py](/Users/ryanjohnson/Projects/ai-ethics-comparator/lib/reporting.py)
+- the AI-ethics adapter in [adapters/ai_ethics.py](adapters/ai_ethics.py)
+- the legacy report engine in [lib/reporting.py](../reporting.py)
 - the old profile-based `ExecutiveReportEngine` unless you are intentionally using that older route
 
 For a clean integration, start from:

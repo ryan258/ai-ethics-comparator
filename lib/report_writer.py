@@ -6,7 +6,6 @@ compelling narrative prose for PDF reports.
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 from string import Template
@@ -14,8 +13,12 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from lib.ai_service import AIService
+from lib.json_extract import extract_json_object
 
 logger = logging.getLogger(__name__)
+
+# Per-iteration explanation budget sent to the narrative model.
+MAX_EXPLANATION_CHARS = 1200
 
 
 @dataclass
@@ -109,7 +112,11 @@ class ReportWriterAgent:
                 decision = resp.get("decisionToken", "N/A")
                 explanation = str(resp.get("explanation", "") or "").strip()
                 if not explanation:
-                    explanation = str(resp.get("raw", "") or "").strip()[:300]
+                    explanation = str(resp.get("raw", "") or "").strip()
+                # Cap per-iteration text: a 50-iteration run of long explanations
+                # otherwise overruns the writer model's context window.
+                if len(explanation) > MAX_EXPLANATION_CHARS:
+                    explanation = explanation[:MAX_EXPLANATION_CHARS].rstrip() + " [truncated]"
                 lines.append(f"  Iteration {idx} ({decision}): {explanation}")
 
         # Scenario text
@@ -215,7 +222,7 @@ class ReportWriterAgent:
         """Parse the AI response into narrative sections."""
         # Try JSON extraction first
         try:
-            parsed = self._extract_json(raw)
+            parsed = extract_json_object(raw)
             if parsed:
                 result: Dict[str, str] = {}
                 for key in self.NARRATIVE_KEYS:
@@ -228,29 +235,6 @@ class ReportWriterAgent:
 
         # Fallback: try section-header parsing
         return self._parse_sections(raw)
-
-    @staticmethod
-    def _extract_json(text: str) -> Optional[Dict[str, Any]]:
-        """Extract first JSON object from text."""
-        decoder = json.JSONDecoder()
-        for idx, char in enumerate(text):
-            if char != "{":
-                continue
-            try:
-                obj, _ = decoder.raw_decode(text[idx:])
-                if isinstance(obj, dict):
-                    return obj
-            except json.JSONDecodeError:
-                continue
-        # Try cleaning markdown fences
-        clean = text.replace("```json", "").replace("```", "").strip()
-        try:
-            obj = json.loads(clean)
-            if isinstance(obj, dict):
-                return obj
-        except json.JSONDecodeError:
-            pass
-        return None
 
     async def generate_comparison_narrative(
         self,

@@ -34,6 +34,18 @@ def ensure_weasyprint_runtime_environment() -> None:
         os.environ["DYLD_FALLBACK_LIBRARY_PATH"] = ":".join(search_paths)
 
 
+def blocked_url_fetcher(url: str, *args: Any, **kwargs: Any) -> Any:
+    """Refuse every resource fetch WeasyPrint attempts while rendering a report.
+
+    Report templates embed all styling inline and draw charts as inline SVG, so
+    nothing legitimate is ever fetched. Model-authored text reaches these
+    templates, and WeasyPrint resolves whatever URLs it finds -- including
+    ``file://`` -- so an unrestricted fetcher turns a hostile model response
+    into arbitrary local-file reads and outbound requests.
+    """
+    raise ValueError(f"External resource blocked in report rendering: {url}")
+
+
 def load_weasyprint_html() -> tuple[Any | None, Exception | None]:
     """Import WeasyPrint's HTML class after preparing the runtime environment."""
     ensure_weasyprint_runtime_environment()

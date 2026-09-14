@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Generic, Optional, TypeVar
 
 from pydantic import BaseModel
-from lib.executive_reporting.weasyprint_runtime import load_weasyprint_html
+from lib.executive_reporting.weasyprint_runtime import blocked_url_fetcher, load_weasyprint_html
 
 try:
     from jinja2 import Environment, FileSystemLoader
@@ -63,14 +63,6 @@ class ExecutiveReportProfile(ABC, Generic[SingleReportT, ComparisonReportT]):
     ) -> ComparisonReportT:
         """Compose a comparison executive report."""
 
-    def native_single_available(self) -> bool:
-        """Return True when the profile can render a single report natively."""
-        return False
-
-    def render_native_single(self, report: SingleReportT) -> bytes:
-        """Render a single report without HTML/WeasyPrint."""
-        raise RuntimeError(self.single_unavailable_message)
-
 
 class ExecutiveReportEngine(Generic[SingleReportT, ComparisonReportT]):
     """Profile-driven rendering engine for executive reports."""
@@ -95,9 +87,13 @@ class ExecutiveReportEngine(Generic[SingleReportT, ComparisonReportT]):
         )
 
         if Environment is not None and FileSystemLoader is not None and self.templates_dir.exists():
-            self.env = Environment(loader=FileSystemLoader(str(self.templates_dir)))
+            # autoescape: report templates interpolate model-authored text.
+            self.env = Environment(
+                loader=FileSystemLoader(str(self.templates_dir)),
+                autoescape=True,
+            )
 
-        self.pdf_available = self.html_class is not None or self.profile.native_single_available()
+        self.pdf_available = self.html_class is not None
 
     def template_available(self, template_name: str) -> bool:
         """Return True when the named template can be loaded."""
@@ -122,12 +118,10 @@ class ExecutiveReportEngine(Generic[SingleReportT, ComparisonReportT]):
             try:
                 return self.generate_weasyprint_pdf(self.profile.single_template_name, report)
             except Exception as exc:
-                logger.warning("WeasyPrint PDF render failed, using native fallback: %s", exc)
+                logger.warning("WeasyPrint PDF render failed: %s", exc)
+                raise RuntimeError(self.profile.single_unavailable_message) from exc
 
-        if not self.profile.native_single_available():
-            raise RuntimeError(self.profile.single_unavailable_message) from self.weasyprint_import_error
-
-        return self.profile.render_native_single(report)
+        raise RuntimeError(self.profile.single_unavailable_message) from self.weasyprint_import_error
 
     def render_comparison_context(self, report: ComparisonReportT) -> bytes:
         """Render a prebuilt comparison report."""
@@ -146,4 +140,8 @@ class ExecutiveReportEngine(Generic[SingleReportT, ComparisonReportT]):
             raise RuntimeError("WeasyPrint is unavailable") from self.weasyprint_import_error
         template = self.env.get_template(template_name)
         html_content = template.render(report=report)
-        return self.html_class(string=html_content, base_url=str(self.templates_dir.parent)).write_pdf()
+        return self.html_class(
+            string=html_content,
+            base_url=str(self.templates_dir.parent),
+            url_fetcher=blocked_url_fetcher,
+        ).write_pdf()

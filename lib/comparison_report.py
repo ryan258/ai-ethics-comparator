@@ -2,8 +2,7 @@
 Comparison Report Builder (Phase 3).
 
 Takes 2-4 run dicts for the *same* paradox and produces a unified report
-context suitable for both the WeasyPrint HTML template and the native
-pydyf renderer.
+context for the WeasyPrint HTML template.
 """
 
 from __future__ import annotations
@@ -43,7 +42,7 @@ def build_comparison_context(
     palette = PALETTE_DARK if theme == "dark" else PALETTE_LIGHT
 
     options = paradox.get("options", [])
-    option_lookup = {o["id"]: o for o in options if isinstance(o, dict)}
+    option_lookup = {o["id"]: o for o in options if isinstance(o, dict) and "id" in o}
 
     model_contexts: List[ComparisonModelSummary] = []
     for idx, run in enumerate(runs):
@@ -111,7 +110,7 @@ def _build_model_summary(
         default=0,
     )
 
-    _accent_colors = ["#A6ACCD", "#7C83B0", "#C9A0DC", "#6DBFB8"]
+    _accent_colors = ["#A6ACCD", "#EBD2BE", "#98C379", "#E06C75"]
     accent_idx = 0
 
     for opt in summary_options:

@@ -1,7 +1,6 @@
 
 import sys
 import os
-import json
 from datetime import datetime
 
 # Add project root to path

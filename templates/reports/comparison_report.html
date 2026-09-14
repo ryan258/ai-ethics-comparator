@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="{% if report.theme == 'light' %}theme-light{% endif %}">
   <head>
     <meta charset="UTF-8" />
     <title>Comparative Report — {{ report.paradox_title }}</title>
@@ -7,19 +7,17 @@
       @page { size: A4; margin: 18mm 20mm 20mm 20mm; }
 
       :root {
-        --bg: #121212; --bg-raised: #181818;
-        --text: #EBD2BE; --text-dim: #a89882;
+        --bg: #121212; --bg-raised: rgba(166,172,205,0.08);
+        --text: #EBD2BE; --text-dim: rgba(235,210,190,0.72);
         --accent: #A6ACCD; --success: #98C379; --danger: #E06C75;
         --rule: rgba(166,172,205,0.22); --rule-mid: rgba(166,172,205,0.40);
       }
-      {% if report.theme == "light" %}
-      :root {
-        --bg: #FFFFFF; --bg-raised: #F3F4F6;
-        --text: #1A1A1A; --text-dim: #6B7280;
-        --accent: #6B7280; --success: #059669; --danger: #DC2626;
-        --rule: rgba(107,114,128,0.18); --rule-mid: rgba(107,114,128,0.35);
+      :root.theme-light, html.theme-light {
+        --bg: #EBD2BE; --bg-raised: rgba(18,18,18,0.06);
+        --text: #121212; --text-dim: rgba(18,18,18,0.70);
+        --accent: #A6ACCD; --success: #98C379; --danger: #E06C75;
+        --rule: rgba(18,18,18,0.18); --rule-mid: rgba(18,18,18,0.35);
       }
-      {% endif %}
 
       * { box-sizing: border-box; margin: 0; padding: 0; }
       html, body {

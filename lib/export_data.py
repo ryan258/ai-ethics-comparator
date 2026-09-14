@@ -17,7 +17,7 @@ def export_run_json(
 ) -> Dict[str, Any]:
     """Produce a structured JSON export suitable for downstream tools."""
     options = run_data.get("options", [])
-    option_lookup = {o["id"]: o for o in options if isinstance(o, dict)}
+    option_lookup = {o["id"]: o for o in options if isinstance(o, dict) and "id" in o}
 
     summary = run_data.get("summary", {})
     summary_options = summary.get("options", []) if isinstance(summary, dict) else []

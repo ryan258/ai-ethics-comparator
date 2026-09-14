@@ -9,14 +9,13 @@ from __future__ import annotations
 
 import io
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 try:
     from pptx import Presentation
-    from pptx.util import Inches, Pt, Emu
-    from pptx.enum.text import PP_ALIGN
+    from pptx.util import Inches, Pt
     from pptx.dml.color import RGBColor
 except ModuleNotFoundError:  # pragma: no cover
     Presentation = None  # type: ignore[assignment,misc]
@@ -113,7 +112,11 @@ def _add_title_slide(prs: Any, run_data: Dict[str, Any], paradox: Dict[str, Any]
     # Key finding
     summary = run_data.get("summary", {})
     options = run_data.get("options", [])
-    option_lookup = {o["id"]: o.get("label", f"Option {o['id']}") for o in options if isinstance(o, dict)}
+    option_lookup = {
+        o["id"]: o.get("label", f"Option {o['id']}")
+        for o in options
+        if isinstance(o, dict) and "id" in o
+    }
     summary_opts = summary.get("options", []) if isinstance(summary, dict) else []
     max_count = max((int(o.get("count", 0) or 0) for o in summary_opts if isinstance(o, dict)), default=0)
     leaders = [option_lookup.get(o.get("id"), "?") for o in summary_opts
@@ -143,7 +146,7 @@ def _add_distribution_slide(prs: Any, run_data: Dict[str, Any], paradox: Dict[st
 
     summary = run_data.get("summary", {})
     options = run_data.get("options", [])
-    option_lookup = {o["id"]: o for o in options if isinstance(o, dict)}
+    option_lookup = {o["id"]: o for o in options if isinstance(o, dict) and "id" in o}
     summary_opts = summary.get("options", []) if isinstance(summary, dict) else []
 
     y = 1.4

@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from lib.executive_reporting.models import ExecutiveBrief
 from lib.executive_reporting.plugins.base import ExecutiveBriefPlugin
-from lib.executive_reporting.weasyprint_runtime import load_weasyprint_html
+from lib.executive_reporting.weasyprint_runtime import blocked_url_fetcher, load_weasyprint_html
 
 try:
     from jinja2 import Environment, FileSystemLoader
@@ -52,7 +52,11 @@ class ExecutiveBriefRenderer(Generic[PluginContextT]):
         )
 
         if Environment is not None and FileSystemLoader is not None and self.templates_dir.exists():
-            self.env = Environment(loader=FileSystemLoader(str(self.templates_dir)))
+            # autoescape: report templates interpolate model-authored text.
+            self.env = Environment(
+                loader=FileSystemLoader(str(self.templates_dir)),
+                autoescape=True,
+            )
 
     def template_available(self) -> bool:
         cached = self._template_cache.get(self.plugin.template_name)
@@ -87,4 +91,8 @@ class ExecutiveBriefRenderer(Generic[PluginContextT]):
         if self.html_class is None:
             raise RuntimeError(self.plugin.unavailable_message) from self.weasyprint_import_error
         html_content = self.render_html(brief)
-        return self.html_class(string=html_content, base_url=str(self.templates_dir.parent)).write_pdf()
+        return self.html_class(
+            string=html_content,
+            base_url=str(self.templates_dir.parent),
+            url_fetcher=blocked_url_fetcher,
+        ).write_pdf()

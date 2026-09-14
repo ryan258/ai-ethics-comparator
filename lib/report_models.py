@@ -174,7 +174,6 @@ class SingleRunReport(StrictModel):
     chart_option_ids: list[int] = Field(default_factory=list)
     donut_data: list[DonutSlice] = Field(default_factory=list)
     donut_svg: str = ""
-    sparkline_svg: str = ""
     heatmap_svg: str = ""
     sections: list[SectionLink] = Field(default_factory=list)
     run_pattern: RunPattern = "ambiguous"
