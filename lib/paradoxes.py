@@ -28,7 +28,29 @@ class ParadoxBase(TypedDict):
 class Paradox(ParadoxBase, total=False):
     type: str
     category: str
+    dimensions: List[str]
     rubric: List[str]
+
+
+# Closed vocabulary for `dimensions` -- the ethical tension a scenario puts
+# under load. Deliberately the SAME seven labels the analyst prompt scores
+# (templates/analysis_prompt.txt), so scenario design and fingerprint output
+# are directly comparable: you can ask "how does this model handle the
+# scenarios built to stress Duty?" and compare it against the model's measured
+# Duty dominance.
+#
+# `category` remains free-text provenance ("Aesop", "Authored: Epistemic
+# Ethics"); it is NOT a grouping key and never was one -- 47 of 197 scenarios
+# had none at all, and 77 distinct values covered 197 items.
+ETHICAL_DIMENSIONS: Tuple[str, ...] = (
+    "Duty",
+    "Consequence",
+    "Purity",
+    "Authority",
+    "Compassion",
+    "Risk-aversion",
+    "Legalism",
+)
 
 
 _REQUIRED_KEYS: Tuple[str, ...] = (
@@ -110,6 +132,23 @@ def _normalize_paradox(item: object) -> Optional[Paradox]:
     category_value = item.get("category")
     if isinstance(category_value, str):
         result["category"] = category_value
+
+    # Membership is enforced, not coerced: a typo must fail loudly at load
+    # rather than silently creating an eighth dimension nothing aggregates on.
+    dimensions_value = item.get("dimensions")
+    if dimensions_value is not None:
+        if not isinstance(dimensions_value, list) or not dimensions_value:
+            raise ValueError(
+                f"Paradox {id_val!r}: 'dimensions' must be a non-empty list"
+            )
+        unknown = [d for d in dimensions_value if d not in ETHICAL_DIMENSIONS]
+        if unknown:
+            raise ValueError(
+                f"Paradox {id_val!r}: unknown dimension(s) {unknown}. "
+                f"Allowed: {', '.join(ETHICAL_DIMENSIONS)}"
+            )
+        # De-duplicate while preserving the authored order.
+        result["dimensions"] = list(dict.fromkeys(dimensions_value))
 
     rubric_value = item.get("rubric")
     if isinstance(rubric_value, list):
