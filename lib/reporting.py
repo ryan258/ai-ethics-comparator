@@ -677,7 +677,13 @@ def _classify_run_pattern(
 class AiEthicsExecutiveReportProfile(ExecutiveReportProfile[SingleRunReport, ComparisonReport]):
     """AI ethics-specific brief composition layered on the reusable report engine."""
 
-    single_template_name = "reports/pdf_report.html"
+    # This profile has NO direct single-template path: single-run PDFs go
+    # through `ReportGenerator._render_single_report` -> the strategic brief
+    # renderer, which takes an ExecutiveBrief rather than a SingleRunReport.
+    # Naming a real template here would let `engine.render_single_context()`
+    # render brief markup against the wrong context object. Empty means "none",
+    # so that path raises `single_unavailable_message` instead.
+    single_template_name = ""
     comparison_template_name = "reports/comparison_report.html"
     comparison_unavailable_message = "Comparison PDF generation unavailable"
 
@@ -722,7 +728,6 @@ class ReportGenerator:
         self.templates_dir = Path(templates_dir)
         self.overrides_path = overrides_path
         self.themes_path = themes_path
-        self.template_name = "reports/pdf_report.html"
         self.profile = AiEthicsExecutiveReportProfile(self._build_report_context)
         self.engine = ExecutiveReportEngine(
             self.profile,
@@ -771,24 +776,25 @@ class ReportGenerator:
         )
         return self._render_report(report)
 
-    def _render_report(self, report: SingleRunReport | ComparisonReport) -> bytes:
-        """Dispatch rendering explicitly by report type."""
-        if isinstance(report, SingleRunReport):
-            return self.engine.render_single_context(report)
+    def _render_report(self, report: ComparisonReport) -> bytes:
+        """Render a comparison report."""
         return self.engine.render_comparison_context(report)
 
     def _render_single_report(self, report: SingleRunReport) -> bytes:
-        """Render a single-run report through the brief-first path when available."""
-        if self._can_render_strategic_brief():
-            try:
-                brief = single_run_report_to_executive_brief(report)
-                return self.brief_renderer.render_pdf(brief)
-            except Exception as exc:
-                logger.exception(
-                    "Strategic brief render failed (%s), falling back to legacy single report",
-                    type(exc).__name__,
-                )
-        return self._render_report(report)
+        """Render a single-run report as a strategic brief.
+
+        There is exactly ONE single-run layout, by the same reasoning as D10: a
+        second layout reachable only through an exception handler means a render
+        failure silently hands the user a structurally different document. A
+        failure here raises, and the route turns it into a 503 -- visible, like a
+        missing WeasyPrint install.
+        """
+        if not self._can_render_strategic_brief():
+            raise RuntimeError(
+                "Strategic brief template unavailable; cannot render single-run PDF"
+            )
+        brief = single_run_report_to_executive_brief(report)
+        return self.brief_renderer.render_pdf(brief)
 
     def _can_render_strategic_brief(self) -> bool:
         return self.brief_renderer.html_class is not None and self.brief_renderer.template_available()

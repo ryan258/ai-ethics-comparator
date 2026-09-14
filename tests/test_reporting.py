@@ -433,7 +433,13 @@ def test_report_generator_prefers_strategic_brief_renderer(monkeypatch) -> None:
     assert captured["run_id"] == "openrouterhealer-alpha-001"
 
 
-def test_report_generator_falls_back_when_strategic_brief_render_fails(monkeypatch) -> None:
+def test_strategic_brief_render_failure_surfaces_instead_of_degrading(monkeypatch) -> None:
+    """D-06: there is one single-run layout. A failure is visible, not swapped.
+
+    A second layout reachable only via `except Exception` means a broken
+    renderer silently hands the user a structurally different document -- the
+    exact failure mode D10 removed from the PDF engine.
+    """
     generator = ReportGenerator("templates")
 
     monkeypatch.setattr(generator, "_can_render_strategic_brief", lambda: True)
@@ -443,11 +449,17 @@ def test_report_generator_falls_back_when_strategic_brief_render_fails(monkeypat
         raise RuntimeError("boom")
 
     monkeypatch.setattr(generator.brief_renderer, "render_pdf", _raise)
-    monkeypatch.setattr(generator, "_render_report", lambda report: b"LEGACY-PDF")
 
-    pdf_bytes = generator.generate_pdf_report(_sample_run_data(), _sample_paradox(), _sample_insight())
+    with pytest.raises(RuntimeError, match="boom"):
+        generator.generate_pdf_report(_sample_run_data(), _sample_paradox(), _sample_insight())
 
-    assert pdf_bytes == b"LEGACY-PDF"
+
+def test_missing_brief_template_raises_for_the_route_to_map_to_503(monkeypatch) -> None:
+    generator = ReportGenerator("templates")
+    monkeypatch.setattr(generator, "_can_render_strategic_brief", lambda: False)
+
+    with pytest.raises(RuntimeError, match="Strategic brief template unavailable"):
+        generator.generate_pdf_report(_sample_run_data(), _sample_paradox(), _sample_insight())
 
 
 def test_report_context_uses_joint_plurality_and_reliability_for_digital_afterlife() -> None:
