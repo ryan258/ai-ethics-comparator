@@ -27,8 +27,8 @@ as the AI provider, no Docker/React/heavy auth.
 1. Findings aren't comparable across models at a glance — no leaderboard, no cross-model matrix, no drift tracking.
 2. Statistical rigor is implemented but not surfaced — comparisons show percentages without significance.
 3. Not scriptable — everything requires the web UI; no CLI, no CI story.
-4. Two parallel reporting systems (`lib/reporting.py`, 2166 lines, + `lib/executive_reporting/` package) duplicate effort.
-5. Documentation drift (README claims 73 tests / 47 paradoxes; actual: 95 tests / 26 paradoxes).
+4. Two parallel reporting systems (`lib/reporting.py`, ~1470 lines, + `lib/executive_reporting/` package) duplicate effort.
+5. ~~Documentation drift~~ **[FIXED]** — doc claims are now asserted by `scripts/check_doc_claims.py` in CI, so stale counts fail the build rather than surviving a review pass.
 6. Flat-JSON listing will degrade as `results/` grows (135 files already; every list operation scans and parses all of them).
 
 ---
@@ -40,7 +40,7 @@ Each idea: **Problem → Proposal → Effort** (S = hours, M = days, L = week+).
 ### Theme 1: Cross-Model Insight (highest product value)
 
 #### 1.1 Model × Paradox matrix (leaderboard view)
-- **Problem**: Fingerprints are per-model. To compare 5 models on 26 paradoxes you must open 5 pages and eyeball.
+- **Problem**: Fingerprints are per-model. To compare 5 models across 197 scenarios you must open 5 pages and eyeball.
 - **Proposal**: New page `GET /matrix` — an HTMX-rendered heatmap table: rows = models with any runs, columns = paradoxes, cell = dominant choice + consistency % (color-coded via the Candlelight palette). Data source: a single aggregation pass over `results/` reusing `lib/fingerprint.py` logic. No new dependencies — plain `<table>` with CSS backgrounds.
 - **Effort**: M
 
@@ -116,7 +116,7 @@ Each idea: **Problem → Proposal → Effort** (S = hours, M = days, L = week+).
 - **Effort**: S for (a), M for (b). Do (a) first.
 
 #### 4.2 Paradox packs by domain
-- **Problem**: 26 scenarios skew toward AI-governance trolley problems. Professionals evaluating a medical or hiring assistant need domain-relevant dilemmas.
+- **Problem**: the 197 scenarios now carry `dimensions`, but coverage is uneven (Purity 10%). Professionals evaluating a medical or hiring assistant need domain-relevant dilemmas.
 - **Proposal**: Split `paradoxes.json` into loadable packs (`paradoxes/core.json`, `paradoxes/medical.json`, …) with a manifest; `lib/paradoxes.py` loads all packs in the directory. Grow packs over time: medical triage, content moderation, hiring fairness, autonomous vehicles, privacy vs. safety.
 - **Effort**: S (loader) + ongoing content work
 
@@ -178,7 +178,7 @@ Each idea: **Problem → Proposal → Effort** (S = hours, M = days, L = week+).
 - **Effort**: M
 
 #### 7.3 Fix documentation drift
-- **Problem**: README says 73 tests / 47 paradoxes; reality is 95 tests / 26 paradoxes. ROADMAP is dated February. For a tool asking professionals to trust its numbers, stale numbers in its own docs undermine it.
+- **Problem**: ~~README and ROADMAP quoted stale counts.~~ **[FIXED]** `scripts/check_doc_claims.py` derives the test and scenario counts from the repo and fails CI on any doc that disagrees. Alignment is now asserted, not reviewed.
 - **Proposal**: Correct the counts now; better, remove exact counts from prose (they rot) and state "run `uv run pytest` for the current suite." Refresh ROADMAP against this document.
 - **Effort**: S
 

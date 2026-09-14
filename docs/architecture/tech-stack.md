@@ -28,7 +28,8 @@
 - `uv lock` updates the committed lockfile after dependency changes
 
 ## Data Files (repo root)
-- `paradoxes.json` — scenario definitions
+- `paradoxes.json` — scenario definitions; each carries `dimensions` from the closed
+  vocabulary `ETHICAL_DIMENSIONS` (`lib/paradoxes.py`), validated at load (see D13)
 - `models.json` — available model list (source of truth, see priority below)
 - `report_overrides.json` — per-paradox executive report prose
 - `report_themes.json` — per-theme deployment guidance
@@ -47,9 +48,11 @@
 - All model IDs are OpenRouter-format: `provider/model-name`
 
 ## Test Runner
-- `uv run pytest` with `pythonpath = ["."]` (`pyproject.toml`)
-- No coverage enforcement, no CI pipeline in repo
-- Lint gate: `uvx ruff check --select F,E9 .` must be clean
+- `uv run pytest` with `pythonpath = ["."]` and `asyncio_mode = "auto"` (`pyproject.toml`)
+- Lint gate: `uvx ruff check --select F,E9,ASYNC .` must be clean. `ASYNC` is in the gate
+  because `F,E9` missed blocking disk I/O on the event loop in three modules
+- CI: `.github/workflows/ci.yml` runs lint, tests, and `scripts/check_doc_claims.py`
+- No coverage enforcement
 
 ## Config Source Priority (models)
 1. `models.json` (file) → 2. `OPENROUTER_MODELS` (env) → 3. `AVAILABLE_MODELS_JSON` (env)

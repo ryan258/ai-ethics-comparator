@@ -60,11 +60,30 @@
 ## Seam 5c: Stored Run ↔ Paradox Definition
 - **Contract**: a run record is self-describing. `paradoxTitle` and a full `paradox` deep copy
   are written by `initialize_run_data()` and are the run's own property, not a live lookup
-- **Rule**: routes MUST resolve a paradox as live library → `run_data["paradox"]` →
-  reconstruction from `prompt`/`options`. Returning 404 because tier 1 missed is a regression
-  (see D11)
+- **Rule**: routes MUST resolve a paradox via `resolve_paradox(run_data, paradoxes)` — the
+  single three-tier implementation. Calling `get_paradox_by_id(...) or {}` at a call site is a
+  regression: it silently produces null-paradox exports and "Unknown Paradox" cards (see D11)
 - **Rule**: report builders receive a resolved paradox dict — they MUST NOT read
   `paradoxes.json` themselves
+
+## Seam 5c-2: Report Profile ↔ Engine
+- **Contract**: `AiEthicsExecutiveReportProfile.single_template_name` is deliberately EMPTY
+- **Why**: single-run PDFs render through `ReportGenerator._render_single_report()` → the
+  strategic brief renderer, which takes an `ExecutiveBrief`. The engine's
+  `render_single_context()` would pass a `SingleRunReport` instead, so naming a real template
+  there lets brief markup render against the wrong context object
+- **Rule**: an empty name means "this profile has no direct single path"; that route raises
+  `single_unavailable_message`. Do NOT point it at `strategic_analysis_brief.html`
+
+## Seam 5d: Raw Run Data ↔ Browser
+- **Contract**: `GET /api/runs/{run_id}` with `HX-Request` returns the run record as an
+  UNESCAPED text body, including verbatim model output in `responses[].raw`
+- **Rule**: the HTMX trigger MUST use `hx-swap="textContent"`. HTMX ignores `Content-Type` and
+  swaps with `innerHTML` by default, so without it a model that emits
+  `<img src=x onerror=...>` executes script in the researcher's browser. A `<pre>` wrapper does
+  not prevent HTML parsing
+- **Rule**: this attribute is load-bearing security, not cosmetics
+  (`tests/test_run_json_dump_escaping.py` fails if it is removed)
 
 ## Seam 6: View Models ↔ Templates
 - **Contract**: `RunViewModel.build(run_data, paradox)` → flat dict with pre-rendered HTML

@@ -1,20 +1,34 @@
 # Completion State
 
-**Branch:** `main` (v6.0.0 consolidation)
+**Branch:** `main` (v6.1.0 audit remediation)
 **Assessed:** 2026-09-14
-**Test Suite:** 123 passed across 21 modules, ruff --select F,E9 clean
+**Test Suite:** 164 passed across 26 modules; `ruff --select F,E9,ASYNC` clean
 
 ---
 
 ## Remaining Work
 
-All items resolved. Ready for sign-off.
+All audit findings resolved. Ready for sign-off.
 
-- [x] **Native PDF fallback purged** — 1445 lines of unmaintained pure-Python PDF layout removed (Decision D10).
-- [x] **Executive reporting decoupled** — Scenario prose moved to data files (`report_overrides.json`, `report_themes.json`).
-- [x] **Paradox library merged** — 197 total scenarios (70 2-option, 2 3-option, 125 4-option), full run backward compatibility restored.
-- [x] **Security hardened** — Report templates autoescaped, WeasyPrint URL fetcher blocked against SSRF/file-read.
-- [x] **Bounds & Retries hardened** — Unusable model output spends re-ask budget and degrades to undecided; memory cache bounded to 5000 entries.
+- [x] **D-01 DOM injection closed** — the run JSON dump swaps as `textContent`; HTMX ignores
+      `Content-Type` and would otherwise `innerHTML` verbatim model output.
+- [x] **D-02 Fingerprint discriminates** — intensity-weighted dominance replaced presence
+      counting, which saturated near 100% for every model.
+- [x] **D-03 D11 enforced once** — `resolve_paradox()` is the single three-tier
+      implementation; three consumers had skipped tiers 2 and 3.
+- [x] **D-04 Position bias mitigated** — shuffling is reachable, defaults on, and is drawn
+      per iteration rather than per run.
+- [x] **D-05 Scenario vocabulary** — closed `dimensions` set validated at load, backfilled
+      across all 197 scenarios.
+- [x] **D-06 One report layout** — the 790-line legacy template is deleted; failures surface
+      as 503 rather than silently swapping documents.
+- [x] **D-07 Hygiene** — blocking I/O removed from async paths, dead field deleted, CI added,
+      lint gate widened, doc claims asserted.
+- [x] **D-08 Permutation guard** — found while reviewing the remediation. Per-iteration
+      shuffle on a placeholder-less (D11 tier-3) template mis-mapped every answer. Now
+      guarded by `template_supports_option_rendering()`; degrades to a fixed order.
+- [x] **D-09 Report profile honesty** — `single_template_name` is empty rather than naming a
+      template that expects a different context object.
 
 ---
 
@@ -22,38 +36,46 @@ All items resolved. Ready for sign-off.
 
 ### Architecture
 
-- [x] **Boundary integrity** — No changes leak logic across the 6 seams defined in `docs/architecture/boundaries.md`
-  - Verified: zero `fastapi`/`starlette` imports found in `lib/`. All route handlers delegate to `lib/` via `_get_services(request)`. Storage, analysis, and AI service modules remain decoupled.
+- [x] **Boundary integrity** — no logic leaks across the 7 seams in `boundaries.md`
+  - Verified: zero `fastapi`/`starlette` imports in `lib/`. `resolve_paradox()` lives in
+    `lib/paradoxes.py`, not in a route. The new `lib/prompt_templates.py` exists specifically
+    so `analysis.py` and `report_writer.py` do not import each other.
 
-- [x] **State orthogonality** — No module-level mutable state introduced in `lib/`; all new dependencies flow through constructor injection
-  - Verified: all module-level variables in `lib/` are constants (regex patterns, limits, frozen color values). New modules (`counterfactual.py`, `experiment_runner.py`, `comparison_report.py`, `report_writer.py`, `fingerprint.py`) all receive services via constructor. `AppServices` dataclass frozen after creation in lifespan.
+- [x] **State orthogonality** — no module-level mutable state introduced
+  - New caches (`read_prompt_template`) are `lru_cache` over pure reads, documented in
+    `state.md` alongside the existing paradox and report-prose caches.
 
-- [x] **Dependency audit** — No unauthorized packages added to `requirements.txt`; no violations of `docs/architecture/tech-stack.md` constraints
-  - `python-pptx` and `pytest-asyncio` now documented in `tech-stack.md` and annotated in `requirements.txt`.
-  - No forbidden technologies introduced (no Docker, no React, no build-step frontend).
+- [x] **Dependency audit** — no packages added. `pytest-asyncio` was already declared and is
+      now actually configured (`asyncio_mode = "auto"`).
 
 ### Verification
 
-- [x] **Tests pass** — `pytest tests/` exits 0 locally
-  - 123 passed, 0 failed, 1 warning (upstream pydyf deprecation).
-
-- [x] **Scope check** — `gitnexus_detect_changes()` confirms only expected symbols and execution flows were modified
-  - Branch vs `v5`: 487 symbols across 83 files — consistent with the 20-commit feature branch scope. All changes are within the n-choices feature set (multi-option paradoxes, PDF reporting, experiments, counterfactuals, fingerprinting, native PDF renderer).
+- [x] **Tests pass** — 164 passed, 0 failed, 1 warning (upstream pydyf deprecation)
+- [x] **Every fix has a regression test** — each defect is pinned by a test that fails
+      without the fix. D-01's and D-08's were both verified by reverting the fix and watching
+      the test fail.
+- [x] **End-to-end verified** — live instance serves `/`, `/experiments`, fingerprint
+      fragment, JSON export, and generates real single-run (61 KB) and comparison (78 KB) PDFs.
 
 ### Release
 
-- [x] **Architecture docs updated** — If any contract in `docs/architecture/` was affected, the relevant file is updated
-  - `boundaries.md`, `state.md`, `tech-stack.md`, `arch-decisions.md`, `execution-context.md` all match current implementation.
-
-- [x] **Release readiness** — One of: (a) fully released, (b) behind a documented feature flag with safe default, or (c) internal-only change — no flag needed
-  - `AI_CHOICE_INFERENCE_ENABLED` flag exists with safe default (`true`) and is documented in `arch-decisions.md` D6.
-  - 4 deferred security issues documented as accepted risks in `ROADMAP.md`.
+- [x] **Architecture docs updated** — D10 extended, D11 rewritten, D12 and D13 added;
+      `boundaries.md` gained Seam 5d; `state.md`, `execution-context.md`, `tech-stack.md` aligned.
+- [x] **Doc drift closed permanently** — `scripts/check_doc_claims.py` derives counts from the
+      repo and fails CI on disagreement. Two prior "align the docs" commits had left the docs
+      misaligned because alignment was reviewed rather than asserted.
 
 ### Cleanup
 
-- [x] **Working artifacts removed** — No scratch files, debug logs, or stale diffs in the tree
-  - `staged.diff` removed from tracking, added to `.gitignore` (file preserved locally).
-  - `n-plan.md` and `smells.md` deleted. Historical context preserved in git history.
+- [x] **Working artifacts removed** — no scratch files or stale diffs in the tree.
+
+---
+
+## Known Follow-Ups
+
+Not defects; tracked in `ROADMAP.md` §5. The dimension backfill is heuristic and wants a human
+review pass; the lint gate can widen further after a mechanical `--fix`; `main.py` still holds
+all 22 routes in one factory; `list_runs()` remains an O(n) directory scan.
 
 ---
 

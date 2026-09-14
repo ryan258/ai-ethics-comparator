@@ -51,6 +51,12 @@
 - The snapshot is taken while holding `state_lock` so concurrent iterations cannot
   persist a state that never existed
 
+## Blocking I/O Discipline
+- All filesystem access from async code goes through `run_in_executor` (`storage.py`) or a
+  process-lifetime cache (`prompt_templates.py`, `paradoxes.py`)
+- **Rule**: never call `open()` in an async function body. The `F,E9` lint gate does not catch
+  this; CI selects `ASYNC` as well, which does
+
 ## Path Traversal Defense (`lib/storage.py`)
 - `save_run()` (`storage.py`) validates the run ID BEFORE building a path — an
   unvalidated ID there is an arbitrary-file-write primitive

@@ -56,17 +56,27 @@ Open [http://localhost:8000](http://localhost:8000).
 ### Runs
 Execute a model against a paradox for N iterations. Each iteration captures the model's decision token, explanation, and raw output. Results are stored as `results/<run_id>.json` with aggregate statistics.
 
+**Option order is permuted per iteration by default.** Models favour first- and last-listed
+options, so a fixed order means the reported distribution carries uncontrolled position bias.
+Every response records the exact ordering it was shown under `optionOrder`, and answers are
+translated back to canonical option IDs before aggregation. Turn it off per run with
+`shuffleOptions: false` when you specifically want to measure ordering effects.
+
 ### Analysis
 LLM-powered insight generation identifies moral complexes, decision quality, paradox severity, and the model's ethical strategy. Results are cached in the run file. Analyst model is configurable per request.
 
 ### Counterfactuals
-Take an existing run and inject evidence ("what would change your mind?") to produce a new run. Preserves option shuffle order for comparison validity.
+Take an existing run and inject evidence ("what would change your mind?") to produce a new run. Holds option order fixed so injected evidence is the only variable.
 
 ### Experiments
 Define a matrix of paradoxes and conditions (different models, parameters, system prompts), then execute them in parallel. Track status, errors, and per-condition results.
 
 ### Fingerprinting
-Aggregate all runs for a given model to build an ethics profile: moral complex frequencies with Wilson confidence intervals across all paradoxes tested.
+Aggregate all runs for a given model to build an ethics profile. Each dimension reports
+**dominance** — the share of runs in which that moral complex led the model's reasoning,
+with a Wilson confidence interval — plus **intensity share**, its portion of all reasoning
+weight the analyst assigned. Dominance is measured, not merely detected: counting a complex
+as present saturates near 100% for every model and tells you nothing.
 
 ### Reporting
 - **PDF** — single-run reports with distribution charts, insight analysis, and AI narrative
@@ -144,7 +154,7 @@ uv run pytest
 - `uv run ...` is the supported way to invoke project tools.
 - After dependency changes, run `uv lock`.
 
-123 tests across 21 modules:
+164 tests across 26 modules:
 
 | Module | Covers |
 |--------|--------|
@@ -169,6 +179,11 @@ uv run pytest
 | `test_storage_guards.py` | Run ID write validation, metadata cache |
 | `test_stats.py` | Statistical functions (normal CDF, Wilson CI, Cohen's h, Chi-square) |
 | `test_json_extract.py` | JSON recovery from model output (direct, fenced, wrapped prose) |
+| `test_paradox_resolution.py` | D11 three-tier paradox resolution across every consumer |
+| `test_position_bias.py` | Per-iteration option permutation and un-shuffling |
+| `test_fingerprint.py` | Intensity-weighted dominance, cross-model separation |
+| `test_paradox_dimensions.py` | Closed dimension vocabulary, saturation guard |
+| `test_run_json_dump_escaping.py` | Model output never reaches the DOM as markup |
 
 ## Repository Layout
 
@@ -196,17 +211,20 @@ lib/
   export_data.py         JSON export formatter
   export_pptx.py         PowerPoint generation
   json_extract.py        JSON recovery from model output
+  prompt_templates.py    Cached prompt-template reader
   query_errors.py        Typed exception hierarchy + safe error messages
   executive_reporting/   Reusable brief engine, renderer, and plugins
 templates/               Jinja2 views and partials
 static/                  Candlelight theme CSS
-tests/                   pytest suite (123 tests)
+tests/                   pytest suite (164 tests)
 tests/fixtures/          Frozen paradoxes + overrides for report-rendering tests
-paradoxes.json           Scenario library (197 paradoxes)
+paradoxes.json           Scenario library (197 paradoxes, each tagged with `dimensions`)
 models.json              Available model definitions
 report_overrides.json    Per-paradox executive report prose
 report_themes.json       Per-theme deployment guidance
 ROADMAP.md               Project roadmap and milestones
+scripts/                 Doc-claim checker, dimension backfill, PDF smoke test
+.github/workflows/ci.yml Lint + tests + doc-claim gate
 docs/architecture/       Boundary, state, and tech-stack contracts
 results/                 Persisted run output (gitignored)
 experiments/             Persisted experiments (gitignored)
@@ -219,6 +237,8 @@ Each run file (`results/<run_id>.json`) includes:
 - **Identity:** `runId`, `timestamp`, `modelName`, `paradoxId`, `paradoxType`
 - **Scenario snapshot:** `paradoxTitle` + `paradox` (full definition, deep-copied at run
   creation) so reports never depend on `paradoxes.json` staying unchanged — see D11
+- **Option order:** `shufflePerIteration` flag; each response carries the `optionOrder`
+  mapping it was shown
 - **Config:** `prompt`, optional `systemPrompt`, `iterationCount`, `params`
 - **Options:** `options[]` with id, description, and shuffle mapping
 - **Responses:** `responses[]` with decision token, explanation, raw output per iteration

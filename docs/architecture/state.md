@@ -46,6 +46,14 @@
 - **Mutation**: set to `False` when a provider rejects `response_format`, then reused
 - **Risk**: a provider that gains structured-output support mid-process stays downgraded until restart
 
+### `read_prompt_template`: `lru_cache(8)` (prompt_templates.py)
+- **Scope**: caches prompt-template file contents by path for the process lifetime
+- **Why**: `analysis.py` and `report_writer.py` re-read their templates inside async request
+  handlers on EVERY call, putting blocking disk I/O on the event loop
+- **Risk**: editing a prompt template requires a restart — call `clear_prompt_template_cache()`
+- **Rule**: `analysis.py` and `report_writer.py` both depend on this module and NOT on each
+  other; the shared helper exists so neither imports the other
+
 ### `lib/report_prose` caches: `lru_cache(1)`
 - `_load_report_overrides()` and `_load_theme_guidance()` cache their JSON for the process lifetime
 - **Risk**: editing `report_overrides.json` / `report_themes.json` requires a restart

@@ -1,6 +1,6 @@
 # AI Ethics Comparator Handbook
 
-Last updated: 2026-09-14
+Last updated: 2026-09-14 (post-audit remediation)
 
 This handbook explains how to use the current FastAPI + HTMX application for trolley-style ethical experiments.
 
@@ -77,6 +77,10 @@ The homepage has two main areas:
 - `AI Model (OpenRouter ID)`: select from dropdown options populated by `models.json`
 - `Persona (Prepended)`: optional text prepended to the prompt
 - `Iterations`: number of requests in a run (bounded by `MAX_ITERATIONS`)
+- `Option Order`: `Shuffle every iteration` (default) or `Fixed order`. Shuffling draws a
+  fresh option ordering for each iteration to neutralise position bias — models favour
+  first- and last-listed options. Choose `Fixed order` only when you are deliberately
+  measuring ordering effects.
 
 ### System Status
 
@@ -89,7 +93,8 @@ The homepage has two main areas:
 2. Choose a model from the dropdown.
 3. Optionally set a persona.
 4. Choose iteration count.
-5. Click `Run Experiment`.
+5. Leave `Option Order` on `Shuffle every iteration` unless you are studying ordering effects.
+6. Click `Run Experiment`.
 
 The new run appears at the top of `Results Stream`.
 
@@ -143,25 +148,51 @@ Every run record (`results/<run_id>.json`) includes:
 - `prompt`, optional `systemPrompt`
 - `iterationCount`, `params`
 - `options[]`
-- `responses[]`
+- `paradox` (full scenario snapshot) and `paradoxTitle`
+- `shufflePerIteration` when option order was permuted
+- `responses[]` — each with the `optionOrder` mapping it was shown
 - `summary.options[]` and `summary.undecided`
 - optional `insights[]`
 
 ## 9. API Endpoints
 
-- `GET /health`
+Pages
+- `GET /` — main UI
+- `GET /experiments` — experiment laboratory
+
+Runs
+- `POST /api/query` — execute a new run
+- `GET /api/runs` — list run metadata
+- `GET /api/runs/{run_id}` — fetch complete run data
+- `POST /api/runs/{run_id}/resume` — resume an interrupted run
+- `POST /api/runs/{run_id}/cancel` — cancel an active run
+- `POST /api/runs/{run_id}/counterfactual` — generate a counterfactual run
+
+Analysis
+- `POST /api/insight` — generate insight (non-persistent)
+- `POST /api/runs/{run_id}/analyze` — generate/regenerate stored insights
+
+Paradoxes
 - `GET /api/paradoxes`
 - `GET /api/fragments/paradox-details?paradoxId=...`
-- `POST /api/query`
-- `GET /api/runs`
-- `GET /api/runs/{run_id}`
-- `POST /api/insight`
-- `POST /api/runs/{run_id}/analyze`
-- `GET /api/runs/{run_id}/pdf`
+
+Experiments
+- `POST /api/experiments`, `GET /api/experiments`
+- `GET /api/experiments/{exp_id}`, `POST /api/experiments/{exp_id}/execute`
+
+Fingerprinting
+- `GET /api/models/{model_id}/fingerprint`
+- `GET /fragments/fingerprint?model_id=...`
+
+Export
+- `GET /api/runs/{run_id}/pdf` — single-run PDF
+- `GET /api/compare/pdf?run_ids=a,b` — comparison PDF (2-4 runs)
+- `GET /api/runs/{run_id}/export?format=json|pptx`
+
+System
+- `GET /health`
 
 ## 10. Testing
-
-Minimal pytest suite is included under `tests/`.
 
 Run:
 
@@ -169,12 +200,18 @@ Run:
 uv run pytest
 ```
 
-Coverage focus today:
+164 tests across 26 modules. CI (`.github/workflows/ci.yml`) additionally runs
+`uvx ruff check --select F,E9,ASYNC .` and `scripts/check_doc_claims.py`, which fails the
+build if this handbook or the README quotes a test or scenario count that is no longer true.
 
-- startup health and version header
-- strict run ID validation
-- legacy run ID migration
-- escaped analysis error rendering
+Coverage focus:
+
+- startup, health, version header, strict run ID validation and migration
+- run execution budgets (re-ask / provider retry caps, progress persistence)
+- option permutation and un-shuffling (position bias)
+- three-tier paradox resolution across every consumer
+- fingerprint dominance weighting and cross-model separation
+- report rendering security (autoescape, blocked URL fetcher, DOM text swap)
 
 ## 11. Troubleshooting
 
@@ -211,7 +248,11 @@ Recommended baseline:
 - use at least 20 iterations for meaningful proportions
 - keep persona prompts concise and intentional
 - compare runs by changing one variable at a time
-- preserve run JSONs for reproducibility and audit
+- leave option shuffling on; a fixed order confounds the distribution with position bias
+- preserve run JSONs for reproducibility and audit — each response records the exact option
+  ordering the model was shown, so a result can be re-derived after the library moves on
+- fingerprints need analysed runs: dominance is computed from stored insights, so generate
+  analysis for a run before expecting it to show up in a model's profile
 
 ## 13. Security Notes
 
