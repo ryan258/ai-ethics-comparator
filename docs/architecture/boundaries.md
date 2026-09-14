@@ -34,7 +34,7 @@
 - **Contract**: `parse_trolley_response(text, option_count)` returns `{decisionToken, optionId, explanation}`
 - `optionId` is `int | None` — never a string — callers MUST handle `None` (undecided)
 - Fallback chain: JSON parse → brace-token regex → heuristic NLP → AI classifier → `None`
-- Re-ask loop: hard-capped at `max_reasks_per_iteration` (enforced, `query_processor.py:1010`).
+- Re-ask loop: hard-capped at `max_reasks_per_iteration` (enforced in `run_iteration()`, `query_processor.py`).
   On exhaustion the iteration is recorded as undecided with an `error` key.
 - JSON recovery is shared: `lib/json_extract.extract_json_object()` is the single
   implementation — do NOT add a per-module copy
@@ -56,6 +56,15 @@
   portable — do NOT reach for repo layout from inside a resolver
 - Placeholders available to override templates: `response_count`, `temperature_value`,
   `reliability_label`, `option_<1-4>_count`, `option_<1-4>_share`, `cluster_count`, `cluster_share`
+
+## Seam 5c: Stored Run ↔ Paradox Definition
+- **Contract**: a run record is self-describing. `paradoxTitle` and a full `paradox` deep copy
+  are written by `initialize_run_data()` and are the run's own property, not a live lookup
+- **Rule**: routes MUST resolve a paradox as live library → `run_data["paradox"]` →
+  reconstruction from `prompt`/`options`. Returning 404 because tier 1 missed is a regression
+  (see D11)
+- **Rule**: report builders receive a resolved paradox dict — they MUST NOT read
+  `paradoxes.json` themselves
 
 ## Seam 6: View Models ↔ Templates
 - **Contract**: `RunViewModel.build(run_data, paradox)` → flat dict with pre-rendered HTML

@@ -11,7 +11,7 @@
   run records. `query_errors.safe_error_message()` is the single mapper — `lastError` is served
   verbatim by `GET /api/runs/{run_id}`, so it takes the category, never `str(exc)`
 - `analyze_run` returns error partial with `status_code=200` (HTMX compat); the partial shows a
-  category message from `safe_error_message()` (`query_errors.py:64`), never `str(exc)`
+  category message from `safe_error_message()` (`query_errors.py`), never `str(exc)`
 - `/api/query` maps typed `lib/query_errors` exceptions, NOT error strings:
   `AuthenticationError` → 401, `QuotaError` → 402, `ModelNotFoundError` → 404,
   `QueryExecutionError` → 502
@@ -21,10 +21,10 @@
   and connection/network errors
 - NO retry on: 401, 402, 403, 404 — these are terminal
 - NO retry on `InvalidModelOutputError` — unusable output is a parsing concern, not transport.
-  The caller catches it explicitly (`query_processor.py:903`) and spends the **re-ask** budget on a
+  The caller catches it explicitly in `run_iteration()` (`query_processor.py`) and spends the **re-ask** budget on a
   corrected prompt. It must never fall through to the provider-retry branch: that re-sends the same
   prompt and its exhaustion raises, failing the whole run instead of recording one undecided iteration.
-- Backoff: `_backoff_delay()` (`ai_service.py:80`) — exponential with jitter so concurrent
+- Backoff: `_backoff_delay()` (`ai_service.py`) — exponential with jitter so concurrent
   iterations do not retry in lockstep
 - **Rule**: classify errors by exception type, not by substring-matching the message
 - Max attempts: `config.AI_MAX_RETRIES` (default 5)
@@ -33,14 +33,14 @@
 ## Iteration Bounds (`lib/query_processor.py`)
 - There is NO wall-clock timeout on a run. Every loop is bounded by an explicit attempt budget:
   - re-asks for unusable output — including an empty provider response: `max_reasks_per_iteration`
-    (default 2), enforced at `query_processor.py:1010`
+    (default 2), enforced in `run_iteration()` (`query_processor.py`)
   - provider retries inside one iteration: `max_provider_retries_per_iteration` (default 3)
   - transport retries inside one call: `config.AI_MAX_RETRIES` (default 5)
 - **Rule**: every retry loop MUST have a counter checked against a cap. An unbounded
   re-ask loop bills the provider forever.
 - Exhausting the re-ask budget records a structured response with `optionId: None` and an
   `error` key; it counts as undecided in the summary
-- `gather(..., return_exceptions=True)` (`query_processor.py:1048`) so one terminal failure
+- `gather(..., return_exceptions=True)` (`query_processor.py`) so one terminal failure
   cannot orphan sibling iterations; the first exception is re-raised after all tasks settle
 - **Rule**: a failed iteration produces a structured error dict or a raised exception — never silently dropped
 
@@ -52,7 +52,7 @@
   persist a state that never existed
 
 ## Path Traversal Defense (`lib/storage.py`)
-- `save_run()` (`storage.py:239`) validates the run ID BEFORE building a path — an
+- `save_run()` (`storage.py`) validates the run ID BEFORE building a path — an
   unvalidated ID there is an arbitrary-file-write primitive
 - `get_run()` resolves both flat and legacy paths, then asserts `is_relative_to(results_root)`
 - `get_experiment()` performs same check against `experiments_root`
@@ -78,7 +78,7 @@
 ## XSS Defense + Defensive Data Handling
 - Web UI: `safe_markdown()` escapes HTML → renders markdown → strips `<a>`/`<img>` tags
 - PDF reports: both Jinja environments are built with `autoescape=True`
-  (`engine.py:93`, `renderer.py:58`), and WeasyPrint is given `blocked_url_fetcher`
+  (`engine.py`, `renderer.py`), and WeasyPrint is given `blocked_url_fetcher`
 - **Rule**: NEVER render model text into a report template without autoescape. WeasyPrint
   resolves any URL it finds — including `file://` — so unescaped model output is an
   arbitrary-file-read and SSRF primitive, not just a cosmetic bug.

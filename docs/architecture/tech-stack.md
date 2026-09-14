@@ -4,19 +4,19 @@
 - Python 3.12+ managed with `uv`
 - No Docker, k8s, or Terraform — bare-metal / uv-managed virtualenv only
 - No React or build-step frontend — server-rendered Jinja2 + HTMX
-- OS: POSIX assumed for atomic file creation (`os.link` / `open(..., 'x')` in `storage.py:151`)
+- OS: POSIX assumed for atomic file creation — `RunStorage.create_run()` uses `os.link` / `open(..., 'x')` (`storage.py`)
 
 ## Dependency Source Of Truth (`pyproject.toml` + `uv.lock`)
 - `fastapi` — ASGI framework, app-factory pattern
-- `uvicorn` — ASGI server (`main.py:1066`)
+- `uvicorn` — ASGI server (`main.py`)
 - `pydantic` — validation layer (`lib/validation.py`), config (`lib/config.py`)
-- `openai` — AsyncOpenAI client targeting OpenRouter (`lib/ai_service.py:71`)
+- `openai` — AsyncOpenAI client targeting OpenRouter (`lib/ai_service.py`)
 - `weasyprint==61.2` — the ONLY HTML-to-PDF renderer. No fallback backend exists; if its native
   GTK/Pango libs are missing, PDF routes return 503 (see D10)
 - `pydyf>=0.8,<0.11` — pinned below 0.11 because WeasyPrint 61.2 is incompatible with newer `pydyf` releases
 - `jinja2` + `markupsafe` — template rendering + XSS-safe markup
-- `markdown` — server-side markdown rendering in `safe_markdown` (`lib/view_models.py:16`)
-- `python-dotenv` — `.env` loading at import time (`main.py:48`)
+- `markdown` — server-side markdown rendering in `safe_markdown` (`lib/view_models.py`)
+- `python-dotenv` — `.env` loading at import time (`main.py`)
 - `httpx` — explicit runtime dependency used by the OpenAI SDK and test client stack
 - `python-multipart` — form data parsing for HTMX POST endpoints
 - `python-pptx` — PowerPoint export for run data (`lib/export_pptx.py`)
