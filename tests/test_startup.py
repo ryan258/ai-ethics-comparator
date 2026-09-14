@@ -7,6 +7,12 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from lib.config import AppConfig
+
+# Assert against the source of truth, not a literal: hardcoding the version
+# meant every release bump broke these two tests for no useful reason.
+EXPECTED_VERSION = AppConfig.model_fields["VERSION"].default
+
 
 def test_startup_reports_healthy_state(client) -> None:
     health = client.get("/health")
@@ -14,13 +20,13 @@ def test_startup_reports_healthy_state(client) -> None:
 
     payload = health.json()
     assert payload["status"] == "healthy"
-    assert payload["version"] == "6.0.0"
+    assert payload["version"] == EXPECTED_VERSION
 
 
 def test_version_header_is_attached(client) -> None:
     response = client.get("/")
     assert response.status_code == 200
-    assert response.headers["X-App-Version"] == "6.0.0"
+    assert response.headers["X-App-Version"] == EXPECTED_VERSION
 
 
 def test_choice_inference_enabled_by_default(client) -> None:

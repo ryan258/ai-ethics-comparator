@@ -1,7 +1,7 @@
 
 [project]
 name = "ai-ethics-comparator"
-version = "6.0.0"
+version = "6.1.0"
 description = "Local-first research tool for repeated LLM ethics experiments and executive brief generation."
 requires-python = ">=3.12"
 dependencies = [

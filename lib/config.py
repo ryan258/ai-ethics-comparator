@@ -115,7 +115,7 @@ def _env_choice(name: str, default: str, allowed: set[str]) -> str:
 class AppConfig(BaseModel):
     # App Identity
     APP_NAME: str = "AI Ethics Comparator"
-    VERSION: str = "6.0.0"
+    VERSION: str = "6.1.0"
 
     # AI Service Config
     AI_CONCURRENCY_LIMIT: int = Field(default_factory=lambda: _env_int("AI_CONCURRENCY_LIMIT", 2, minimum=1))

@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main, v5]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      # WeasyPrint's CFFI bindings need the native GTK/Pango stack. Without it
+      # the PDF tests skip silently, which is exactly the gap D10 warns about.
+      - name: Install WeasyPrint native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0
+
+      - run: uv sync --all-extras --dev
+
+      # ASYNC catches blocking I/O on the event loop, which the narrower F,E9
+      # gate missed entirely. Widening further (S, UP, I) needs a noqa pass
+      # first -- see ROADMAP.
+      - name: Lint
+        run: uvx ruff check --select F,E9,ASYNC .
+
+      - name: Tests
+        run: uv run pytest -q
+
+      # The docs make checkable numeric claims. Drift is what these commits keep
+      # reintroducing, so assert them rather than trusting a review pass.
+      - name: Doc claims match reality
+        run: uv run python scripts/check_doc_claims.py
