@@ -217,6 +217,8 @@ experiments/             Persisted experiments (gitignored)
 Each run file (`results/<run_id>.json`) includes:
 
 - **Identity:** `runId`, `timestamp`, `modelName`, `paradoxId`, `paradoxType`
+- **Scenario snapshot:** `paradoxTitle` + `paradox` (full definition, deep-copied at run
+  creation) so reports never depend on `paradoxes.json` staying unchanged — see D11
 - **Config:** `prompt`, optional `systemPrompt`, `iterationCount`, `params`
 - **Options:** `options[]` with id, description, and shuffle mapping
 - **Responses:** `responses[]` with decision token, explanation, raw output per iteration
@@ -231,6 +233,12 @@ Each run file (`results/<run_id>.json`) includes:
 - Markdown rendering escapes HTML before render, strips `<a>`/`<img>` post-render
 - Input validation via Pydantic at all HTTP boundaries
 - Model names regex-validated: `^[a-z0-9\-_/:.]+$`
+
+## Report Resilience
+
+Editing or replacing `paradoxes.json` does not orphan stored runs. Paradoxes resolve in three
+tiers — live library, then the run's own snapshot, then reconstruction from the run's stored
+`prompt` and `options`. Every historical run stays exportable. See `docs/architecture/arch-decisions.md` D11.
 
 ## Config Source Priority (models)
 

@@ -1,6 +1,6 @@
 # AI Ethics Comparator Handbook
 
-Last updated: 2026-02-05
+Last updated: 2026-09-14
 
 This handbook explains how to use the current FastAPI + HTMX application for trolley-style ethical experiments.
 
@@ -24,7 +24,7 @@ Current scope:
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.12+ (managed with `uv`)
 - OpenRouter API key
 
 ### Setup

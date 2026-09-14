@@ -1,7 +1,10 @@
 # UPDATE-IDEAS — Turning AI Ethics Comparator into a Comprehensive Tool for AI Professionals
 
-Last updated: 2026-07-10
-Based on: full project review at commit `d9361a5` + uncommitted resume/cancel work.
+Last updated: 2026-09-14
+Based on: full project review at v6.0.0 consolidation.
+
+> **Status note:** items marked **[DONE — v6.0.0]** shipped in the consolidation release.
+> They are kept here so the reasoning behind each change stays on record.
 
 All proposals respect the hard constraints in `docs/architecture/tech-stack.md`:
 Python 3.12 + uv, FastAPI + HTMX (no build step), flat JSON storage, OpenRouter
@@ -13,9 +16,9 @@ as the AI provider, no Docker/React/heavy auth.
 
 **What works well**
 
-- Clean seams: thin routes → `lib/` services → storage, enforced by architecture docs and 95 passing tests (4s runtime).
+- Clean seams: thin routes → `lib/` services → storage, enforced by architecture docs and 123 passing tests (~4s runtime).
 - Strong parsing pipeline: JSON → brace-token regex → heuristic → AI classifier fallback chain, with re-ask logic and refusal detection.
-- Real statistical grounding exists (`lib/stats.py`: Wilson CI, chi-square, Cohen's h, bootstrap) — but most of it is **unused**.
+- Real statistical grounding exists (`lib/stats.py`: Wilson CI, chi-square, Cohen's h) and is now **wired into the comparison report**. The unused `bootstrap_consistency()` was deleted rather than left to rot.
 - Fingerprinting + counterfactuals + experiment matrix are genuinely differentiating features most eval tools don't have.
 - Security posture is above average for a local tool (strict run IDs, path traversal checks, escaped markdown, Pydantic at boundaries).
 
@@ -58,10 +61,10 @@ Each idea: **Problem → Proposal → Effort** (S = hours, M = days, L = week+).
 
 ### Theme 2: Statistical Rigor (credibility for professionals)
 
-#### 2.1 Wire the unused stats into comparison reports
-- **Problem**: `lib/stats.py` docstring admits chi-square, bootstrap consistency, and Cohen's h are "currently unused." Comparison PDFs show raw percentages, which invites over-reading noise.
-- **Proposal**: In `lib/comparison_report.py`, when comparing 2 runs on the same paradox: run `chi_square_test()` on the distributions, `cohens_h()` on the top option, and print "difference is/is not statistically significant (p=…)" in the PDF. Same numbers in the JSON export.
-- **Effort**: S — the functions exist; this is plumbing.
+#### 2.1 Wire the unused stats into comparison reports — **[DONE — v6.0.0]**
+- **Was**: `lib/stats.py` chi-square, bootstrap, and Cohen's h were unused. Comparison PDFs showed raw percentages, inviting over-reading of noise.
+- **Shipped**: `lib/comparison_report.py` now calls `chi_square_test()`, `cohens_h()`, and `wilson_confidence_interval()`; `templates/reports/comparison_report.html` renders χ², the p-value, a significance verdict, any small-sample warning, and per-option effect sizes. `bootstrap_consistency()` was deleted instead of wired.
+- **Still open**: the same numbers are not in the `?format=json` export, and the single-run brief does not show confidence intervals.
 
 #### 2.2 Iteration-count guidance (power analysis)
 - **Problem**: Users guess iteration counts. 10 iterations gives ±30% CIs; conclusions drawn from that are weak.
@@ -146,9 +149,10 @@ Each idea: **Problem → Proposal → Effort** (S = hours, M = days, L = week+).
 - **Proposal**: Maintain `results/_index.json` (metadata-only: id, model, paradox, timestamp, status, summary counts), updated by `RunStorage.save_run()`, rebuilt on startup if missing/stale. Keeps the "flat JSON, no database" constraint while making listing O(1) file reads. If it ever falls short, SQLite (stdlib) is the escalation path — but don't start there.
 - **Effort**: S–M
 
-#### 6.2 Finish and commit the resume/cancel work
-- **Problem**: The working tree has good uncommitted work: interrupted-run marking (fixing a boot-loop bug), `/resume` and `/cancel` endpoints, provider retry caps, `ProviderRefusedError`. Uncommitted = at risk, and `cancel` has no UI affordance yet.
-- **Proposal**: Add tests for resume/cancel routes (the pattern in `tests/test_startup.py` extends naturally), wire a cancel button into `result_item.html` for running runs, commit.
+#### 6.2 Finish the resume/cancel work — **[PARTIALLY DONE — v6.0.0]**
+- **Shipped**: interrupted-run marking (fixes the boot-loop bug), `POST /api/runs/{id}/resume`, `POST /api/runs/{id}/cancel`, provider retry caps, and `ProviderRefusedError` are all committed and documented in the README API table.
+- **Still open**: neither route has a dedicated test — `tests/test_query_processor.py::test_query_processor_resumes_from_existing_run` covers the processor's resume path, not the HTTP routes. And `cancel` still has no UI affordance; `templates/partials/result_item.html` has no cancel button, so the endpoint is API-only.
+- **Proposal**: add route tests following the `tests/test_startup.py` TestClient pattern, and wire a cancel button into `result_item.html` for runs in `running` state.
 - **Effort**: S
 
 #### 6.3 Cost & token accounting
