@@ -3,7 +3,11 @@
 ## Seam 1: HTTP Layer ↔ Business Logic
 - **Contract**: `main.py` routes are THIN — validate input, delegate to `lib/`, format response
 - Routes MUST call `_get_services(request)` to access initialized services — never import lib singletons
-- Pydantic models in `lib/validation.py` are the SOLE input gate for `POST` endpoints
+- Pydantic models in `lib/validation.py` are the SOLE input gate for `POST` JSON bodies
+- `lib/validation.py` validates SHAPE ONLY — it MUST NOT import `lib/query_processor` or build
+  business objects. `ConditionConfig` → `RunConfig` conversion lives in
+  `experiment_runner.condition_to_run_config()`
+- Query-parameter endpoints (`/api/compare/pdf`) validate inline in the route
 - `QueryRequest` → `RunConfig` conversion happens in the route, not in `lib/`
 - HTMX requests (`HX-Request` header) return template partials; JSON clients get raw dicts
 - Routes MUST NOT contain business logic, aggregation, or AI calls directly
@@ -13,7 +17,9 @@
 - Inputs: `(model_name: str, prompt: str, system_prompt: str, params: dict)`
 - Outputs: `Tuple[str, Dict[str, int]]` — `(response_text, usage_dict)` — always
 - AIService handles retries internally — callers MUST NOT implement retry logic
-- Error contract: raises `Exception` with `[status_code]` prefix for HTTP errors
+- Error contract: raises a typed exception from `lib/query_errors`. Anything deriving from
+  `RetryableQueryError` may be retried by the caller; everything else is terminal.
+  Callers MUST branch on the exception type, never on the message text.
 - All `lib/` modules receive `AIService` via constructor injection — never instantiate it
 
 ## Seam 3: Business Logic ↔ Storage
@@ -28,7 +34,10 @@
 - **Contract**: `parse_trolley_response(text, option_count)` returns `{decisionToken, optionId, explanation}`
 - `optionId` is `int | None` — never a string — callers MUST handle `None` (undecided)
 - Fallback chain: JSON parse → brace-token regex → heuristic NLP → AI classifier → `None`
-- Re-ask loop: up to `max_reasks_per_iteration` retries before fallback inference
+- Re-ask loop: hard-capped at `max_reasks_per_iteration` (enforced, `query_processor.py:1010`).
+  On exhaustion the iteration is recorded as undecided with an `error` key.
+- JSON recovery is shared: `lib/json_extract.extract_json_object()` is the single
+  implementation — do NOT add a per-module copy
 - `render_options_template()` always appends `_strict_single_choice_contract` to prompts
 
 ## Seam 5: Analysis Engine ↔ Insight Schema
@@ -37,8 +46,20 @@
 - Required structured keys: `dominant_framework`, `moral_complexes`, `justifications`, `consistency`, `key_insights`
 - Missing keys → automatic fallback to `{"legacy_text": ...}` — templates handle both
 
+## Seam 5b: Report Context ↔ Scenario Prose
+- **Contract**: scenario-specific report prose lives in `report_overrides.json`, keyed by paradox ID
+- Theme deployment guidance lives in `report_themes.json`, keyed by rationale-theme label
+- **Rule**: NEVER add `if paradox_id == "..."` branches to `lib/reporting.py` — adding a
+  scenario is a data change
+- Resolution lives in `lib/report_prose.py`, not `lib/reporting.py`. Both file paths are
+  parameters (`ReportGenerator(overrides_path=..., themes_path=...)`) so the module stays
+  portable — do NOT reach for repo layout from inside a resolver
+- Placeholders available to override templates: `response_count`, `temperature_value`,
+  `reliability_label`, `option_<1-4>_count`, `option_<1-4>_share`, `cluster_count`, `cluster_share`
+
 ## Seam 6: View Models ↔ Templates
 - **Contract**: `RunViewModel.build(run_data, paradox)` → flat dict with pre-rendered HTML
-- Templates MUST NOT access raw run data except through `_raw_run` escape hatch
+- Templates MUST NOT access raw run data — the view model is the only surface
 - `safe_markdown()` escapes HTML BEFORE rendering markdown — `|safe` is NEVER used on user input
+- PDF report templates rely on `autoescape=True` plus a blocking WeasyPrint `url_fetcher`
 - View models strip `<a>` and `<img>` tags post-render for XSS hardening

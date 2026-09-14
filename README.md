@@ -11,9 +11,9 @@ Run any OpenRouter model against ethical paradoxes (2-4 options each), repeat ac
 - **Backend:** FastAPI (app-factory pattern)
 - **Templates:** Jinja2 + HTMX (no build step)
 - **AI provider:** OpenRouter via AsyncOpenAI
-- **Reports:** WeasyPrint PDF, native PDF fallback, PowerPoint export
+- **Reports:** WeasyPrint PDF (no fallback backend — 503 when its native libs are missing), PowerPoint export
 - **Storage:** flat JSON files (no database)
-- **Python:** 3.12, managed with `uv`
+- **Python:** >=3.12, managed with `uv`
 
 ## Quick Start
 
@@ -88,6 +88,8 @@ Aggregate all runs for a given model to build an ethics profile: moral complex f
 | POST | `/api/query` | Execute a new run |
 | GET | `/api/runs` | List run metadata |
 | GET | `/api/runs/{run_id}` | Fetch complete run data |
+| POST | `/api/runs/{run_id}/resume` | Resume an interrupted or failed run |
+| POST | `/api/runs/{run_id}/cancel` | Cancel an active run |
 | POST | `/api/runs/{run_id}/counterfactual` | Generate counterfactual run |
 
 ### Analysis & Insights
@@ -142,16 +144,21 @@ uv run pytest
 - `uv run ...` is the supported way to invoke project tools.
 - After dependency changes, run `uv lock`.
 
-73 tests across 13 modules:
+123 tests across 21 modules:
 
 | Module | Covers |
 |--------|--------|
 | `test_startup.py` | App initialization, health endpoint |
 | `test_query_processor.py` | Option rendering, strict single-choice contract |
-| `test_reporting.py` | PDF generation, native fallback |
+| `test_run_execution_limits.py` | Re-ask/provider budgets, progress persistence, failure surfacing |
+| `test_reporting.py` | PDF generation, brief-first rendering, scenario prose |
+| `test_report_rendering_security.py` | Report autoescape + blocked URL fetcher |
+| `test_executive_reporting.py` | Report engine wiring, WeasyPrint runtime |
+| `test_executive_briefing.py` | Brief composition and rendering |
+| `test_executive_component.py` | Reusable brief component contract |
 | `test_experiment_runner.py` | Condition config, experiment execution |
 | `test_counterfactual.py` | Shuffle-aware option reconstruction |
-| `test_config.py` | Environment variable parsing |
+| `test_config.py` | Environment variable parsing and bounds |
 | `test_ai_service.py` | Model response handling, refusal detection |
 | `test_analysis_scoring.py` | Reasoning quality scoring |
 | `test_analysis_error_render.py` | Error HTML escaping |
@@ -159,6 +166,9 @@ uv run pytest
 | `test_model_fingerprint_routes.py` | Fingerprint endpoint validation |
 | `test_run_id_validation.py` | Run ID format enforcement |
 | `test_run_id_migration.py` | Legacy-to-strict ID migration |
+| `test_storage_guards.py` | Run ID write validation, metadata cache |
+| `test_stats.py` | Statistical functions (normal CDF, Wilson CI, Cohen's h, Chi-square) |
+| `test_json_extract.py` | JSON recovery from model output (direct, fenced, wrapped prose) |
 
 ## Repository Layout
 
@@ -178,19 +188,25 @@ lib/
   experiment_runner.py   Parallel experiment execution
   fingerprint.py         Model ethics profiling
   reporting.py           PDF report orchestration
-  pdf_native.py          Pure-Python PDF fallback
-  pdf_charts.py          Chart rendering for reports
+  report_prose.py        Rationale themes + scenario prose resolution
+  pdf_charts.py          Inline SVG charts for reports
   comparison_report.py   Multi-run PDF layout
   report_models.py       Typed report context schemas
   report_writer.py       AI narrative generation
   export_data.py         JSON export formatter
   export_pptx.py         PowerPoint generation
-  query_errors.py        Typed exception hierarchy
+  json_extract.py        JSON recovery from model output
+  query_errors.py        Typed exception hierarchy + safe error messages
+  executive_reporting/   Reusable brief engine, renderer, and plugins
 templates/               Jinja2 views and partials
 static/                  Candlelight theme CSS
-tests/                   pytest suite (73 tests)
-paradoxes.json           Scenario library (47 paradoxes)
+tests/                   pytest suite (123 tests)
+tests/fixtures/          Frozen paradoxes + overrides for report-rendering tests
+paradoxes.json           Scenario library (197 paradoxes)
 models.json              Available model definitions
+report_overrides.json    Per-paradox executive report prose
+report_themes.json       Per-theme deployment guidance
+ROADMAP.md               Project roadmap and milestones
 docs/architecture/       Boundary, state, and tech-stack contracts
 results/                 Persisted run output (gitignored)
 experiments/             Persisted experiments (gitignored)

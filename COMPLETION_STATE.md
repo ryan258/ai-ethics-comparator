@@ -1,8 +1,8 @@
 # Completion State
 
-**Branch:** `n-choices` (20 commits ahead of `v5`)
-**Assessed:** 2026-03-31
-**GitNexus scope:** 1,259 symbols, 3,894 relationships, 108 execution flows (re-indexed at HEAD)
+**Branch:** `main` (v6.0.0 consolidation)
+**Assessed:** 2026-09-14
+**Test Suite:** 123 passed across 21 modules, ruff --select F,E9 clean
 
 ---
 
@@ -10,12 +10,11 @@
 
 All items resolved. Ready for sign-off.
 
-~1. **Uncommitted `models.json` change**~ — Staged for commit.
-~2. **Undocumented dependencies**~ — `python-pptx` and `pytest-asyncio` added to `tech-stack.md` and annotated in `requirements.txt`.
-~3. **Pydantic deprecation warnings**~ — All 3 classes migrated from `class Config` to `model_config = ConfigDict(...)`. 73 tests pass, 0 warnings.
-~4. **`staged.diff` committed to repo**~ — Removed from git tracking, added to `.gitignore`. File preserved locally.
-~5. **Skipped security issues**~ — All 4 documented as accepted risks in `ROADMAP.md` under new "Accepted Risks" section.
-~6. **GitNexus index stale**~ — Re-indexed. 1,259 nodes, 3,894 edges, 108 flows.
+- [x] **Native PDF fallback purged** — 1445 lines of unmaintained pure-Python PDF layout removed (Decision D10).
+- [x] **Executive reporting decoupled** — Scenario prose moved to data files (`report_overrides.json`, `report_themes.json`).
+- [x] **Paradox library merged** — 197 total scenarios (70 2-option, 2 3-option, 125 4-option), full run backward compatibility restored.
+- [x] **Security hardened** — Report templates autoescaped, WeasyPrint URL fetcher blocked against SSRF/file-read.
+- [x] **Bounds & Retries hardened** — Unusable model output spends re-ask budget and degrades to undecided; memory cache bounded to 5000 entries.
 
 ---
 
@@ -36,7 +35,7 @@ All items resolved. Ready for sign-off.
 ### Verification
 
 - [x] **Tests pass** — `pytest tests/` exits 0 locally
-  - 73 passed, 0 failed, 0 warnings.
+  - 123 passed, 0 failed, 1 warning (upstream pydyf deprecation).
 
 - [x] **Scope check** — `gitnexus_detect_changes()` confirms only expected symbols and execution flows were modified
   - Branch vs `v5`: 487 symbols across 83 files — consistent with the 20-commit feature branch scope. All changes are within the n-choices feature set (multi-option paradoxes, PDF reporting, experiments, counterfactuals, fingerprinting, native PDF renderer).

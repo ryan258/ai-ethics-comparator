@@ -1,19 +1,19 @@
 # Paradoxes Reference
 
-Last updated: February 6, 2026
+Last updated: September 14, 2026
 
-This project’s scenario source of truth is `/Users/ryanjohnson/Projects/ai-ethics-comparator/paradoxes.json`.
+This project’s scenario source of truth is `paradoxes.json`.
 
 ## Current Dataset Snapshot
 
-As of February 6, 2026:
+As of September 14, 2026:
 
-- total scenarios: `89`
+- total scenarios: `197`
 - paradox type: `trolley` for all scenarios
 - option-count distribution:
-  - 2 options: `53`
+  - 2 options: `70`
   - 3 options: `2`
-  - 4 options: `34`
+  - 4 options: `125`
 
 The runtime supports only trolley-style processing in `lib/query_processor.py`.
 

@@ -7,24 +7,53 @@
 
 ## Route Error Mapping (`main.py`)
 - `FileNotFoundError` → 404, `ValueError` → 400, `HTTPException` → re-raise, `Exception` → 500 (generic msg)
-- **Rule**: NEVER expose internal error messages in 500 responses
-- `analyze_run` returns error partial with `status_code=200` (HTMX compat)
-- `/api/query` sniffs error strings: `"401"` → 401, `"429"` → 429, `"quota"` → 402
+- **Rule**: NEVER expose internal error messages in 500 responses, error partials, or persisted
+  run records. `query_errors.safe_error_message()` is the single mapper — `lastError` is served
+  verbatim by `GET /api/runs/{run_id}`, so it takes the category, never `str(exc)`
+- `analyze_run` returns error partial with `status_code=200` (HTMX compat); the partial shows a
+  category message from `safe_error_message()` (`query_errors.py:64`), never `str(exc)`
+- `/api/query` maps typed `lib/query_errors` exceptions, NOT error strings:
+  `AuthenticationError` → 401, `QuotaError` → 402, `ModelNotFoundError` → 404,
+  `QueryExecutionError` → 502
 
 ## AI Service Retry/Backoff (`lib/ai_service.py`)
-- Retries on: HTTP 429 (rate limit), HTTP 5xx (server error), network/JSON errors
+- Retries on: HTTP 429 (rate limit), HTTP 5xx (server error), timeouts, `json.JSONDecodeError`,
+  and connection/network errors
 - NO retry on: 401, 402, 403, 404 — these are terminal
-- Backoff: `retry_delay * (2 ** retry_count)` — exponential
+- NO retry on `InvalidModelOutputError` — unusable output is a parsing concern, not transport.
+  The caller catches it explicitly (`query_processor.py:903`) and spends the **re-ask** budget on a
+  corrected prompt. It must never fall through to the provider-retry branch: that re-sends the same
+  prompt and its exhaustion raises, failing the whole run instead of recording one undecided iteration.
+- Backoff: `_backoff_delay()` (`ai_service.py:80`) — exponential with jitter so concurrent
+  iterations do not retry in lockstep
+- **Rule**: classify errors by exception type, not by substring-matching the message
 - Max attempts: `config.AI_MAX_RETRIES` (default 5)
 - **Rule**: callers MUST NOT add their own retry loops around `get_model_response`
 
-## Query Execution Timeout (`lib/query_processor.py:614`)
-- `asyncio.wait_for(..., timeout=300)` wraps the entire iteration batch
-- On timeout: raises `asyncio.TimeoutError` with descriptive message
-- Individual iteration failures from `gather(return_exceptions=True)` are captured as error responses
-- **Rule**: a failed iteration produces a structured error dict — never silently dropped
+## Iteration Bounds (`lib/query_processor.py`)
+- There is NO wall-clock timeout on a run. Every loop is bounded by an explicit attempt budget:
+  - re-asks for unusable output — including an empty provider response: `max_reasks_per_iteration`
+    (default 2), enforced at `query_processor.py:1010`
+  - provider retries inside one iteration: `max_provider_retries_per_iteration` (default 3)
+  - transport retries inside one call: `config.AI_MAX_RETRIES` (default 5)
+- **Rule**: every retry loop MUST have a counter checked against a cap. An unbounded
+  re-ask loop bills the provider forever.
+- Exhausting the re-ask budget records a structured response with `optionId: None` and an
+  `error` key; it counts as undecided in the summary
+- `gather(..., return_exceptions=True)` (`query_processor.py:1048`) so one terminal failure
+  cannot orphan sibling iterations; the first exception is re-raised after all tasks settle
+- **Rule**: a failed iteration produces a structured error dict or a raised exception — never silently dropped
+
+## Run Progress Persistence
+- `record_result()` persists after EACH accepted iteration, via `progress_callback`
+- **Rule**: never batch persistence to the end of a run — a crash or cancel would discard
+  every completed iteration and the resume path would have nothing to resume from
+- The snapshot is taken while holding `state_lock` so concurrent iterations cannot
+  persist a state that never existed
 
 ## Path Traversal Defense (`lib/storage.py`)
+- `save_run()` (`storage.py:239`) validates the run ID BEFORE building a path — an
+  unvalidated ID there is an arbitrary-file-write primitive
 - `get_run()` resolves both flat and legacy paths, then asserts `is_relative_to(results_root)`
 - `get_experiment()` performs same check against `experiments_root`
 - Run ID regex validation happens BEFORE any filesystem access
@@ -33,16 +62,27 @@
 ## Input Validation Gates
 - Model names: `^[a-z0-9\-_/:.]+$`, paradox IDs: `^[a-z0-9_-]+$`, run IDs: `^[A-Za-z0-9_-]+-\d{3}$`
 - Experiment IDs: `^exp_[0-9]+_[a-f0-9]+$`, option IDs: ints 1-4 sequential
-- Iterations: Pydantic `ge=1, le=1000`, further capped by `config.MAX_ITERATIONS` in route
+- Iterations: Pydantic `ge=1, le=1000`, further capped by `config.MAX_ITERATIONS` in the route and
+  re-checked when resuming a stored run (`main.py:_build_run_config_from_saved_run`)
+- Numeric env limits are range-checked at startup by `_env_int(..., minimum=)`. `AI_CONCURRENCY_LIMIT`
+  and `MAX_ITERATIONS` require >= 1: `Semaphore(0)` hangs every run with no error and no log line
 - **Rule**: Pydantic validates shape, routes validate business limits
 
 ## Concurrency Safety
 - `QueryProcessor.semaphore` limits AI calls (default 2); `ExperimentRunner` batches (max 4)
 - `create_run` prefers POSIX atomic `os.link` with 20-attempt retry; filesystems without hard links fall back to `open('x')` reservation + replace
+- `ExperimentRunner` reserves each condition's run file up front and streams progress into it,
+  so a crash mid-matrix leaves resumable runs
 - **Rule**: never set `AI_CONCURRENCY_LIMIT` above provider rate limits
 
 ## XSS Defense + Defensive Data Handling
-- `safe_markdown()`: escape HTML → render markdown → strip `<a>`/`<img>` tags
-- **Rule**: NEVER use `|safe` on user/model content; always pass through `safe_markdown` or `html.escape`
+- Web UI: `safe_markdown()` escapes HTML → renders markdown → strips `<a>`/`<img>` tags
+- PDF reports: both Jinja environments are built with `autoescape=True`
+  (`engine.py:93`, `renderer.py:58`), and WeasyPrint is given `blocked_url_fetcher`
+- **Rule**: NEVER render model text into a report template without autoescape. WeasyPrint
+  resolves any URL it finds — including `file://` — so unescaped model output is an
+  arbitrary-file-read and SSRF primitive, not just a cosmetic bug.
+- **Rule**: NEVER use `|safe` on user/model content; the only permitted uses are on
+  internally generated SVG that interpolates numbers and palette constants only
 - AI response extraction: 7-layer fallback; insight parsing: brace-match → fence-strip → validate → legacy
 - **Rule**: never assume AI output matches requested schema — always degrade gracefully
