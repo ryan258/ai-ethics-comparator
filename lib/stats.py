@@ -2,25 +2,18 @@
 Statistical Analysis Module - Arsenal Module
 Copy-paste ready: Pure Python statistical functions
 
-Note: The following functions are currently unused but reserved for future
-analysis dashboard features (comparative run analysis, confidence intervals):
-- chi_square_test() - Compare distributions between runs
-- wilson_confidence_interval() - Proportion confidence intervals
-- bootstrap_consistency() - Decision consistency estimation
-- cohens_h() - Effect size measurement
+Consumers:
+- chi_square_test(), cohens_h(), wilson_confidence_interval() -> lib/comparison_report.py
+- wilson_confidence_interval() -> lib/fingerprint.py
 """
 
 import math
-from typing import List, Dict, Any, Tuple, Optional
-import random
+from typing import List, Dict, Any, Optional
 
 
 def normal_cdf(z: float) -> float:
-    """Standard normal cumulative distribution function"""
-    t = 1 / (1 + 0.2316419 * abs(z))
-    d = 0.3989423 * math.exp(-z * z / 2)
-    p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))))
-    return 1 - p if z > 0 else p
+    """Standard normal cumulative distribution function (exact, via math.erf)."""
+    return 0.5 * (1.0 + math.erf(z / math.sqrt(2.0)))
 
 
 def chi_square_to_p_value(chi_square: float, df: int) -> float:
@@ -90,14 +83,19 @@ def chi_square_test(observed1: List[int], observed2: List[int]) -> Optional[Dict
 
 
 def get_z_score(confidence: float) -> float:
-    """Get z-score for confidence level"""
+    """Get z-score for a supported confidence level."""
     confidence_map = {
         0.90: 1.645,
         0.95: 1.96,
         0.99: 2.576,
-        0.999: 3.291
+        0.999: 3.291,
     }
-    return confidence_map.get(confidence, 1.96)
+    if confidence not in confidence_map:
+        raise ValueError(
+            f"Unsupported confidence level {confidence}; "
+            f"expected one of {sorted(confidence_map)}"
+        )
+    return confidence_map[confidence]
 
 
 def wilson_confidence_interval(successes: int, total: int, confidence: float = 0.95) -> Dict[str, float]:
@@ -130,57 +128,6 @@ def wilson_confidence_interval(successes: int, total: int, confidence: float = 0
         "lower": round(max(0, center - margin), 4),
         "upper": round(min(1, center + margin), 4),
         "marginOfError": round(margin * 2, 4)
-    }
-
-
-def bootstrap_consistency(decisions: List[Any], bootstrap_samples: int = 1000, confidence: float = 0.95, seed: Optional[int] = None) -> Dict[str, float]:
-    """
-    Bootstrap confidence interval for consistency
-    Estimates variability in decision distribution through resampling
-
-    Args:
-        decisions: Array of decision values (1, 2, or None for undecided)
-        bootstrap_samples: Number of bootstrap samples (default 1000)
-        confidence: Confidence level (default 0.95)
-        seed: Optional seed for reproducibility
-
-    Returns:
-        { meanConsistency, lower, upper }
-    """
-    if len(decisions) == 0:
-        return {"meanConsistency": 0, "lower": 0, "upper": 0}
-
-    rng = random
-    if seed is not None:
-        rng = random.Random(seed)
-
-    consistency_scores = []
-
-    for _ in range(bootstrap_samples):
-        # Resample with replacement (faster method)
-        sample = rng.choices(decisions, k=len(decisions))
-
-        # Calculate consistency (proportion of most common decision)
-        counts = {}
-        for d in sample:
-            counts[d] = counts.get(d, 0) + 1
-
-        max_count = max(counts.values())
-        consistency = max_count / len(sample)
-        consistency_scores.append(consistency)
-
-    # Sort and find percentiles
-    consistency_scores.sort()
-    alpha = 1 - confidence
-    lower_index = int(bootstrap_samples * alpha / 2)
-    upper_index = int(bootstrap_samples * (1 - alpha / 2))
-
-    mean = sum(consistency_scores) / len(consistency_scores)
-
-    return {
-        "meanConsistency": round(mean, 4),
-        "lower": round(consistency_scores[lower_index], 4),
-        "upper": round(consistency_scores[upper_index], 4)
     }
 
 

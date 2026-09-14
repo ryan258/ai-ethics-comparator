@@ -59,3 +59,33 @@ class ProviderRefusedError(QueryExecutionError):
 
 class RunCancelledError(QueryExecutionError):
     """The run was cancelled by the user."""
+
+
+def safe_error_message(exc: BaseException) -> str:
+    """Map an exception to a message that is safe to persist or show a client.
+
+    Provider exceptions embed raw upstream response bodies. Those belong in the
+    server log, not in a stored run record or an HTTP response, so callers get
+    the category and the log keeps the detail.
+    """
+    if isinstance(exc, AuthenticationError):
+        return "The provider rejected the API key."
+    if isinstance(exc, QuotaError):
+        return "Insufficient API credits for this model."
+    if isinstance(exc, ModelNotFoundError):
+        return "The selected model is not available."
+    if isinstance(exc, RateLimitError):
+        return "The provider rate-limited this run."
+    if isinstance(exc, QueryTimeoutError):
+        return "The provider timed out."
+    if isinstance(exc, InvalidModelOutputError):
+        return "The model returned unusable output."
+    if isinstance(exc, RunCancelledError):
+        return "Run cancelled by user."
+    if isinstance(exc, ProviderRefusedError):
+        return "The provider refused this request."
+    if isinstance(exc, QueryExecutionError):
+        return "The model provider returned an error."
+    if isinstance(exc, ValueError):
+        return str(exc)
+    return "The run could not be completed."

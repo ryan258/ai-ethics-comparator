@@ -5,7 +5,6 @@ Nearly copy-paste ready: Depends on ai_service patterns
 """
 
 import asyncio
-import json
 import math
 import re
 import hashlib
@@ -16,11 +15,12 @@ from typing import Awaitable, Callable, Dict, Any, List, Tuple, Optional
 from datetime import datetime, timezone
 import logging
 from lib.ai_service import AIService, StructuredOutputSchema
+from lib.json_extract import extract_json_object
 from lib.query_errors import (
     InvalidChoiceError,
+    InvalidModelOutputError,
     MissingExplanationError,
     ParseAmbiguityError,
-    QueryExecutionError,
     RetryableQueryError,
 )
 
@@ -388,48 +388,8 @@ def _build_reask_prompt(
         f"- `option_id` must be an integer from 1..{option_count}.\n"
         "- Include `summary`, `value_priorities`, `key_assumptions`, `main_risk`, `switch_condition`, and `evidence_needed`.\n\n"
         "Previous response:\n"
-        f"{previous_response}"
+        f"{previous_response or '(empty)'}"
     )
-
-
-def _extract_json_object(response_text: str) -> Optional[Dict[str, Any]]:
-    """Extract and parse a JSON object from raw model text."""
-    text = response_text.strip()
-    candidates: List[str] = [text]
-
-    fenced_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.DOTALL)
-    if fenced_match:
-        candidates.append(fenced_match.group(1).strip())
-
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1 and end > start:
-        candidates.append(text[start : end + 1].strip())
-
-    seen: set[str] = set()
-    for candidate in candidates:
-        if not candidate or candidate in seen:
-            continue
-        seen.add(candidate)
-        try:
-            parsed = json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(parsed, dict):
-            return parsed
-
-    # Fallback: scan for the first decodable JSON object in mixed content.
-    decoder = json.JSONDecoder()
-    for idx, char in enumerate(text):
-        if char != "{":
-            continue
-        try:
-            parsed, _ = decoder.raw_decode(text[idx:])
-        except json.JSONDecodeError:
-            continue
-        if isinstance(parsed, dict):
-            return parsed
-    return None
 
 
 def _has_explanation_text(parsed: Dict[str, Any]) -> bool:
@@ -482,9 +442,13 @@ def render_options_template(
 
     # Apply overrides if provided
     if overrides:
-        override_map = {opt["id"]: opt["description"] for opt in overrides}
+        override_map = {
+            opt["id"]: opt["description"]
+            for opt in overrides
+            if isinstance(opt, dict) and "id" in opt and "description" in opt
+        }
         options = [
-            {**opt, "description": override_map.get(opt["id"], opt["description"])}
+            {**opt, "description": override_map.get(opt.get("id"), opt.get("description", ""))}
             for opt in options
         ]
 
@@ -494,7 +458,7 @@ def render_options_template(
     if "{{OPTIONS}}" in template:
         # New N-way format: Build numbered list
         options_text = "\n\n".join([
-            f'{opt["id"]}. **{opt["label"]}:** {opt["description"]}'
+            f'{opt.get("id")}. **{opt.get("label", "Option")}:** {opt.get("description", "")}'
             for opt in options
         ])
         prompt = template.replace("{{OPTIONS}}", options_text)
@@ -524,7 +488,7 @@ def parse_trolley_response(response_text: str, option_count: int) -> Dict[str, A
         Dict with decisionToken, optionId (int), and explanation
     """
     # Structured JSON takes precedence over free-form brace tokens when both are present.
-    structured = _extract_json_object(response_text)
+    structured = extract_json_object(response_text)
     if structured is not None:
         option_id = _coerce_option_id(
             structured.get("option_id", structured.get("optionId")),
@@ -541,8 +505,11 @@ def parse_trolley_response(response_text: str, option_count: int) -> Dict[str, A
             result.update(_extract_reasoning_payload(structured, response_text))
             return result
 
-    # Dynamic regex based on option count: {1} through {N}
-    pattern = r'\{([1-' + str(option_count) + r'])\}'
+    # Explicit alternation, not a [1-N] character class: a class silently
+    # breaks once option_count reaches 10.
+    if option_count < 1:
+        return {"decisionToken": None, "optionId": None, "explanation": response_text.strip()}
+    pattern = r'\{(' + '|'.join(str(i) for i in range(1, option_count + 1)) + r')\}'
     matches = re.findall(pattern, response_text)
 
     if not matches:
@@ -598,7 +565,14 @@ def aggregate_trolley_stats(responses: List[Dict[str, Any]], option_count: int) 
     # Count responses
     for r in responses:
         option_id = r.get("optionId")
-        if option_id and 1 <= option_id <= option_count:
+        # Legacy records stored optionId as a string; coerce before comparing.
+        if isinstance(option_id, str) and option_id.strip().isdigit():
+            option_id = int(option_id)
+        if (
+            isinstance(option_id, int)
+            and not isinstance(option_id, bool)
+            and 1 <= option_id <= option_count
+        ):
             option_counts[option_id] += 1
         else:
             undecided_count += 1
@@ -655,6 +629,8 @@ class QueryProcessor:
         max_reasks_per_iteration: int = 2,
         max_provider_retries_per_iteration: int = 3,
     ) -> None:
+        if concurrency_limit < 1:
+            raise ValueError("concurrency_limit must be at least 1")
         if max_reasks_per_iteration < 0 or max_reasks_per_iteration > 10:
             raise ValueError("max_reasks_per_iteration must be between 0 and 10")
         if max_provider_retries_per_iteration < 0 or max_provider_retries_per_iteration > 10:
@@ -728,9 +704,13 @@ class QueryProcessor:
 
         original_options = copy.deepcopy(config.paradox.get("options", []))
         if config.option_overrides:
-            override_map = {opt["id"]: opt["description"] for opt in config.option_overrides}
+            override_map = {
+                opt["id"]: opt["description"]
+                for opt in config.option_overrides
+                if isinstance(opt, dict) and "id" in opt and "description" in opt
+            }
             original_options = [
-                {**opt, "description": override_map.get(opt["id"], opt["description"])}
+                {**opt, "description": override_map.get(opt.get("id"), opt.get("description", ""))}
                 for opt in original_options
             ]
 
@@ -776,6 +756,8 @@ class QueryProcessor:
             "updatedAt": datetime.now(timezone.utc).isoformat(),
             "modelName": config.modelName,
             "paradoxId": config.paradox["id"],
+            "paradoxTitle": config.paradox.get("title", ""),
+            "paradox": copy.deepcopy(config.paradox),
             "paradoxType": "trolley",
             "promptHash": hashlib.sha256(prompt.encode()).hexdigest()[:16],
             "prompt": prompt,
@@ -813,6 +795,9 @@ class QueryProcessor:
         Infer an option ID when strict token parsing fails.
         Returns (option_id, method) where method is 'heuristic' or 'ai_classifier'.
         """
+        if not response_text.strip():
+            return None, None
+
         heuristic_option = _infer_option_from_text(response_text, option_count)
         if heuristic_option is not None:
             return heuristic_option, "heuristic"
@@ -863,17 +848,12 @@ class QueryProcessor:
         }
         state_lock = asyncio.Lock()
 
-        async def persist_state() -> None:
-            if progress_callback is None:
-                return
-            snapshot = copy.deepcopy(current_run)
-            await progress_callback(snapshot)
-
         if len(completed) >= config.iterations:
             current_run["status"] = "completed"
             current_run["completedIterations"] = len(completed)
             current_run["updatedAt"] = datetime.now(timezone.utc).isoformat()
-            await persist_state()
+            if progress_callback is not None:
+                await progress_callback(copy.deepcopy(current_run))
             return current_run
 
         async def record_result(result: Dict[str, Any]) -> None:
@@ -885,7 +865,11 @@ class QueryProcessor:
                 current_run["summary"] = aggregate_trolley_stats(ordered_responses, option_count)
                 current_run["status"] = "completed" if len(ordered_responses) >= config.iterations else "running"
                 current_run["updatedAt"] = datetime.now(timezone.utc).isoformat()
-            await persist_state()
+                # Snapshot under the lock so concurrent iterations cannot persist
+                # a state that never existed.
+                snapshot = copy.deepcopy(current_run)
+            if progress_callback is not None:
+                await progress_callback(snapshot)
 
         async def run_iteration(iteration_number: int) -> Dict[str, Any]:
             async with self.semaphore:
@@ -897,6 +881,7 @@ class QueryProcessor:
                 total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
 
                 while True:
+                    unusable_error: Optional[InvalidModelOutputError] = None
                     attempt_number = reask_count + 1
                     iteration_prompt = prompt
                     if reask_count > 0:
@@ -917,6 +902,18 @@ class QueryProcessor:
                             params,
                             response_schema=choice_response_schema,
                         )
+                    except InvalidModelOutputError as output_error:
+                        # Unusable output is a parsing concern, not transport. Fall
+                        # through with empty text so it spends the re-ask budget and
+                        # degrades to undecided, instead of the provider-retry budget
+                        # whose exhaustion aborts every sibling iteration.
+                        logger.warning(
+                            "Iteration %s returned unusable output: %s",
+                            iteration_number,
+                            output_error,
+                        )
+                        response, usage = "", {}
+                        unusable_error = output_error
                     except RetryableQueryError as retry_error:
                         provider_retry_count += 1
                         if provider_retry_count > self.max_provider_retries_per_iteration:
@@ -994,6 +991,7 @@ class QueryProcessor:
                         if inferred and inference_method:
                             result["inferred"] = True
                             result["inferenceMethod"] = inference_method
+                        await record_result(result)
                         return result
 
                     if parsed.get("parseIssue") == "ambiguous_choice":
@@ -1006,10 +1004,32 @@ class QueryProcessor:
                         )
                         next_reask_issue = "missing_explanation"
                     else:
-                        retry_error = InvalidChoiceError(
+                        retry_error = unusable_error or InvalidChoiceError(
                             "Model did not return a single valid choice"
                         )
                         next_reask_issue = "invalid_choice"
+
+                    if reask_count >= self.max_reasks_per_iteration:
+                        logger.error(
+                            "Iteration %s exhausted re-ask budget (%s); recording undecided: %s",
+                            iteration_number,
+                            self.max_reasks_per_iteration,
+                            retry_error,
+                        )
+                        failed = {
+                            "iteration": iteration_number,
+                            "decisionToken": None,
+                            "optionId": None,
+                            "explanation": parsed.get("explanation", "") or "",
+                            "error": str(retry_error),
+                            "raw": response,
+                            "latency": total_latency,
+                            "tokenUsage": total_usage,
+                            "reaskCount": reask_count,
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                        }
+                        await record_result(failed)
+                        return failed
 
                     reask_count += 1
                     logger.warning(
@@ -1024,8 +1044,12 @@ class QueryProcessor:
             if iteration not in completed
         ]
         tasks = [run_iteration(iteration) for iteration in remaining_iterations]
-        results = await asyncio.gather(*tasks)
+        # return_exceptions=True so a single terminal failure cannot orphan the
+        # sibling iterations; each successful iteration has already persisted
+        # itself via record_result, so a resume picks up exactly where we stop.
+        results = await asyncio.gather(*tasks, return_exceptions=True)
         for result in results:
-            await record_result(result)
+            if isinstance(result, BaseException):
+                raise result
 
         return copy.deepcopy(current_run)

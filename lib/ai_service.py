@@ -5,6 +5,8 @@ Copy-paste ready: Just provide config
 """
 
 import asyncio
+import json
+import random
 from dataclasses import dataclass
 from typing import Optional, Dict, Any, List, Tuple
 from openai import AsyncOpenAI
@@ -74,6 +76,11 @@ class AIService:
                 "X-Title": app_name
             }
         )
+
+    def _backoff_delay(self, retry_count: int) -> float:
+        """Exponential backoff with jitter so concurrent iterations do not retry in lockstep."""
+        base = self.retry_delay * (2 ** retry_count)
+        return base * random.uniform(0.5, 1.0) if base else 0.0
 
     @staticmethod
     def _extract_text_from_parts(parts: Any) -> str:
@@ -272,7 +279,7 @@ class AIService:
                 }
                 return response_text, usage_dict
 
-            raise Exception(self._empty_response_error(response))
+            raise InvalidModelOutputError(self._empty_response_error(response))
 
         except Exception as error:
             return await self._handle_error(
@@ -296,6 +303,10 @@ class AIService:
         response_schema: Optional[StructuredOutputSchema] = None,
     ) -> Tuple[str, Dict[str, int]]:
         """Handle errors with retry logic"""
+        # Already classified as unusable model output; no transport retry applies.
+        if isinstance(error, InvalidModelOutputError):
+            raise error
+
         logger.error("Error querying OpenRouter: %s", error)
 
         # Check for status code in error
@@ -311,7 +322,7 @@ class AIService:
             )
 
             if should_retry:
-                delay = self.retry_delay * (2 ** retry_count)
+                delay = self._backoff_delay(retry_count)
                 logger.info(
                     "Retrying after %ss (attempt %s/%s)...",
                     delay,
@@ -353,7 +364,7 @@ class AIService:
         ):
             should_retry = retry_count < self.max_retries
             if should_retry:
-                delay = self.retry_delay * (2 ** retry_count)
+                delay = self._backoff_delay(retry_count)
                 logger.info(
                     "Timeout error - retrying after %ss (attempt %s/%s)...",
                     delay,
@@ -374,10 +385,14 @@ class AIService:
                 f"Provider timeout after {self.max_retries} retries: {error_msg}"
             )
 
-        if "json" in error_msg_lower or "connection" in error_msg_lower or "network" in error_msg_lower:
+        if (
+            isinstance(error, json.JSONDecodeError)
+            or "connection" in error_msg_lower
+            or "network" in error_msg_lower
+        ):
             should_retry = retry_count < self.max_retries
             if should_retry:
-                delay = self.retry_delay * (2 ** retry_count)
+                delay = self._backoff_delay(retry_count)
                 logger.info(
                     "Network error - retrying after %ss (attempt %s/%s)...",
                     delay,
@@ -397,9 +412,5 @@ class AIService:
             raise ProviderTransientError(
                 f"Network error after {self.max_retries} retries: {error_msg}"
             )
-
-        # Preserve explicit model-output failures without wrapping.
-        if error_msg.startswith("Model "):
-            raise InvalidModelOutputError(error_msg)
 
         raise ProviderTransientError(f"Failed to retrieve response: {error_msg}")

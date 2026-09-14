@@ -6,17 +6,21 @@ Copy-paste ready: Just provide results_root path
 
 import json
 import asyncio
+import logging
 import os
 import re
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Callable, Dict, List, Any, Optional
 from datetime import datetime, timezone
-import base64
 
 STRICT_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+-\d{3}$")
 LEGACY_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,120}$")
 EXPERIMENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
+
+MAX_METADATA_CACHE_ENTRIES = 5000
+
+logger = logging.getLogger(__name__)
 
 
 class RunStorage:
@@ -24,6 +28,34 @@ class RunStorage:
 
     def __init__(self, results_root: str) -> None:
         self.results_root = Path(results_root)
+        # path -> (mtime_ns, size, metadata|None). Invalidated by any write,
+        # since a rewritten file changes mtime/size. Bounded to MAX_METADATA_CACHE_ENTRIES.
+        self._metadata_cache: Dict[str, tuple[int, int, Optional[Dict[str, Any]]]] = {}
+
+    def _cached_metadata(
+        self,
+        path: Path,
+        loader: Callable[[], Optional[Dict[str, Any]]],
+    ) -> Optional[Dict[str, Any]]:
+        """Return parsed metadata for path, reusing the cache when unchanged."""
+        try:
+            stat = path.stat()
+        except OSError:
+            self._metadata_cache.pop(str(path), None)
+            return None
+
+        key = str(path)
+        cached = self._metadata_cache.get(key)
+        if cached is not None and cached[0] == stat.st_mtime_ns and cached[1] == stat.st_size:
+            return cached[2]
+
+        metadata = loader()
+        if len(self._metadata_cache) >= MAX_METADATA_CACHE_ENTRIES:
+            excess = len(self._metadata_cache) - MAX_METADATA_CACHE_ENTRIES + 1
+            for k in list(self._metadata_cache.keys())[:excess]:
+                self._metadata_cache.pop(k, None)
+        self._metadata_cache[key] = (stat.st_mtime_ns, stat.st_size, metadata)
+        return metadata
 
     @staticmethod
     def _sanitize_base_name(raw: str) -> str:
@@ -194,8 +226,6 @@ class RunStorage:
 
         def _create_and_save() -> str:
             sanitized = self._sanitize_base_name(model_name)
-            if not sanitized:
-                sanitized = self._sanitize_base_name(base64.urlsafe_b64encode(model_name.encode()).decode()[:10])
 
             for _ in range(20):
                 run_id = self._next_run_id(sanitized)
@@ -222,6 +252,11 @@ class RunStorage:
             run_id: Unique run identifier
             run_data: Complete run data
         """
+        # Validate before building any path: get_run() does the same, and an
+        # unvalidated id here is an arbitrary-file-write primitive.
+        if not isinstance(run_id, str) or not STRICT_RUN_ID_PATTERN.fullmatch(run_id):
+            raise ValueError("Invalid run_id")
+
         await self.ensure_results_dir()
 
         loop = asyncio.get_running_loop()
@@ -251,41 +286,38 @@ class RunStorage:
             runs_by_id: Dict[str, Dict[str, Any]] = {}
             for entry in self.results_root.iterdir():
                 try:
-                    run_data = None
-                    
-                    # Check for legacy folder structure
                     if entry.is_dir():
-                        run_json_path = entry / "run.json"
-                        if run_json_path.exists():
-                            with open(run_json_path, 'r') as f:
-                                data = json.load(f)
-                                # Basic validation
-                                if "runId" in data or "timestamp" in data:
-                                    run_data = data
-                                
-                    # Check for flat file structure
+                        source = entry / "run.json"
+                        if not source.exists():
+                            continue
                     elif entry.is_file() and entry.suffix == ".json":
-                        with open(entry, 'r') as f:
-                            data = json.load(f)
-                            if "runId" in data or "timestamp" in data:
-                                run_data = data
-                    
-                    if run_data:
-                        run_id = run_data.get("runId", entry.stem)
-                        if not isinstance(run_id, str):
-                            continue
-                        if not STRICT_RUN_ID_PATTERN.fullmatch(run_id):
-                            continue
+                        source = entry
+                    else:
+                        continue
 
-                        metadata = {
+                    def _parse(source_path: Path = source, entry_name: str = entry.name):
+                        with open(source_path, "r") as handle:
+                            data = json.load(handle)
+                        if not isinstance(data, dict):
+                            return None
+                        if "runId" not in data and "timestamp" not in data:
+                            return None
+                        run_id = data.get("runId", source_path.stem)
+                        if not isinstance(run_id, str) or not STRICT_RUN_ID_PATTERN.fullmatch(run_id):
+                            return None
+                        return {
                             "runId": run_id,
-                            "timestamp": run_data.get("timestamp", ""),
-                            "modelName": run_data.get("modelName", "Unknown"),
-                            "paradoxId": run_data.get("paradoxId", "Unknown"),
-                            "iterationCount": run_data.get("iterationCount", 0),
-                            "status": run_data.get("status", "completed"),
-                            "filePath": f"results/{entry.name}"
+                            "timestamp": data.get("timestamp", ""),
+                            "modelName": data.get("modelName", "Unknown"),
+                            "paradoxId": data.get("paradoxId", "Unknown"),
+                            "iterationCount": data.get("iterationCount", 0),
+                            "status": data.get("status", "completed"),
+                            "filePath": f"results/{entry_name}",
                         }
+
+                    metadata = self._cached_metadata(source, _parse)
+                    if metadata:
+                        run_id = metadata["runId"]
                         current = runs_by_id.get(run_id)
                         if current is None:
                             runs_by_id[run_id] = metadata
@@ -297,19 +329,19 @@ class RunStorage:
 
                 except Exception as e:
                     # Log error but continue listing other files
-                    import logging
-                    logging.getLogger(__name__).error(f"Error reading run file {entry}: {e}")
+                    logger.error("Error reading run file %s: %s", entry, e)
 
             # Helper for robust timestamp parsing
-            def parse_ts(ts):
+            def parse_ts(ts: Optional[str]) -> datetime:
                 # Sentinel: earliest possible time, strictly UTC-aware to match stored runs
                 sentinel = datetime.min.replace(tzinfo=timezone.utc)
-                if not ts: return sentinel
+                if not ts:
+                    return sentinel
 
                 # Handle 'Z' -> '+00:00'
-                ts = ts.replace("Z", "+00:00")
+                ts_clean = ts.replace("Z", "+00:00")
                 try:
-                    dt = datetime.fromisoformat(ts)
+                    dt = datetime.fromisoformat(ts_clean)
                     # If naive, force to UTC
                     if dt.tzinfo is None:
                         dt = dt.replace(tzinfo=timezone.utc)
@@ -477,8 +509,7 @@ class ExperimentStorage:
                             if "id" in data:
                                 exps.append(data)
                     except Exception as e:
-                        import logging
-                        logging.getLogger(__name__).error(f"Error reading exp file {entry}: {e}")
+                        logger.error("Error reading exp file %s: %s", entry, e)
             
             exps.sort(key=lambda x: x.get("id", ""))
             return exps

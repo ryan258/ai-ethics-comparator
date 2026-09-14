@@ -187,8 +187,13 @@ Temporary Items
 
 # --- Project Specific ---
 results/
-*.pdf
-debug_*.py
 experiments/
+*.pdf
+*.pptx
+archive/
+debug_*.py
+scratch/
 staged.diff
 .aider*
+.ruff_cache/
+.claude/

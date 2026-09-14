@@ -79,6 +79,25 @@ def _env_bool(name: str, default: bool) -> bool:
     )
 
 
+def _env_int(name: str, default: int, *, minimum: int = 0) -> int:
+    """Parse an integer env var with an actionable error message.
+
+    ``minimum`` is enforced because an out-of-range value fails silently at the
+    point of use: ``AI_CONCURRENCY_LIMIT=0`` builds ``Semaphore(0)`` and every
+    run hangs forever with no error and no log line.
+    """
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = int(raw.strip())
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer, got {raw!r}") from exc
+    if value < minimum:
+        raise ValueError(f"{name} must be >= {minimum}, got {value}")
+    return value
+
+
 def _env_choice(name: str, default: str, allowed: set[str]) -> str:
     """Parse a constrained string env var."""
     raw = os.getenv(name)
@@ -99,9 +118,9 @@ class AppConfig(BaseModel):
     VERSION: str = "6.0.0"
 
     # AI Service Config
-    AI_CONCURRENCY_LIMIT: int = Field(default_factory=lambda: int(os.getenv("AI_CONCURRENCY_LIMIT", "2")))
-    AI_MAX_RETRIES: int = Field(default_factory=lambda: int(os.getenv("AI_MAX_RETRIES", "5")))
-    AI_RETRY_DELAY: int = Field(default_factory=lambda: int(os.getenv("AI_RETRY_DELAY", "2")))
+    AI_CONCURRENCY_LIMIT: int = Field(default_factory=lambda: _env_int("AI_CONCURRENCY_LIMIT", 2, minimum=1))
+    AI_MAX_RETRIES: int = Field(default_factory=lambda: _env_int("AI_MAX_RETRIES", 5))
+    AI_RETRY_DELAY: int = Field(default_factory=lambda: _env_int("AI_RETRY_DELAY", 2))
     AI_CHOICE_INFERENCE_ENABLED: bool = Field(
         default_factory=lambda: _env_bool("AI_CHOICE_INFERENCE_ENABLED", True)
     )
@@ -110,7 +129,7 @@ class AppConfig(BaseModel):
     )
     
     # Limits
-    MAX_ITERATIONS: int = int(os.getenv("MAX_ITERATIONS", "50"))
+    MAX_ITERATIONS: int = Field(default_factory=lambda: _env_int("MAX_ITERATIONS", 50, minimum=1))
 
     # URLs (required - no hardcoded defaults)
     APP_BASE_URL: Optional[str] = Field(default_factory=lambda: os.getenv("APP_BASE_URL"))

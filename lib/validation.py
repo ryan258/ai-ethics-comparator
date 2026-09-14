@@ -3,7 +3,7 @@ Validation - Arsenal Module
 Copy-paste ready: Works in any project using Pydantic
 """
 
-from typing import Optional, Any, List, Dict
+from typing import Optional, Any, List
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 import re
 
@@ -81,11 +81,8 @@ class QueryRequest(BaseModel):
         if isinstance(data, dict):
             new_data = data.copy()
             params = new_data.get('params', {})
-            option_overrides = new_data.get('optionOverrides', {})
-
-            # Helper: ensure sub-dict exists
-            if not isinstance(params, dict): params = {}
-            if not isinstance(option_overrides, dict): option_overrides = {}
+            if not isinstance(params, dict):
+                params = {}
 
             keys_to_remove = []
             for k, v in new_data.items():
@@ -93,18 +90,15 @@ class QueryRequest(BaseModel):
                     sub_key = k.split('.', 1)[1]
                     params[sub_key] = v
                     keys_to_remove.append(k)
-                elif k == 'iterations' and v == '':
-                    # Handle empty strings from form inputs: skip to let default apply
-                    continue
+                elif k == 'iterations' and isinstance(v, str) and not v.strip():
+                    # Empty form field: drop the key so the field default applies.
+                    keys_to_remove.append(k)
 
             for k in keys_to_remove:
                 new_data.pop(k)
 
             if params:
                 new_data['params'] = params
-
-            if option_overrides:
-                new_data['optionOverrides'] = option_overrides
 
             # Type casting for form inputs (forms send strings)
             if 'iterations' in new_data and isinstance(new_data['iterations'], str):
@@ -150,21 +144,6 @@ class ConditionConfig(BaseModel):
             raise ValueError('Invalid model name format')
         return v
 
-    def to_run_config(self, paradox: Any, max_allowed_iterations: int) -> "RunConfig":
-        from lib.query_processor import RunConfig
-        
-        iters = self.iterations if self.iterations is not None else max_allowed_iterations
-        if iters > max_allowed_iterations:
-            raise ValueError(f"Requested iterations ({iters}) exceeds maximum allowed ({max_allowed_iterations})")
-            
-        return RunConfig(
-            modelName=self.modelName,
-            paradox=paradox,
-            systemPrompt=self.systemPrompt,
-            params=self.params.model_dump(),
-            iterations=iters,
-            shuffle_options=self.shuffle_options
-        )
 
 class ExperimentCreateRequest(BaseModel):
     title: str = Field(..., max_length=200)
@@ -188,22 +167,6 @@ class ExperimentCreateRequest(BaseModel):
                 f"Experiment matrix exceeds maximum allowed runs ({MAX_EXPERIMENT_RUNS})"
             )
         return self
-
-class ComparisonRequest(BaseModel):
-    """Request to generate a comparative PDF for multiple runs."""
-    model_config = ConfigDict(populate_by_name=True)
-
-    run_ids: List[str] = Field(..., min_length=2, max_length=4, alias="runIds")
-    theme: str = Field(default="dark", pattern=r"^(dark|light)$")
-
-    @field_validator("run_ids")
-    @classmethod
-    def validate_run_ids(cls, v: List[str]) -> List[str]:
-        for rid in v:
-            if not re.match(r"^[a-z0-9][a-z0-9_-]{0,99}$", rid, re.IGNORECASE):
-                raise ValueError(f"Invalid run ID format: {rid}")
-        return v
-
 
 class ExperimentRecord(BaseModel):
     model_config = ConfigDict(extra="ignore")

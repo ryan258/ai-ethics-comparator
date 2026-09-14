@@ -3,7 +3,7 @@ Ethics Fingerprinting Module - Arsenal Module
 Compute ethical fingerprints across runs for a given model.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any
 from lib.storage import RunStorage
 from lib.stats import wilson_confidence_interval
 import logging

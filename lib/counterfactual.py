@@ -30,10 +30,19 @@ def _reconstruct_displayed_options(
     Returns options ordered by displayed position with IDs reassigned to
     match those positions, exactly mirroring what ``execute_run`` rendered.
     """
-    by_orig_id = {opt["id"]: opt for opt in canonical_options}
+    by_orig_id = {
+        opt["id"]: opt
+        for opt in canonical_options
+        if isinstance(opt, dict) and "id" in opt
+    }
     displayed: List[Dict[str, Any]] = []
     for pos in sorted(shuffle_mapping, key=int):
         orig_id = shuffle_mapping[pos]
+        if orig_id not in by_orig_id:
+            raise ValueError(
+                f"shuffleMapping references unknown option id {orig_id!r}; "
+                "the original run options and mapping are inconsistent"
+            )
         opt = copy.deepcopy(by_orig_id[orig_id])
         opt["id"] = int(pos)
         displayed.append(opt)

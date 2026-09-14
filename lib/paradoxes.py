@@ -3,10 +3,11 @@ Paradoxes - Arsenal Module
 Centralized paradox loading and validation.
 Copy-paste ready, zero dependencies on project.
 """
+import copy
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, TypedDict, Any
+from typing import List, Optional, Tuple, TypedDict
 
 
 class OptionDict(TypedDict):
@@ -136,8 +137,12 @@ def _load_paradoxes_cached(paradoxes_path: str) -> Tuple[Paradox, ...]:
 
 
 def load_paradoxes(paradoxes_path: Path) -> List[Paradox]:
-    """Load and return validated paradoxes from JSON file."""
-    return list(_load_paradoxes_cached(str(paradoxes_path)))
+    """Load and return validated paradoxes from JSON file.
+
+    Returns a deep copy: the cache is process-wide, so handing out the cached
+    dicts would let any caller mutating a paradox poison every later request.
+    """
+    return copy.deepcopy(list(_load_paradoxes_cached(str(paradoxes_path))))
 
 
 def clear_paradox_cache() -> None:
