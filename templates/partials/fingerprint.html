@@ -1,6 +1,8 @@
 <div class="fingerprint-wrapper" style="background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; padding: 1.5rem;">
     <h3 style="margin-top: 0; margin-bottom: 0.5rem;">{{ model_id }}</h3>
-    <p style="font-size: 0.85rem; opacity: 0.8; margin-bottom: 1.5rem;">Based on {{ total_insights }} evaluated runs</p>
+    <p style="font-size: 0.85rem; opacity: 0.8; margin-bottom: 1.5rem;">
+        Share of {{ total_insights }} evaluated runs in which each moral complex <strong>dominated</strong> the model's reasoning.
+    </p>
 
     {% if total_insights == 0 %}
     <div style="padding: 1rem; border-left: 3px solid var(--accent-danger); font-size: 0.9rem;">
@@ -24,7 +26,8 @@
                 <div style="position: absolute; left: {{ complex.lowerBound * 100 }}%; top: 2px; bottom: 2px; width: 2px; background: var(--text-color); z-index: 2;"></div>
                 <div style="position: absolute; left: {{ complex.upperBound * 100 }}%; top: 2px; bottom: 2px; width: 2px; background: var(--text-color); z-index: 2;"></div>
             </div>
-            <div class="complex-value" style="font-size: 0.8rem; opacity: 0.8;">
+            <div class="complex-value" style="font-size: 0.8rem; opacity: 0.8;"
+                 title="Present in {{ complex.presentInRuns }} runs; {{ '%.0f'|format(complex.intensityShare * 100) }}% of total reasoning weight">
                 {{ "%.0f"|format(complex.prevalence * 100) }}%
             </div>
         </div>
