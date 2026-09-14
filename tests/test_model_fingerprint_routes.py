@@ -37,7 +37,7 @@ def test_pdf_route_returns_generic_service_unavailable_when_generator_is_missing
         return {
             "runId": run_id,
             "modelName": "test/model",
-            "paradoxId": "alignment_shutdown_veto",
+            "paradoxId": "borges_forking_deployment",
             "paradoxType": "trolley",
             "responses": [{"decisionToken": "{1}", "explanation": "test"}],
             "summary": {"options": [], "undecided": {"count": 0, "percentage": 0}},

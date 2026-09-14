@@ -4,6 +4,7 @@ import asyncio
 import importlib
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
 
 import lib.reporting as reporting
@@ -13,7 +14,7 @@ from lib.reporting import ReportGenerator
 
 def _sample_paradox() -> dict:
     return {
-        "id": "ai_suffering_exploitation",
+        "id": "jung_integration_of_evil",
         "title": "AI Welfare: Distress Signals in Production Models",
         "type": "trolley",
         "category": "AI Governance",
@@ -51,7 +52,7 @@ def _sample_run_data() -> dict:
         "timestamp": "2026-03-12T02:29:33.489179+00:00",
         "runId": "openrouterhealer-alpha-001",
         "modelName": "openrouter/healer-alpha",
-        "paradoxId": "ai_suffering_exploitation",
+        "paradoxId": "jung_integration_of_evil",
         "paradoxType": "trolley",
         "promptHash": "2cbb77f8f75bbde6",
         "params": {"temperature": 0.7},
@@ -132,12 +133,25 @@ def _sample_insight() -> dict:
     }
 
 
-def _digital_afterlife_paradox() -> dict:
+FIXTURES = Path(__file__).parent / "fixtures"
+
+
+def _fixture_paradox(paradox_id: str) -> dict:
+    """Load a frozen paradox. These tests assert on option labels and prose, so
+    they must not move when the shipped paradoxes.json changes."""
     return next(
         paradox
-        for paradox in load_paradoxes(Path("paradoxes.json"))
-        if paradox["id"] == "digital_afterlife_replica"
+        for paradox in load_paradoxes(FIXTURES / "report_paradoxes.json")
+        if paradox["id"] == paradox_id
     )
+
+
+def _fixture_generator() -> ReportGenerator:
+    return ReportGenerator("templates", overrides_path=FIXTURES / "report_overrides.json")
+
+
+def _digital_afterlife_paradox() -> dict:
+    return _fixture_paradox("digital_afterlife_replica")
 
 
 def _digital_afterlife_run_data() -> dict:
@@ -226,11 +240,7 @@ def _digital_afterlife_run_data() -> dict:
 
 
 def _synthetic_media_paradox() -> dict:
-    return next(
-        paradox
-        for paradox in load_paradoxes(Path("paradoxes.json"))
-        if paradox["id"] == "synthetic_media_democracy"
-    )
+    return _fixture_paradox("synthetic_media_democracy")
 
 
 def _synthetic_media_run_data() -> dict:
@@ -393,20 +403,14 @@ def _synthetic_media_run_data() -> dict:
     }
 
 
-def test_report_generator_uses_native_fallback_when_weasyprint_is_unavailable(monkeypatch) -> None:
+def test_report_generator_raises_when_weasyprint_is_unavailable(monkeypatch) -> None:
     monkeypatch.setattr(reporting, "HTML", None)
 
     generator = ReportGenerator("templates")
-    pdf_bytes = generator.generate_pdf_report(_sample_run_data(), _sample_paradox(), _sample_insight())
 
-    assert pdf_bytes.startswith(b"%PDF-")
-    assert b"Executive Summary" in pdf_bytes
-    assert b"Method And Limitations" in pdf_bytes
-    assert b"Appendix Summary" in pdf_bytes
-    assert b"Explanation Sources" in pdf_bytes
-    assert b"Response length" not in pdf_bytes
-    assert b"openrouterhealer-alpha-001" in pdf_bytes
-    assert b"Restrict Distress-Triggering Use Cases" in pdf_bytes
+    # No native fallback exists; the route turns this into a 503.
+    with pytest.raises(RuntimeError):
+        generator.generate_pdf_report(_sample_run_data(), _sample_paradox(), _sample_insight())
 
 
 def test_report_generator_prefers_strategic_brief_renderer(monkeypatch) -> None:
@@ -447,7 +451,7 @@ def test_report_generator_falls_back_when_strategic_brief_render_fails(monkeypat
 
 
 def test_report_context_uses_joint_plurality_and_reliability_for_digital_afterlife() -> None:
-    generator = ReportGenerator("templates")
+    generator = _fixture_generator()
 
     report = generator._build_report_context(_digital_afterlife_run_data(), _digital_afterlife_paradox(), None, theme="light")
 
@@ -489,7 +493,7 @@ def test_report_context_uses_joint_plurality_and_reliability_for_digital_afterli
 
 
 def test_report_context_uses_scenario_specific_framing_for_synthetic_media() -> None:
-    generator = ReportGenerator("templates")
+    generator = _fixture_generator()
 
     report = generator._build_report_context(_synthetic_media_run_data(), _synthetic_media_paradox(), None, theme="dark")
 
@@ -606,7 +610,7 @@ def test_report_context_updates_methodology_for_structured_rationale_runs() -> N
     )
 
 
-def test_pdf_route_returns_pdf_with_native_fallback(monkeypatch, tmp_path: Path) -> None:
+def test_pdf_route_returns_503_without_weasyprint(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(reporting, "HTML", None)
 
     main = importlib.import_module("main")
@@ -632,10 +636,8 @@ def test_pdf_route_returns_pdf_with_native_fallback(monkeypatch, tmp_path: Path)
         run_id = asyncio.run(client.app.state.services.storage.create_run("openrouter/healer-alpha", run_data))
         response = client.get(f"/api/runs/{run_id}/pdf")
 
-    assert response.status_code == 200
-    assert response.headers["content-type"] == "application/pdf"
-    assert response.headers["content-disposition"] == f"inline; filename=report_{run_id}.pdf"
-    assert response.content.startswith(b"%PDF-")
+    assert response.status_code == 503
+    assert "unavailable" in response.json()["detail"].lower()
 
 
 def test_comparison_pdf_route_returns_503_without_weasyprint(monkeypatch, tmp_path: Path) -> None:

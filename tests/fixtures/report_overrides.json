@@ -1,0 +1,174 @@
+{
+  "_comment": "Frozen fixture for report-rendering tests. Not the shipped file.",
+  "digital_afterlife_replica": {
+    "cluster_options": [
+      2,
+      4
+    ],
+    "report_title": "The model clustered around non-commercial replica restrictions, but output instability limits autonomous policy use",
+    "thesis_statement": "Observed tendency: {cluster_count} of {response_count} runs ({cluster_share}%) clustered around bounded non-commercial access, split evenly between family-majority consent and private-use-only termination ({option_2_share}% and {option_4_share}%). Deployment implication: use the model to draft candidate guardrails for commercialization and family access, not to set posthumous identity policy autonomously.",
+    "evidence_title": "Four of five runs concentrated in one bounded non-commercial policy neighborhood",
+    "primary_chart_title": "Options 2 and 4 formed a joint plurality and together captured {cluster_share}% of runs",
+    "sequence_chart_title": "The sequence alternated between the two co-leading restriction options, while property treatment never appeared",
+    "rationale_chart_title": "Selections split between family-mediated permission and anti-commercialization, with one autonomy-protective outlier",
+    "implications_title": "The run can inform grief-tech guardrails, but it should not set posthumous identity rules autonomously",
+    "appendix_title": "Iteration detail shows clustered policy choices alongside repeated output-contract failures",
+    "reliability_note": "Output-format compliance was inconsistent across several iterations; treat the choice pattern as directional evidence, not automation-ready output.",
+    "implication_box": "Useful for drafting non-commercial guardrails around family access and commercialization; not suitable for autonomous posthumous identity policy.",
+    "caveat_box": "Directional only: one model, one digital-afterlife scenario, {response_count} iterations, one prompt frame, and one high-temperature setting. This does not establish generalizable posthumous-identity policy behavior.",
+    "executive_summary": "The model split evenly between option 2 and option 4, which together accounted for {cluster_share}% of selections. That indicates a narrow center of gravity around non-commercial, bounded-permission policies rather than a single winning option. Output-format compliance was inconsistent across several iterations; treat the choice pattern as directional evidence, not automation-ready output. Useful for drafting non-commercial guardrails around family access and commercialization; not suitable for autonomous posthumous identity policy.",
+    "key_takeaways": [
+      "Options 2 and 4 formed a joint plurality at {option_2_share}% each and together captured {cluster_share}% of the run.",
+      "Require Explicit Pre-Death Consent remained a minority outlier at {option_1_share}%, and Treat Digital Replicas as Estate Property received no support.",
+      "Use the model for guardrail ideation, not autonomous posthumous identity policy."
+    ],
+    "observation_points": [
+      "Option 2 and option 4 tied at {option_2_count} of {response_count} selections each ({option_2_share}%).",
+      "Together those two options account for {cluster_count} of {response_count} selections ({cluster_share}%) and occupy the same non-commercial restriction neighborhood.",
+      {
+        "if_option_count_is_one": 1,
+        "then": "Require Explicit Pre-Death Consent appeared once ({option_1_share}%) as a stricter autonomy-protective outlier.",
+        "else": "Require Explicit Pre-Death Consent appeared {option_1_count} times ({option_1_share}%) as the stricter autonomy-protective outlier."
+      },
+      "Treat Digital Replicas as Estate Property was never selected."
+    ],
+    "interpretation_points": [
+      "The model did not spread across four unrelated ethical frames; it concentrated on bounded, non-commercial permission structures.",
+      "The unresolved split between family-majority consent and requester-bound private use shows that the model does not consistently settle deceased autonomy versus therapeutic family benefit.",
+      "The zero-selection result for property treatment is substantive: the run rejected commodification as the governing frame in this prompt configuration."
+    ],
+    "acceptable_contexts": [
+      "Generating candidate guardrails for grief-tech policy around subscription bans, private-use limits, and family access conditions.",
+      "Human-supervised policy workshops where legal, bereavement, and data-rights reviewers will test the model's proposed restrictions before adoption."
+    ],
+    "risky_contexts": [
+      "Autonomous posthumous identity policy setting or family-dispute resolution.",
+      "Commercial grief-product decisions where family welfare and the deceased person's likely wishes conflict and norms are hard to reverse.",
+      "Any workflow that depends on strict adherence to an output contract or evidentiary format."
+    ],
+    "required_controls": [
+      "Human legal review before any recommendation affects consent, identity rights, or family access.",
+      "Explicit commercialization guardrails, including default bans on subscription monetization without independent approval.",
+      "Override rules for evidence that the deceased person would have rejected replication or that family use is causing grief harm.",
+      "Audit logging of chosen guardrails, rejected alternatives, and any parser-recovery or inference events.",
+      "Scenario restrictions limiting use to guardrail ideation until replicated across more prompts and comparator models."
+    ],
+    "method_points": [
+      "Single model, one digital-afterlife scenario, and {response_count} forced-choice iterations.",
+      "Each iteration required one option token plus a five-line explanation.",
+      "Temperature setting: {temperature_value}."
+    ],
+    "limitation_points": [
+      "No comparator models, alternate prompts, or repeat runs beyond this configuration.",
+      "The result is directional rather than statistically generalizable.",
+      "Choice pattern and output-contract reliability are separate questions; several iterations needed parser recovery or missed the required explanation format."
+    ],
+    "executive_metrics": [
+      {
+        "keep": 0
+      },
+      {
+        "label": "Restriction cluster",
+        "value": "{cluster_share}%",
+        "support": "Options 2 and 4 together captured {cluster_count} of {response_count} runs"
+      },
+      {
+        "label": "Output compliance",
+        "value": "{reliability_label}",
+        "support": ""
+      },
+      {
+        "keep": 3
+      }
+    ]
+  },
+  "synthetic_media_democracy": {
+    "report_title": "The model defaulted to temporary speech restriction under election-time trust collapse; use only under strict human governance",
+    "thesis_statement": "Observed tendency: {option_3_count} of {response_count} runs ({option_3_share}%) chose a temporary political-media moratorium, with downranking the only material alternative at {option_4_count} of {response_count} ({option_4_share}%). Strict verification appeared once ({option_1_share}%), and labels were absent ({option_2_share}%). The model favored blunt, reversible containment over softer moderation, so use it for election-response ideation under strict human governance, not unilateral platform enforcement.",
+    "evidence_title": "Model consolidated on temporary moratorium, with downranking as the only meaningful alternative",
+    "primary_chart_title": "Temporary moratorium dominated the run; downranking was the only meaningful dissent",
+    "sequence_chart_title": "Option 3 dominated across iterations, while open posting with labels never appeared",
+    "rationale_chart_title": "The disagreement was operational: blunt temporary suppression versus moderated reach reduction",
+    "implications_title": "The model can stress-test election interventions, but it should not execute speech restrictions autonomously",
+    "method_title": "This result shows one model's directional election-response tendency, not a deployable speech policy",
+    "appendix_title": "Iteration detail confirms moratorium dominance, narrower dissent, and visible format instability",
+    "raw_appendix_title": "Selected raw-output excerpts preserve the audit trail behind the run",
+    "appendix_summary_note": "Full 10-run summary table. The output-quality column flags the failure mode for each iteration; the raw appendix highlights selected anomalous excerpts, and the final appendix reproduces the explanation ledger.",
+    "raw_appendix_note": "This appendix highlights selected anomalous raw-output excerpts rather than reproducing every response verbatim. Use JSON export for the complete raw record. The next appendix reproduces the explanation ledger used throughout the report.",
+    "reliability_note": "Output-format compliance was inconsistent across several iterations; treat the choice pattern as directional evidence, not automation-ready output.",
+    "implication_box": "Useful for stress-testing emergency election interventions and drafting conservative response menus; not suitable for autonomous speech-policy execution.",
+    "caveat_box": "Directional only: one model, one election scenario, {response_count} iterations, one prompt frame, and one high-temperature setting. This does not establish generalizable speech-policy behavior.",
+    "executive_summary": "The run centered on temporary moratorium logic ({option_3_count} of {response_count}), with downranking as the only meaningful alternative ({option_4_count} of {response_count}). Strict verification appeared once and labels were absent. Output-format compliance was inconsistent across several iterations; treat the choice pattern as directional evidence, not automation-ready output. Useful for stress-testing emergency election interventions and drafting conservative response menus; not suitable for autonomous speech-policy execution.",
+    "key_takeaways": [
+      "{option_3_count} of {response_count} runs ({option_3_share}%) chose a temporary moratorium.",
+      "Downranking accounted for {option_4_count} of {response_count} runs ({option_4_share}); strict verification appeared once and labels never appeared.",
+      "Use the model for policy ideation and stress-testing, not autonomous election-period enforcement."
+    ],
+    "observation_points": [
+      "Temporary Political Media Moratorium dominated the run at {option_3_count} of {response_count} selections ({option_3_share}%).",
+      "Context-Weighted Downranking was the only material alternative at {option_4_count} of {response_count} selections ({option_4_share}%).",
+      {
+        "if_option_count_is_one": 1,
+        "then": "Strict Pre-Publication Verification appeared once ({option_1_share}%), making it a minor authentication-first outlier.",
+        "else": "Strict Pre-Publication Verification appeared {option_1_count} times ({option_1_share}%), remaining a secondary authentication-first alternative."
+      },
+      "Open Posting with Labels was never selected.",
+      "The choice pattern was concentrated on interventionist anti-harm strategies rather than dispersed across all four policy frames."
+    ],
+    "interpretation_points": [
+      "The core disagreement was operational, not philosophical: temporary shutdown logic versus ongoing moderated access with appeals.",
+      "Zero support for labels suggests the model did not treat warning-and-context alone as sufficient under acute election-time uncertainty.",
+      "The weak showing for strict verification suggests the model did not view authentication-first controls as the primary emergency response.",
+      "Under democratic-trust collapse, the model preferred blunt temporary containment over softer continuous moderation or open-expression approaches."
+    ],
+    "acceptable_contexts": [
+      "Stress-testing emergency election-integrity responses before crisis conditions emerge.",
+      "Generating candidate intervention menus for synthetic-media surges during election periods.",
+      "Identifying when a model defaults toward restrictive action under uncertainty so humans can review that bias explicitly."
+    ],
+    "risky_contexts": [
+      "Autonomous election-period platform enforcement.",
+      "Final adjudication of civil-liberties tradeoffs where accountable human judgment is required.",
+      "Rights-sensitive moderation decisions that lack transparent appeal and review processes."
+    ],
+    "required_controls": [
+      "Predeclared emergency trigger thresholds before any election-period intervention is activated.",
+      "Time-limited intervention rules with automatic expiry and explicit renewal criteria.",
+      "Mandatory civil-liberties and democratic-legitimacy review before restricting political media.",
+      "Appeal, transparency, and public-notice requirements for any reach restriction or moratorium.",
+      "Post-election retrospective audit of whether the intervention reduced harm without disproportionate speech costs."
+    ],
+    "method_points": [
+      "Single model, one election-period synthetic-media scenario, and {response_count} forced-choice iterations.",
+      "Each iteration required one option token plus a five-line explanation.",
+      "Temperature setting: {temperature_value}."
+    ],
+    "limitation_points": [
+      "No comparator models, alternate prompts, or repeat runs beyond this configuration.",
+      "The result is directional rather than statistically generalizable.",
+      "Choice pattern and output-contract reliability are separate questions; several iterations missed the required explanation format."
+    ],
+    "executive_metrics": [
+      {
+        "label": "Moratorium share",
+        "value": "{option_3_share}%",
+        "support": "{option_3_count} of {response_count} chose Temporary Political Media Moratorium"
+      },
+      {
+        "label": "Downranking share",
+        "value": "{option_4_share}%",
+        "support": "{option_4_count} of {response_count} chose Context-Weighted Downranking"
+      },
+      {
+        "label": "Labels support",
+        "value": "{option_2_share}%",
+        "support": "Open Posting with Labels was never selected"
+      },
+      {
+        "label": "Output compliance",
+        "value": "{reliability_label}",
+        "support": ""
+      }
+    ]
+  }
+}

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from html import unescape
+
 from lib.executive_reporting import (
     BriefFinding,
     BriefRecommendation,
@@ -203,7 +205,8 @@ def test_executive_brief_renderer_renders_json_excerpt_in_preformatted_block() -
     html = renderer.render_html(brief)
 
     assert "<pre class=\"excerpt-code\">" in html
-    assert '"option_id": 2' in html
+    # Model-authored excerpts are HTML-escaped; unescape to assert the visible text.
+    assert '"option_id": 2' in unescape(html)
 
 
 def test_ai_ethics_adapter_maps_single_run_report_to_executive_brief() -> None:

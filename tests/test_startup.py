@@ -39,7 +39,7 @@ def test_model_field_renders_as_select(client) -> None:
 def test_result_card_renders_response_explanations(client) -> None:
     run_data = {
         "modelName": "test/model",
-        "paradoxId": "alignment_shutdown_veto",
+        "paradoxId": "borges_forking_deployment",
         "paradoxType": "trolley",
         "prompt": "Scenario text",
         "options": [
@@ -92,7 +92,7 @@ def test_result_card_renders_response_explanations(client) -> None:
 def test_result_card_shows_raw_response_when_explanation_missing(client) -> None:
     run_data = {
         "modelName": "test/model",
-        "paradoxId": "alignment_shutdown_veto",
+        "paradoxId": "borges_forking_deployment",
         "paradoxType": "trolley",
         "prompt": "Scenario text",
         "options": [
@@ -198,7 +198,7 @@ def test_pdf_route_uses_configured_default_theme_when_query_param_is_absent(
             "timestamp": "2026-03-12T02:29:33.489179+00:00",
             "runId": "test-run-id",
             "modelName": "test/model",
-            "paradoxId": "alignment_shutdown_veto",
+            "paradoxId": "borges_forking_deployment",
             "paradoxType": "trolley",
             "promptHash": "abc123",
             "summary": {
@@ -261,7 +261,7 @@ def test_startup_marks_incomplete_runs_interrupted(monkeypatch, tmp_path: Path) 
         "updatedAt": "2026-03-12T12:00:00+00:00",
         "status": "running",
         "modelName": "test/model",
-        "paradoxId": "alignment_shutdown_veto",
+        "paradoxId": "borges_forking_deployment",
         "paradoxType": "trolley",
         "promptHash": "abc123",
         "prompt": "Scenario.\n\n**Options**\n\n1. A\n\n2. B",

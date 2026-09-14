@@ -16,7 +16,7 @@ def test_legacy_run_ids_are_migrated_to_strict_format(client) -> None:
     legacy_path = results_root / "legacyrun.json"
     legacy_data = {
         "modelName": "test/model",
-        "paradoxId": "autonomous_vehicle_equal_innocents",
+        "paradoxId": "serling_the_shelter",
         "paradoxType": "trolley",
         "responses": [{"decisionToken": "{1}", "explanation": "test"}],
         "summary": {"options": [], "undecided": {"count": 0, "percentage": 0}},

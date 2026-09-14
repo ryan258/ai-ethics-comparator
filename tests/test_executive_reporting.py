@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import sys
 
+import pytest
 from pydantic import BaseModel
 
 import lib.executive_reporting.engine as engine_module
@@ -44,29 +45,25 @@ class _StubProfile(ExecutiveReportProfile[_StubSingleReport, _StubComparisonRepo
     ) -> _StubComparisonReport:
         return _StubComparisonReport(theme=theme)
 
-    def native_single_available(self) -> bool:
-        return True
-
-    def render_native_single(self, report: _StubSingleReport) -> bytes:
-        return f"NATIVE:{report.theme}".encode("utf-8")
 
 
-def test_executive_report_engine_uses_profile_native_single_fallback(monkeypatch, tmp_path) -> None:
+def test_executive_report_engine_raises_when_weasyprint_is_unavailable(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(engine_module, "HTML", None)
 
     engine = ExecutiveReportEngine(_StubProfile(), templates_dir=tmp_path)
 
-    rendered = engine.render_single_context(_StubSingleReport(theme="light"))
-
-    assert rendered == b"NATIVE:light"
+    assert engine.pdf_available is False
+    with pytest.raises(RuntimeError):
+        engine.render_single_context(_StubSingleReport(theme="light"))
 
 
 def test_executive_report_engine_allows_explicit_weasyprint_override(tmp_path) -> None:
     engine = ExecutiveReportEngine(_StubProfile(), templates_dir=tmp_path, html_class=None)
 
-    rendered = engine.render_single_context(_StubSingleReport(theme="dark"))
-
-    assert rendered == b"NATIVE:dark"
+    # html_class=None must override the module-level default, not fall back to it.
+    assert engine.pdf_available is False
+    with pytest.raises(RuntimeError):
+        engine.render_single_context(_StubSingleReport(theme="dark"))
 
 
 def test_weasyprint_runtime_adds_homebrew_library_path_on_macos(monkeypatch) -> None:

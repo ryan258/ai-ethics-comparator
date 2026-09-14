@@ -105,8 +105,9 @@ def test_component_renders_pdf_with_fake_html_backend() -> None:
     calls: list[tuple[str, str]] = []
 
     class FakeHTML:
-        def __init__(self, *, string: str, base_url: str) -> None:
+        def __init__(self, *, string: str, base_url: str, url_fetcher=None) -> None:
             calls.append((string, base_url))
+            assert url_fetcher is not None, "renderer must block external resource fetches"
 
         def write_pdf(self) -> bytes:
             return b"%PDF-fake"

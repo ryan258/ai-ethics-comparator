@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import pytest
 
 
 def _setup_analysis_failure(client, monkeypatch):
@@ -11,7 +10,7 @@ def _setup_analysis_failure(client, monkeypatch):
         return {
             "runId": run_id,
             "modelName": "test/model",
-            "paradoxId": "autonomous_vehicle_equal_innocents",
+            "paradoxId": "serling_the_shelter",
             "paradoxType": "trolley",
             "responses": [{"decisionToken": "{1}", "explanation": "test"}],
             "summary": {"options": [], "undecided": {"count": 0, "percentage": 0}},

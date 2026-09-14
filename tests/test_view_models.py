@@ -7,7 +7,7 @@ def test_run_view_model_builds_response_details() -> None:
     run_data = {
         "runId": "test-model-001",
         "modelName": "test/model",
-        "paradoxId": "alignment_shutdown_veto",
+        "paradoxId": "borges_forking_deployment",
         "paradoxType": "trolley",
         "prompt": "Scenario text",
         "options": [

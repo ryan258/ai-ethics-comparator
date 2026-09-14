@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from lib.experiment_runner import condition_to_run_config
 from lib.storage import ExperimentStorage
 from lib.validation import ConditionConfig, ExperimentCreateRequest, ExperimentRecord
 
@@ -38,14 +39,14 @@ def test_condition_config_iterations_clamp() -> None:
     pdx = DummyParadox()
 
     with pytest.raises(ValueError, match="exceeds maximum allowed"):
-        config.to_run_config(pdx, 10)
+        condition_to_run_config(config, pdx, 10)
 
     config_valid = ConditionConfig(modelName="test", iterations=5)
-    run_config = config_valid.to_run_config(pdx, 10)
+    run_config = condition_to_run_config(config_valid, pdx, 10)
     assert run_config.iterations == 5
 
     config_default = ConditionConfig(modelName="test")
-    run_config_default = config_default.to_run_config(pdx, 10)
+    run_config_default = condition_to_run_config(config_default, pdx, 10)
     assert run_config_default.iterations == 10
 
 
@@ -104,18 +105,35 @@ def test_experiment_runner_partial_and_error() -> None:
     from lib.experiment_runner import ExperimentRunner
 
     class MockQueryProcessor:
-        async def execute_run(self, config):
+        def initialize_run_data(self, config, existing_run=None):
+            return {"modelName": config.modelName, "responses": [], "status": "running"}
+
+        async def execute_run(self, config, *, existing_run=None, progress_callback=None):
             if config.modelName == "fail_model":
                 raise ValueError("Model exploded")
             if config.modelName == "partial_model":
-                return {"responses": [{"error": "token limit"}, {"explanation": "OK"}]}
-            return {"responses": [{"explanation": "OK"}]}
+                result = {"responses": [{"error": "token limit"}, {"explanation": "OK"}]}
+            else:
+                result = {"responses": [{"explanation": "OK"}]}
+            if progress_callback is not None:
+                await progress_callback(dict(result))
+            return result
 
     class MockRunStorage:
+        def __init__(self):
+            self.saved = {}
+
         async def create_run(self, name, data):
             run_id = f"run-{name}"
             data["runId"] = run_id
+            self.saved[run_id] = data
             return run_id
+
+        async def save_run(self, run_id, data):
+            self.saved[run_id] = data
+
+        async def get_run(self, run_id):
+            return self.saved[run_id]
 
     class MockExperimentStorage:
         async def save_experiment(self, exp_id, data):

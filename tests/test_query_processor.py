@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import pytest
 
-import math
 
 from lib.query_processor import (
     _coerce_option_id,

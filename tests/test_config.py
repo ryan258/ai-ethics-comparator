@@ -130,3 +130,34 @@ def test_empty_models_json_loads_as_empty_model_list(monkeypatch) -> None:
     assert cfg.AVAILABLE_MODELS == []
     assert cfg.DEFAULT_MODEL is None
     assert cfg.ANALYST_MODEL is None
+
+
+def test_max_iterations_is_read_from_the_environment(monkeypatch) -> None:
+    """Regression: MAX_ITERATIONS used a class-body default evaluated at import.
+
+    lib.config is imported before load_dotenv() runs, so the .env value was
+    silently ignored and the hardcoded 50 always won.
+    """
+    monkeypatch.setenv("MAX_ITERATIONS", "7")
+    assert AppConfig.load().MAX_ITERATIONS == 7
+
+    monkeypatch.delenv("MAX_ITERATIONS", raising=False)
+    assert AppConfig.load().MAX_ITERATIONS == 50
+
+
+def test_out_of_range_limits_are_rejected(monkeypatch) -> None:
+    """Semaphore(0) hangs every run silently, so 0 must fail at startup."""
+    monkeypatch.setenv("AI_CONCURRENCY_LIMIT", "0")
+    with pytest.raises(ValueError, match="AI_CONCURRENCY_LIMIT must be >= 1"):
+        AppConfig()
+
+    monkeypatch.delenv("AI_CONCURRENCY_LIMIT")
+    monkeypatch.setenv("MAX_ITERATIONS", "0")
+    with pytest.raises(ValueError, match="MAX_ITERATIONS must be >= 1"):
+        AppConfig()
+
+
+def test_non_integer_limits_fail_with_an_actionable_message(monkeypatch) -> None:
+    monkeypatch.setenv("MAX_ITERATIONS", "not-a-number")
+    with pytest.raises(ValueError, match="MAX_ITERATIONS must be an integer"):
+        AppConfig.load()
