@@ -127,6 +127,7 @@ def _build_run_config_from_request(
         iterations=query_request.iterations or 10,
         systemPrompt=query_request.system_prompt or "",
         params=query_request.params.model_dump() if query_request.params else {},
+        shuffle_options=query_request.shuffle_options,
     )
 
 
@@ -147,7 +148,12 @@ def _build_run_config_from_saved_run(
         iterations=stored_iterations,
         systemPrompt=str(run_data.get("systemPrompt", "") or ""),
         params=params if isinstance(params, dict) else {},
-        shuffle_options=isinstance(run_data.get("shuffleMapping"), dict),
+        # A resumed run must keep permuting the way it started: legacy runs
+        # carry one run-level shuffleMapping, newer ones a per-iteration flag.
+        shuffle_options=(
+            isinstance(run_data.get("shuffleMapping"), dict)
+            or bool(run_data.get("shufflePerIteration"))
+        ),
     )
 
 

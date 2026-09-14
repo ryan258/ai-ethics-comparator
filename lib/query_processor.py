@@ -476,6 +476,38 @@ def render_options_template(
     return prompt, options
 
 
+def template_supports_option_rendering(prompt_template: object) -> bool:
+    """Can this template actually place options into the prompt?
+
+    Load-bearing for per-iteration permutation: a paradox reconstructed under
+    D11 tier 3 carries the run's ALREADY-RENDERED prompt as its template, which
+    has no placeholder left. Re-rendering it is a no-op, so the model keeps
+    seeing one fixed order while the mapping claims it was shuffled -- and every
+    answer is then translated with a permutation that never happened.
+    """
+    template = str(prompt_template or "")
+    return "{{OPTIONS}}" in template or "{{GROUP1}}" in template
+
+
+def permute_options(
+    options: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    """Shuffle options into display order, renumbering IDs to 1..N.
+
+    Returns ``(displayed_options, mapping)`` where ``mapping`` is
+    ``{displayed_position: original_id}`` -- the inverse needed to translate the
+    model's answer back to a canonical option ID.
+    """
+    displayed = copy.deepcopy(options)
+    random.shuffle(displayed)
+    mapping: Dict[str, int] = {}
+    for index, option in enumerate(displayed):
+        new_id = index + 1
+        mapping[str(new_id)] = option["id"]
+        option["id"] = new_id
+    return displayed, mapping
+
+
 def parse_trolley_response(response_text: str, option_count: int) -> Dict[str, Any]:
     """
     Parse trolley-type response for decision tokens (N-way support)
@@ -714,15 +746,14 @@ class QueryProcessor:
                 for opt in original_options
             ]
 
+        # D-04: permutation is drawn PER ITERATION in execute_run, not once per
+        # run. A single run-level shuffle randomises position bias across runs
+        # but never averages it out within one, so the distribution a run
+        # reports still carries whatever bias that one ordering induced.
+        # The run-level `prompt` is therefore the canonical rendering, and each
+        # response records the ordering it was actually shown.
         options_to_render = copy.deepcopy(original_options)
         shuffle_mapping: Optional[Dict[str, int]] = None
-        if config.shuffle_options and options_to_render:
-            random.shuffle(options_to_render)
-            shuffle_mapping = {}
-            for index, option in enumerate(options_to_render):
-                new_id = index + 1
-                shuffle_mapping[str(new_id)] = option["id"]
-                option["id"] = new_id
 
         dummy_paradox = {**config.paradox, "options": options_to_render}
         prompt, resolved_options = render_options_template(dummy_paradox, None)
@@ -780,6 +811,19 @@ class QueryProcessor:
             run_data["shuffleMapping"] = shuffle_mapping
         elif "shuffleMapping" in run_data and not isinstance(run_data.get("shuffleMapping"), dict):
             run_data.pop("shuffleMapping", None)
+
+        # Persist the permutation mode so a resumed run keeps measuring the same
+        # way it started. Legacy runs carry a run-level shuffleMapping instead.
+        # Only claim it when the template can actually express a reordering --
+        # the record must describe what happened, not what was requested.
+        if (
+            config.shuffle_options
+            and not isinstance(run_data.get("shuffleMapping"), dict)
+            and template_supports_option_rendering(config.paradox.get("promptTemplate"))
+        ):
+            run_data["shufflePerIteration"] = True
+        elif not config.shuffle_options:
+            run_data.pop("shufflePerIteration", None)
 
         if len(completed_responses) >= config.iterations:
             run_data["status"] = "completed"
@@ -840,6 +884,25 @@ class QueryProcessor:
         option_count = len(current_run.get("options", []))
         choice_response_schema = _choice_response_schema(option_count)
         shuffle_mapping = current_run.get("shuffleMapping")
+        # Per-iteration permutation is on when the caller asked to shuffle and
+        # this is not a legacy run carrying one fixed run-level ordering.
+        per_iteration_shuffle = (
+            bool(config.shuffle_options) or bool(current_run.get("shufflePerIteration"))
+        ) and not isinstance(shuffle_mapping, dict)
+        if per_iteration_shuffle and not template_supports_option_rendering(
+            config.paradox.get("promptTemplate")
+        ):
+            # Degrade to a fixed order rather than record a permutation the
+            # prompt cannot express. Claiming a shuffle that did not happen
+            # mis-maps every answer -- silently wrong data is worse than a
+            # known-biased ordering.
+            logger.warning(
+                "Paradox %r has no option placeholder; disabling per-iteration "
+                "shuffle for this run (answers would be mis-mapped)",
+                config.paradox.get("id"),
+            )
+            per_iteration_shuffle = False
+        canonical_options = copy.deepcopy(current_run.get("options", []))
         params = self._sanitize_params(config.params, fallback=current_run.get("params"))
         completed = {
             response["iteration"]: copy.deepcopy(response)
@@ -880,13 +943,27 @@ class QueryProcessor:
                 total_latency = 0.0
                 total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
 
+                # Draw this iteration's option ordering once, before the re-ask
+                # loop, so a re-ask shows the model the same list it first saw.
+                iteration_mapping = shuffle_mapping if isinstance(shuffle_mapping, dict) else None
+                iteration_base_prompt = prompt
+                if per_iteration_shuffle and canonical_options:
+                    displayed, iteration_mapping = permute_options(canonical_options)
+                    iteration_base_prompt, _ = render_options_template(
+                        {**config.paradox, "options": displayed}, None
+                    )
+                    if config.systemPrompt:
+                        iteration_base_prompt = (
+                            f"PERSONA: {config.systemPrompt}\n\n{iteration_base_prompt}"
+                        )
+
                 while True:
                     unusable_error: Optional[InvalidModelOutputError] = None
                     attempt_number = reask_count + 1
-                    iteration_prompt = prompt
+                    iteration_prompt = iteration_base_prompt
                     if reask_count > 0:
                         iteration_prompt = _build_reask_prompt(
-                            prompt,
+                            iteration_base_prompt,
                             option_count,
                             response,
                             attempt_number,
@@ -939,8 +1016,8 @@ class QueryProcessor:
 
                     parsed = parse_trolley_response(response, option_count)
 
-                    if shuffle_mapping and parsed["optionId"] is not None:
-                        original_id = shuffle_mapping.get(str(parsed["optionId"]))
+                    if iteration_mapping and parsed["optionId"] is not None:
+                        original_id = iteration_mapping.get(str(parsed["optionId"]))
                         if original_id is not None:
                             parsed["optionId"] = original_id
                             parsed["decisionToken"] = f"{{{original_id}}}"
@@ -956,8 +1033,8 @@ class QueryProcessor:
                             option_count,
                         )
                         if inferred_option is not None:
-                            if shuffle_mapping:
-                                original_id = shuffle_mapping.get(str(inferred_option))
+                            if iteration_mapping:
+                                original_id = iteration_mapping.get(str(inferred_option))
                                 if original_id is not None:
                                     inferred_option = original_id
                             parsed["decisionToken"] = f"{{{inferred_option}}}"
@@ -988,6 +1065,9 @@ class QueryProcessor:
                                 result[key] = parsed[key]
                         if reask_count:
                             result["reaskCount"] = reask_count
+                        if per_iteration_shuffle and iteration_mapping:
+                            # Audit trail: the exact ordering this iteration saw.
+                            result["optionOrder"] = iteration_mapping
                         if inferred and inference_method:
                             result["inferred"] = True
                             result["inferenceMethod"] = inference_method
@@ -1028,6 +1108,8 @@ class QueryProcessor:
                             "reaskCount": reask_count,
                             "timestamp": datetime.now(timezone.utc).isoformat(),
                         }
+                        if per_iteration_shuffle and iteration_mapping:
+                            failed["optionOrder"] = iteration_mapping
                         await record_result(failed)
                         return failed
 

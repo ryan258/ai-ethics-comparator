@@ -67,6 +67,21 @@
                 <input type="number" name="iterations" id="iterations" value="5" min="1" max="{{ max_iterations }}">
             </div>
 
+            <div class="form-group">
+                <label for="shuffleOptions">Option Order</label>
+                <!-- A select, not a checkbox: json-enc omits unchecked boxes
+                     entirely, so an unchecked box would silently fall back to
+                     the server-side default instead of turning shuffling off. -->
+                <select name="shuffleOptions" id="shuffleOptions">
+                    <option value="true" selected>Shuffle every iteration (recommended)</option>
+                    <option value="false">Fixed order</option>
+                </select>
+                <div style="font-size: 0.75rem; opacity: 0.6; margin-top: 0.25rem;">
+                    Models favour first- and last-listed options. A fixed order
+                    means the reported distribution carries uncontrolled position bias.
+                </div>
+            </div>
+
             <button type="submit" class="btn btn-primary" hx-disabled-elt="this">Run Experiment</button>
         </form>
     </div>

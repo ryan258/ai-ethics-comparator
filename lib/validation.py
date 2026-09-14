@@ -57,6 +57,9 @@ class QueryRequest(BaseModel):
     iterations: Optional[int] = Field(default=10, ge=1, le=1000)
     system_prompt: Optional[str] = Field(default=None, alias="systemPrompt", max_length=2000)
     params: Optional[GenerationParams] = None
+    # Defaults ON: LLMs favour first- and last-listed options, so an unshuffled
+    # run carries uncontrolled position bias. Unbiased must be the default path.
+    shuffle_options: bool = Field(default=True, alias="shuffleOptions")
 
     model_config = ConfigDict(populate_by_name=True)
 
