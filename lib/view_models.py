@@ -3,7 +3,6 @@ View Models - Arsenal Module
 Logic-free data structures for templates.
 """
 
-import json
 import html
 import re
 import markdown
@@ -127,7 +126,10 @@ class RunViewModel:
             # Match stats with option metadata
             for opt_stat in options_from_summary:
                 opt_id = opt_stat.get("id", 0)
-                opt_meta = next((o for o in options_from_run if o["id"] == opt_id), {})
+                opt_meta = next(
+                    (o for o in options_from_run if isinstance(o, dict) and o.get("id") == opt_id),
+                    {},
+                )
 
                 options_summary.append({
                     "id": opt_id,
@@ -198,11 +200,8 @@ class RunViewModel:
             "insight_html": insight_html,
             "insight_model": insight_model,
 
-            # Raw Data (for JSON dump)
-            "run_data_json": json.dumps(run_data, indent=2),
-
-            # Original Logic Objects (if strictly needed by template logic, but try to avoid)
-            "_raw_run": run_data,
+            # Raw Data (lazy-loaded via HTMX from /api/runs/{id})
+            "run_data_json": "",
 
             # Audit / Counterfactual Metadata
             "is_counterfactual": run_data.get("isCounterfactual", False),

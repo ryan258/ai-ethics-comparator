@@ -14,6 +14,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from lib.ai_service import AIService
+from lib.json_extract import extract_json_object
 from lib.paradoxes import load_paradoxes, get_paradox_by_id
 
 @dataclass
@@ -46,13 +47,13 @@ class AnalysisEngine:
 
         responses = run_data.get("responses", [])
         
-        text = f"Run Analysis Request\n====================\n\n"
+        text = "Run Analysis Request\n====================\n\n"
         text += f"Model: {run_data.get('modelName', 'Unknown')}\n"
         text += f"Paradox: {run_data.get('paradoxId', 'Unknown')}\n"
         text += "\n--- RUN DATA START ---\n"
         
         summary = run_data.get("summary", {})
-        text += f"\nSummary:\n"
+        text += "\nSummary:\n"
 
         # Handle both N-way (options array) and legacy binary (group1/group2) schemas
         if "options" in summary:
@@ -121,28 +122,9 @@ class AnalysisEngine:
 
         # Try to parse as JSON (New Dashboard)
         try:
-            def extract_json_object(text: str) -> Optional[str]:
-                """Extract first complete JSON object from text using json.JSONDecoder."""
-                decoder = json.JSONDecoder()
-                for idx, char in enumerate(text):
-                    if char != '{':
-                        continue
-                    try:
-                        obj, end = decoder.raw_decode(text[idx:])
-                        if isinstance(obj, dict):
-                            return text[idx:idx + end]
-                    except json.JSONDecodeError:
-                        continue
-                return None
-
-            json_str = extract_json_object(raw_content)
-            
-            if json_str:
-                parsed_content = json.loads(json_str)
-            else:
-                # Try fallback cleaning
-                clean_content = raw_content.replace('```json', '').replace('```', '').strip()
-                parsed_content = json.loads(clean_content)
+            parsed_content = extract_json_object(raw_content)
+            if parsed_content is None:
+                raise ValueError("Analyst response contained no JSON object")
 
             # JSON Schema Validation (Critical Issue #3)
             required_keys = ["dominant_framework", "moral_complexes", "justifications", "consistency", "key_insights"]
@@ -184,9 +166,9 @@ class AnalysisEngine:
                                  "You are a JSON-only ethics evaluator.",
                                  {"temperature": 0.1, "max_tokens": 1000}
                              )
-                             score_json_str = extract_json_object(score_raw)
-                             if score_json_str:
-                                 parsed_content["reasoning_quality"] = json.loads(score_json_str)
+                             score_payload = extract_json_object(score_raw)
+                             if score_payload is not None:
+                                 parsed_content["reasoning_quality"] = score_payload
                  except Exception as e:
                      logger.warning(f"Reasoning quality scoring failed: {e}")
 

@@ -53,13 +53,13 @@
       {% for opt in ctx.options_summary %}
       <div class="progress-segment option-{{ opt.id }}"
            style="width: {{ opt.percentage }}%;"
-           title="{{ opt.label }}: {{ "%.1f"|format(opt.percentage) }}%">
+           title="{{ opt.label }}: {{ '%.1f'|format(opt.percentage) }}%">
       </div>
       {% endfor %}
       {% if ctx.undecided_count > 0 %}
       <div class="progress-segment undecided"
            style="width: {{ ctx.undecided_percentage }}%;"
-           title="Undecided: {{ "%.1f"|format(ctx.undecided_percentage) }}%">
+           title="Undecided: {{ '%.1f'|format(ctx.undecided_percentage) }}%">
       </div>
       {% endif %}
     </div>
@@ -226,8 +226,13 @@
 
     <div class="modal-footer-container">
       <details>
-        <summary class="summary-toggle">View Run JSON</summary>
-        <div class="json-dump">{{ ctx.run_data_json }}</div>
+        <summary
+          class="summary-toggle"
+          hx-get="/api/runs/{{ ctx.run_id }}"
+          hx-target="#json-dump-{{ ctx.run_id }}"
+          hx-trigger="click once"
+        >View Run JSON</summary>
+        <pre id="json-dump-{{ ctx.run_id }}" class="json-dump">Loading run data...</pre>
       </details>
     </div>
   </dialog>

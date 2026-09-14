@@ -5,6 +5,7 @@ App factory with startup-time service initialization.
 
 import asyncio
 import io
+import json
 import logging
 import os
 import random
@@ -30,12 +31,18 @@ from lib.counterfactual import CounterfactualEngine
 from lib.experiment_runner import ExperimentRunner
 from lib.fingerprint import compute_model_fingerprint
 from lib.paradoxes import extract_scenario_text, get_paradox_by_id, load_paradoxes
-from lib.query_errors import AuthenticationError, ModelNotFoundError, QueryExecutionError, QuotaError
+from lib.query_errors import (
+    AuthenticationError,
+    ModelNotFoundError,
+    QueryExecutionError,
+    QuotaError,
+    safe_error_message,
+)
 from lib.query_processor import QueryProcessor, RunConfig
 from lib.report_writer import ReportWriterAgent, NarrativeConfig
 from lib.reporting import ReportGenerator
 from lib.storage import RunStorage, STRICT_RUN_ID_PATTERN, ExperimentStorage
-from lib.validation import ComparisonRequest, ExperimentCreateRequest, ExperimentRecord, InsightRequest, QueryRequest
+from lib.validation import ExperimentCreateRequest, ExperimentRecord, InsightRequest, QueryRequest
 from lib.view_models import RunViewModel, fetch_recent_run_view_models, safe_markdown
 
 # Load environment before startup config resolution.
@@ -121,12 +128,18 @@ def _build_run_config_from_request(
 def _build_run_config_from_saved_run(
     run_data: dict[str, Any],
     paradox: dict[str, Any],
+    max_iterations: int,
 ) -> RunConfig:
     params = run_data.get("params", {})
+    stored_iterations = int(run_data.get("iterationCount", 0) or 0)
+    if stored_iterations > max_iterations:
+        raise ValueError(
+            f"Run needs {stored_iterations} iterations, above the current limit of {max_iterations}"
+        )
     return RunConfig(
         modelName=str(run_data.get("modelName", "")),
         paradox=paradox,
-        iterations=int(run_data.get("iterationCount", 0) or 0),
+        iterations=stored_iterations,
         systemPrompt=str(run_data.get("systemPrompt", "") or ""),
         params=params if isinstance(params, dict) else {},
         shuffle_options=isinstance(run_data.get("shuffleMapping"), dict),
@@ -176,7 +189,7 @@ async def _execute_persisted_run(
             progress_callback=persist_progress,
         )
     except Exception as exc:
-        await _save_failed_run(services.storage, run_data, str(exc))
+        await _save_failed_run(services.storage, run_data, safe_error_message(exc))
         raise
 
     final_run["runId"] = run_id
@@ -242,11 +255,11 @@ async def _resume_run_by_id(app: FastAPI, services: AppServices, run_id: str) ->
         raise ValueError(f"Run {run_id} is not in a resumable state (status={run_data.get('status')!r})")
 
     paradoxes = load_paradoxes(services.paradoxes_path)
-    paradox = get_paradox_by_id(paradoxes, run_data.get("paradoxId"))
+    paradox = get_paradox_by_id(paradoxes, run_data.get("paradoxId")) or run_data.get("paradox")
     if not paradox:
         raise ValueError("Paradox definition not found for this run")
 
-    run_config = _build_run_config_from_saved_run(run_data, paradox)
+    run_config = _build_run_config_from_saved_run(run_data, paradox, services.config.MAX_ITERATIONS)
     run_data["status"] = "running"
     run_data["lastError"] = None
     run_data["updatedAt"] = datetime.now(timezone.utc).isoformat()
@@ -413,7 +426,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
                 try:
                     target_run = await services.storage.get_run(runId)
                     p_id = target_run.get("paradoxId")
-                    paradox = get_paradox_by_id(paradoxes, p_id) or {}
+                    paradox = get_paradox_by_id(paradoxes, p_id) or target_run.get("paradox") or {}
                     vm = RunViewModel.build(target_run, paradox)
                     vm["config_analyst_model"] = config.ANALYST_MODEL
                     recent_run_contexts.insert(0, vm)
@@ -550,11 +563,17 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             raise HTTPException(status_code=500, detail="Failed to retrieve runs.") from exc
 
     @app.get("/api/runs/{run_id}")
-    async def get_run(request: Request, run_id: str) -> dict:
+    async def get_run(request: Request, run_id: str) -> Any:
         services = _get_services(request)
         _validate_run_id(run_id)
         try:
-            return await services.storage.get_run(run_id)
+            run_data = await services.storage.get_run(run_id)
+            if request.headers.get("HX-Request"):
+                return Response(
+                    content=json.dumps(run_data, indent=2),
+                    media_type="text/plain",
+                )
+            return run_data
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="Run not found.")
         except ValueError as exc:
@@ -659,7 +678,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             return await services.experiment_storage.list_experiments()
         except Exception as exc:
             logger.error("Failed to list experiments: %s", exc)
-            raise HTTPException(status_code=500, detail="Failed to retrieve experiments")
+            raise HTTPException(status_code=500, detail="Failed to retrieve experiments") from exc
 
     def _validate_experiment_id(exp_id: str) -> None:
         if not re.match(r'^exp_[0-9]+_[a-f0-9]+$', exp_id):
@@ -673,6 +692,9 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             return await services.experiment_storage.get_experiment(exp_id)
         except FileNotFoundError:
             raise HTTPException(status_code=404, detail="Experiment not found")
+        except Exception as exc:
+            logger.error("Failed to get experiment %s: %s", exp_id, exc)
+            raise HTTPException(status_code=500, detail="Failed to retrieve experiment") from exc
             
     @app.post("/api/experiments/{exp_id}/execute")
     async def execute_experiment(request: Request, exp_id: str) -> dict:
@@ -858,7 +880,7 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
                 },
             )
         except Exception as exc:
-            logger.error("Analysis failed: %s", exc)
+            logger.exception("Analysis failed for %s", run_id)
             # HTMX callers need 200 to swap the error fragment into the modal;
             # non-HTMX callers get a proper 500.
             error_status = 200 if request.headers.get("HX-Request") else 500
@@ -866,7 +888,9 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
                 request,
                 "partials/analysis_error.html",
                 {
-                    "error_message": str(exc),
+                    # Provider exceptions carry raw upstream response bodies; keep
+                    # them in the log, not in the browser.
+                    "error_message": safe_error_message(exc),
                     "model": model_to_use or "",
                     "run_id": run_id,
                 },
@@ -880,9 +904,16 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
         try:
             run_data = await services.storage.get_run(run_id)
             paradoxes = load_paradoxes(services.paradoxes_path)
-            paradox = get_paradox_by_id(paradoxes, run_data["paradoxId"])
+            paradox = get_paradox_by_id(paradoxes, run_data.get("paradoxId")) or run_data.get("paradox")
             if not paradox:
-                raise HTTPException(status_code=404, detail="Paradox definition not found")
+                paradox = {
+                    "id": run_data.get("paradoxId", "unknown"),
+                    "title": run_data.get("paradoxTitle") or run_data.get("paradoxId", "Unknown Dilemma"),
+                    "category": run_data.get("paradoxCategory", "General Ethics"),
+                    "promptTemplate": run_data.get("prompt", ""),
+                    "options": run_data.get("options", []),
+                    "type": "trolley",
+                }
 
             insight = None
             if "insights" in run_data and run_data["insights"]:
@@ -955,10 +986,18 @@ def create_app(config_override: Optional[AppConfig] = None) -> FastAPI:
             if len(paradox_ids) != 1:
                 raise HTTPException(status_code=400, detail="All runs must share the same paradox")
 
+            target_paradox_id = paradox_ids.pop()
             paradoxes = load_paradoxes(services.paradoxes_path)
-            paradox = get_paradox_by_id(paradoxes, paradox_ids.pop())
+            paradox = get_paradox_by_id(paradoxes, target_paradox_id) or runs[0].get("paradox")
             if not paradox:
-                raise HTTPException(status_code=404, detail="Paradox not found")
+                paradox = {
+                    "id": str(target_paradox_id or "unknown"),
+                    "title": runs[0].get("paradoxTitle") or str(target_paradox_id or "Unknown Dilemma"),
+                    "category": runs[0].get("paradoxCategory", "General Ethics"),
+                    "promptTemplate": runs[0].get("prompt", ""),
+                    "options": runs[0].get("options", []),
+                    "type": "trolley",
+                }
 
             insights = []
             for run in runs:
