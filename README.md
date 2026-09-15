@@ -11,7 +11,7 @@ Run any OpenRouter model against ethical paradoxes (2-4 options each), repeat ac
 - **Backend:** FastAPI (app-factory pattern)
 - **Templates:** Jinja2 + HTMX (no build step)
 - **AI provider:** OpenRouter via AsyncOpenAI
-- **Reports:** WeasyPrint PDF (no fallback backend — 503 when its native libs are missing), PowerPoint export
+- **Reports:** Self-contained printable HTML, browser Save as PDF, JSON and PowerPoint exports
 - **Storage:** flat JSON files (no database)
 - **Python:** >=3.12, managed with `uv`
 
@@ -35,7 +35,7 @@ Optional settings:
 # DEFAULT_MODEL and ANALYST_MODEL are derived from models.json when unset
 DEFAULT_MODEL=provider/model-name
 ANALYST_MODEL=provider/model-name
-REPORT_PDF_THEME=dark
+REPORT_THEME=dark
 MAX_ITERATIONS=50
 AI_CONCURRENCY_LIMIT=2
 AI_MAX_RETRIES=5
@@ -46,7 +46,7 @@ AI_CHOICE_INFERENCE_ENABLED=true
 Run:
 
 ```bash
-uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Open [http://localhost:8000](http://localhost:8000).
@@ -79,8 +79,8 @@ weight the analyst assigned. Dominance is measured, not merely detected: countin
 as present saturates near 100% for every model and tells you nothing.
 
 ### Reporting
-- **PDF** — single-run reports with distribution charts, insight analysis, and AI narrative
-- **Comparison PDF** — 2-4 runs side-by-side on the same paradox
+- **HTML reports** — polished single-run briefs from saved evidence, with Print / Save as PDF and Download HTML controls
+- **Comparison report** — 2-4 runs side-by-side on the same paradox
 - **JSON export** — structured data (distribution, responses, metadata)
 - **PowerPoint** — slide deck with title, distribution, and analysis
 
@@ -106,7 +106,7 @@ as present saturates near 100% for every model and tells you nothing.
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/api/runs/{run_id}/analyze` | Generate/regenerate ethical insights (optional analyst model override) |
-| POST | `/api/insight` | Generate insight (non-persistent) |
+| POST | `/api/insight` | Generate insight; persists when a valid stored runId is supplied |
 
 ### Paradoxes
 | Method | Path | Description |
@@ -131,8 +131,8 @@ as present saturates near 100% for every model and tells you nothing.
 ### Export
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/runs/{run_id}/pdf` | PDF report (single run) |
-| GET | `/api/compare/pdf` | Comparison PDF (2-4 runs) |
+| GET | `/reports/runs/{run_id}` | Printable HTML report (single run) |
+| GET | `/reports/compare` | Comparison report (2-4 runs) |
 | GET | `/api/runs/{run_id}/export` | JSON or PPTX export (`?format=json\|pptx`) |
 
 ### System
@@ -154,16 +154,16 @@ uv run pytest
 - `uv run ...` is the supported way to invoke project tools.
 - After dependency changes, run `uv lock`.
 
-164 tests across 26 modules:
+192 tests passed in Ryan’s local `uv run pytest -q` run (2.60s; terminal output supplied 2026-09-14):
 
 | Module | Covers |
 |--------|--------|
 | `test_startup.py` | App initialization, health endpoint |
 | `test_query_processor.py` | Option rendering, strict single-choice contract |
 | `test_run_execution_limits.py` | Re-ask/provider budgets, progress persistence, failure surfacing |
-| `test_reporting.py` | PDF generation, brief-first rendering, scenario prose |
+| `test_reporting.py` | HTML generation, brief rendering, measured report claims |
 | `test_report_rendering_security.py` | Report autoescape + blocked URL fetcher |
-| `test_executive_reporting.py` | Report engine wiring, WeasyPrint runtime |
+| `test_executive_reporting.py` | HTML report engine wiring and escaping |
 | `test_executive_briefing.py` | Brief composition and rendering |
 | `test_executive_component.py` | Reusable brief component contract |
 | `test_experiment_runner.py` | Condition config, experiment execution |
@@ -179,7 +179,7 @@ uv run pytest
 | `test_storage_guards.py` | Run ID write validation, metadata cache |
 | `test_stats.py` | Statistical functions (normal CDF, Wilson CI, Cohen's h, Chi-square) |
 | `test_json_extract.py` | JSON recovery from model output (direct, fenced, wrapped prose) |
-| `test_paradox_resolution.py` | D11 three-tier paradox resolution across every consumer |
+| `test_paradox_resolution.py` | D11 immutable stored-evidence resolution across every consumer |
 | `test_position_bias.py` | Per-iteration option permutation and un-shuffling |
 | `test_fingerprint.py` | Intensity-weighted dominance, cross-model separation |
 | `test_paradox_dimensions.py` | Closed dimension vocabulary, saturation guard |
@@ -202,10 +202,10 @@ lib/
   counterfactual.py      Evidence-based run reconstruction
   experiment_runner.py   Parallel experiment execution
   fingerprint.py         Model ethics profiling
-  reporting.py           PDF report orchestration
+  reporting.py           Printable HTML report orchestration
   report_prose.py        Rationale themes + scenario prose resolution
-  pdf_charts.py          Inline SVG charts for reports
-  comparison_report.py   Multi-run PDF layout
+  report_charts.py          Inline SVG charts for reports
+  comparison_report.py   Multi-run HTML layout
   report_models.py       Typed report context schemas
   report_writer.py       AI narrative generation
   export_data.py         JSON export formatter
@@ -216,14 +216,14 @@ lib/
   executive_reporting/   Reusable brief engine, renderer, and plugins
 templates/               Jinja2 views and partials
 static/                  Candlelight theme CSS
-tests/                   pytest suite (164 tests)
+tests/                   pytest suite (192 tests)
 tests/fixtures/          Frozen paradoxes + overrides for report-rendering tests
 paradoxes.json           Scenario library (197 paradoxes, each tagged with `dimensions`)
 models.json              Available model definitions
 report_overrides.json    Per-paradox executive report prose
 report_themes.json       Per-theme deployment guidance
 ROADMAP.md               Project roadmap and milestones
-scripts/                 Doc-claim checker, dimension backfill, PDF smoke test
+scripts/                 Doc-claim checker, dimension backfill, report verification
 .github/workflows/ci.yml Lint + tests + doc-claim gate
 docs/architecture/       Boundary, state, and tech-stack contracts
 results/                 Persisted run output (gitignored)
@@ -256,10 +256,14 @@ Each run file (`results/<run_id>.json`) includes:
 
 ## Report Resilience
 
-Editing or replacing `paradoxes.json` does not orphan stored runs. Paradoxes resolve in three
-tiers — live library, then the run's own snapshot, then reconstruction from the run's stored
+Editing or replacing `paradoxes.json` does not orphan stored runs. Paradoxes resolve in two
+tiers — the run's own snapshot, then reconstruction from the run's stored
 `prompt` and `options`. Every historical run stays exportable. See `docs/architecture/arch-decisions.md` D11.
 
 ## Config Source Priority (models)
 
 1. `models.json` (file) → 2. `OPENROUTER_MODELS` (env) → 3. `AVAILABLE_MODELS_JSON` (env)
+
+### LinkedIn insight slides
+
+Choose **LinkedIn slides** on a run card or **LinkedIn insight slides** in its report. The square HTML deck summarizes saved results and current analyst insights without model calls. Choose **Save LinkedIn slideshow PDF**, then Save as PDF in the browser. Use no margins, 100% scale, background graphics, and no headers/footers; inspect the preview before saving. Browser support for custom square paper varies. Review the content before uploading the PDF to LinkedIn.

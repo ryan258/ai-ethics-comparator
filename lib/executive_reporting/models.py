@@ -8,7 +8,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 ConfidenceLabel = Literal["high", "medium", "low", "directional"]
 ColumnAlignment = Literal["left", "center", "right"]
 AuditSeverity = Literal["info", "warning", "critical"]

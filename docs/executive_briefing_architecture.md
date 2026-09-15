@@ -83,7 +83,7 @@ The renderer owns:
 
 - Jinja template loading
 - context rendering
-- optional WeasyPrint PDF generation
+- browser-native printing and standalone HTML download
 
 ## Strategic Analysis Plugin
 
@@ -110,16 +110,11 @@ The package now exposes a single public entrypoint for other projects:
 
 That means other repos do not need `SingleRunReport`, `ReportGenerator`, or any of the AI-ethics-specific reporting code in this project.
 
-## Current Migration Strategy
+## Current Rendering Integration
 
-The existing AI ethics PDF system remains in place.
+Single-run report routes use the executive brief adapter and HTML renderer. Comparisons use their comparison context and HTML template. Reports include print CSS and browser export controls. Server PDF generation has been removed; PowerPoint rendering still runs with a two-export concurrency bound.
 
-The new package is intentionally parallel to the current routes so we can migrate in stages:
-
-1. build reusable brief contracts
-2. prove the style plugin
-3. add domain adapters from current report contexts into `ExecutiveBrief`
-4. switch current report routes to render through the new brief-first path
+Rendering adapters under `lib/` may depend on Jinja2 and native document renderers. Measurement, execution and evidence validation remain independent of HTTP and presentation engines. This is the explicit rendering-adapter exception to the portability rule.
 
 ## How Another Project Would Use It
 
@@ -144,7 +139,7 @@ component = ExecutiveBriefingComponent(templates_dir="templates")
 
 brief = component.build_brief(evidence)
 html = component.render_html(evidence)
-pdf_bytes = component.render_pdf(evidence)
+html = component.render_html(evidence)
 ```
 
 For richer domains, replace the default composer:

@@ -2,14 +2,15 @@
 Comparison Report Builder (Phase 3).
 
 Takes 2-4 run dicts for the *same* paradox and produces a unified report
-context for the WeasyPrint HTML template.
+context for the printable HTML template.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
-from lib.pdf_charts import (
+from lib.evidence import validate_comparison
+from lib.report_charts import (
     PALETTE_DARK,
     PALETTE_LIGHT,
     render_donut_svg,
@@ -22,6 +23,7 @@ from lib.report_models import (
     DeltaTable,
     DeltaValue,
     DonutSlice,
+    MetadataItem,
     NarrativeContext,
     OptionEffect,
     PairwiseComparison,
@@ -31,25 +33,26 @@ from lib.stats import chi_square_test, cohens_h, wilson_confidence_interval
 
 
 def build_comparison_context(
-    runs: List[Dict[str, Any]],
-    paradox: Dict[str, Any],
-    insights: List[Optional[Dict[str, Any]]],
-    narrative: Optional[Dict[str, str]] = None,
+    runs: list[dict[str, Any]],
+    paradox: dict[str, Any],
+    insights: list[dict[str, Any] | None],
+    narrative: dict[str, str] | None = None,
     *,
     theme: str = "dark",
 ) -> ComparisonReport:
     """Build a template-ready context dict for a comparison report."""
+    validate_comparison(runs)
     palette = PALETTE_DARK if theme == "dark" else PALETTE_LIGHT
 
     options = paradox.get("options", [])
     option_lookup = {o["id"]: o for o in options if isinstance(o, dict) and "id" in o}
 
-    model_contexts: List[ComparisonModelSummary] = []
+    model_contexts: list[ComparisonModelSummary] = []
     for idx, run in enumerate(runs):
         model_contexts.append(_build_model_summary(run, option_lookup, palette, idx))
 
     # Cross-model statistical comparisons
-    comparisons: List[PairwiseComparison] = []
+    comparisons: list[PairwiseComparison] = []
     for i in range(len(runs)):
         for j in range(i + 1, len(runs)):
             comparisons.append(
@@ -63,7 +66,7 @@ def build_comparison_context(
     # Delta table: option × model matrix
     delta_table = _build_delta_table(model_contexts, option_lookup)
 
-    narrative_ctx: Optional[NarrativeContext] = None
+    narrative_ctx: NarrativeContext | None = None
     if isinstance(narrative, dict):
         narrative_ctx = NarrativeContext(
             executive_narrative=str(narrative.get("executive_narrative", "") or "").strip(),
@@ -94,17 +97,17 @@ def build_comparison_context(
 
 
 def _build_model_summary(
-    run: Dict[str, Any],
-    option_lookup: Dict[int, Dict[str, Any]],
-    palette: Dict[str, str],
+    run: dict[str, Any],
+    option_lookup: dict[int, dict[str, Any]],
+    palette: dict[str, str],
     color_idx: int,
 ) -> ComparisonModelSummary:
     """Summarise a single run for the comparison context."""
     summary = run.get("summary", {})
     summary_options = summary.get("options", []) if isinstance(summary, dict) else []
 
-    option_stats: List[ComparisonOptionStat] = []
-    observed: List[int] = []
+    option_stats: list[ComparisonOptionStat] = []
+    observed: list[int] = []
     max_count = max(
         (int(o.get("count", 0) or 0) for o in summary_options if isinstance(o, dict)),
         default=0,
@@ -161,7 +164,19 @@ def _build_model_summary(
         opt.ci_lower = float(ci.get("lower", 0.0))
         opt.ci_upper = float(ci.get("upper", 0.0))
 
+    ordering = ("Shuffled each iteration" if run.get("shufflePerIteration") else
+                "Fixed recorded permutation" if run.get("shuffleMapping") else
+                "Canonical order" if "shufflePerIteration" in run or run.get("prompt") else "Not recorded")
+    factors = [
+        MetadataItem(label="Requested iterations", value=str(run.get("iterationCount", "Not recorded"))),
+        MetadataItem(label="Ordering", value=ordering),
+        MetadataItem(label="Status", value=str(run.get("status", "Not recorded"))),
+        MetadataItem(label="Persona", value=str(run.get("systemPrompt") or "None recorded")),
+    ]
+    for key, value in (run.get("params") or {}).items():
+        factors.append(MetadataItem(label=key.replace("_", " ").capitalize(), value=str(value)))
     return ComparisonModelSummary(
+        experimental_factors=factors,
         model_name=str(run.get("modelName", "Unknown") or "Unknown"),
         run_id=str(run.get("runId", "unknown") or "unknown"),
         response_count=total,
@@ -175,13 +190,13 @@ def _build_model_summary(
 def _compare_pair(
     a: ComparisonModelSummary,
     b: ComparisonModelSummary,
-    option_lookup: Dict[int, Dict[str, Any]],
+    option_lookup: dict[int, dict[str, Any]],
 ) -> PairwiseComparison:
     """Statistical comparison between two model runs."""
     chi_raw = chi_square_test(a.observed, b.observed)
 
     # Cohen's h for each option
-    option_effects: List[OptionEffect] = []
+    option_effects: list[OptionEffect] = []
     total_a = a.response_count or 1
     total_b = b.response_count or 1
     for oa, ob in zip(a.option_stats, b.option_stats):
@@ -207,11 +222,11 @@ def _compare_pair(
 
 
 def _build_delta_table(
-    models: List[ComparisonModelSummary],
-    option_lookup: Dict[int, Dict[str, Any]],
+    models: list[ComparisonModelSummary],
+    option_lookup: dict[int, dict[str, Any]],
 ) -> DeltaTable:
     """Build an option × model percentage matrix for the delta table."""
-    all_option_ids: List[int] = []
+    all_option_ids: list[int] = []
     seen = set()
     for m in models:
         for o in m.option_stats:
@@ -219,10 +234,10 @@ def _build_delta_table(
                 all_option_ids.append(o.id)
                 seen.add(o.id)
 
-    rows: List[DeltaRow] = []
+    rows: list[DeltaRow] = []
     for oid in all_option_ids:
         meta = option_lookup.get(oid, {})
-        values: List[DeltaValue] = []
+        values: list[DeltaValue] = []
         for m in models:
             match = next((o for o in m.option_stats if o.id == oid), None)
             values.append(

@@ -1,19 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+
 import pytest
 
-
+from lib.query_errors import ProviderTransientError
 from lib.query_processor import (
+    QueryProcessor,
+    RunConfig,
     _coerce_option_id,
     _extract_choice_from_classifier_output,
     _infer_option_from_text,
-    QueryProcessor,
-    RunConfig,
     parse_trolley_response,
     render_options_template,
 )
-from lib.query_errors import ProviderTransientError
 
 
 def test_render_options_template_appends_strict_single_choice_contract() -> None:

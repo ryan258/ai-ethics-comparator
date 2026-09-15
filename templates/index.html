@@ -114,6 +114,11 @@
 
 <div class="card">
     <h2>Results Stream</h2>
+    <form action="/reports/compare" method="get" target="_blank" style="margin-bottom: 1rem;">
+      <label for="comparisonRunIds">Compare 2–4 runs (comma-separated run IDs)</label>
+      <input id="comparisonRunIds" name="run_ids" required placeholder="model-001,model-002">
+      <button type="submit" class="btn">Open Comparison Report</button>
+    </form>
     <div id="results-area">
         {% for ctx in recent_run_contexts %}
         {% include "partials/result_item.html" %}

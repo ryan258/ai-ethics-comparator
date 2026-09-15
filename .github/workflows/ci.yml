@@ -17,20 +17,8 @@ jobs:
         with:
           enable-cache: true
 
-      # WeasyPrint's CFFI bindings need the native GTK/Pango stack. Without it
-      # the PDF tests skip silently, which is exactly the gap D10 warns about.
-      - name: Install WeasyPrint native dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0
-
-      - run: uv sync --all-extras --dev
-
-      # ASYNC catches blocking I/O on the event loop, which the narrower F,E9
-      # gate missed entirely. Widening further (S, UP, I) needs a noqa pass
-      # first -- see ROADMAP.
       - name: Lint
-        run: uvx ruff check --select F,E9,ASYNC .
+        run: uvx ruff check .  # rule set lives in pyproject.toml
 
       - name: Tests
         run: uv run pytest -q

@@ -6,13 +6,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Generic, Optional, TypeVar
+from typing import Generic, TypeVar
 
 from pydantic import BaseModel
 
 from lib.executive_reporting.models import ExecutiveBrief
 from lib.executive_reporting.plugins.base import ExecutiveBriefPlugin
-from lib.executive_reporting.weasyprint_runtime import blocked_url_fetcher, load_weasyprint_html
 
 try:
     from jinja2 import Environment, FileSystemLoader
@@ -20,8 +19,6 @@ except ModuleNotFoundError:  # pragma: no cover - optional dependency guard
     Environment = None  # type: ignore[assignment]
     FileSystemLoader = None  # type: ignore[assignment]
 
-HTML, WEASYPRINT_IMPORT_ERROR = load_weasyprint_html()
-_USE_MODULE_DEFAULT = object()
 
 
 logger = logging.getLogger(__name__)
@@ -37,19 +34,11 @@ class ExecutiveBriefRenderer(Generic[PluginContextT]):
         plugin: ExecutiveBriefPlugin[PluginContextT],
         *,
         templates_dir: str | Path = "templates",
-        html_class: object = _USE_MODULE_DEFAULT,
-        weasyprint_import_error: object = _USE_MODULE_DEFAULT,
     ) -> None:
         self.plugin = plugin
         self.templates_dir = Path(templates_dir)
-        self.env: Optional[Environment] = None
+        self.env: Environment | None = None
         self._template_cache: dict[str, bool] = {}
-        self.html_class = HTML if html_class is _USE_MODULE_DEFAULT else html_class
-        self.weasyprint_import_error = (
-            WEASYPRINT_IMPORT_ERROR
-            if weasyprint_import_error is _USE_MODULE_DEFAULT
-            else weasyprint_import_error
-        )
 
         if Environment is not None and FileSystemLoader is not None and self.templates_dir.exists():
             # autoescape: report templates interpolate model-authored text.
@@ -86,13 +75,3 @@ class ExecutiveBriefRenderer(Generic[PluginContextT]):
             raise RuntimeError(self.plugin.unavailable_message)
         template = self.env.get_template(self.plugin.template_name)
         return template.render(report=self.render_context(brief))
-
-    def render_pdf(self, brief: ExecutiveBrief) -> bytes:
-        if self.html_class is None:
-            raise RuntimeError(self.plugin.unavailable_message) from self.weasyprint_import_error
-        html_content = self.render_html(brief)
-        return self.html_class(
-            string=html_content,
-            base_url=str(self.templates_dir.parent),
-            url_fetcher=blocked_url_fetcher,
-        ).write_pdf()

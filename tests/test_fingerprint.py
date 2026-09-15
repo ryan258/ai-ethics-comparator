@@ -11,6 +11,7 @@ models with genuinely different reasoning produce genuinely different profiles.
 
 from __future__ import annotations
 
+from lib.evidence import ANALYSIS_VERSION, evidence_hash
 from lib.fingerprint import compute_model_fingerprint
 
 
@@ -28,7 +29,10 @@ class FakeStorage:
 
 
 def _run(run_id: str, model: str, complexes: list[tuple[str, int]]) -> dict:
-    return {
+    run = {
+        "status": "completed",
+        "iterationCount": 10,
+        "responses": [{"iteration": n, "explanation": "sample"} for n in range(1, 11)],
         "runId": run_id,
         "modelName": model,
         "insights": [
@@ -43,6 +47,9 @@ def _run(run_id: str, model: str, complexes: list[tuple[str, int]]) -> dict:
             }
         ],
     }
+
+    run["insights"][0].update(analysisVersion=ANALYSIS_VERSION, evidenceHash=evidence_hash(run))
+    return run
 
 
 def _by_dimension(fingerprint: dict) -> dict[str, dict]:
@@ -99,8 +106,8 @@ async def test_ties_count_every_tied_label_as_dominant() -> None:
     assert dims["Consequence"]["prevalence"] == 1.0
 
 
-async def test_missing_or_malformed_count_degrades_to_presence() -> None:
-    """Older insights predate the count field; they must still aggregate."""
+async def test_missing_or_malformed_old_insights_require_revalidation() -> None:
+    """Older insights do not meet the evidence contract and must be excluded."""
     storage = FakeStorage([
         {
             "runId": "o-001",
@@ -123,8 +130,8 @@ async def test_missing_or_malformed_count_degrades_to_presence() -> None:
     result = await compute_model_fingerprint("a/b", storage)
     dims = _by_dimension(result)
 
-    assert result["totalRunsWithInsights"] == 1
-    assert set(dims) == {"Duty", "Purity"}
+    assert result["totalRunsWithInsights"] == 0
+    assert dims == {}
 
 
 async def test_model_with_no_insights_returns_empty_fingerprint() -> None:
@@ -134,3 +141,13 @@ async def test_model_with_no_insights_returns_empty_fingerprint() -> None:
 
     assert result["totalRunsWithInsights"] == 0
     assert result["fingerprint"] == []
+
+
+async def test_zero_counts_and_incomplete_cohorts_are_preserved() -> None:
+    zero = _run("z-001", "a/b", [("Duty", 0), ("Purity", 0)])
+    incomplete = _run("z-002", "a/b", [("Duty", 3)])
+    incomplete["status"] = "interrupted"
+    result = await compute_model_fingerprint("a/b", FakeStorage([zero, incomplete]))
+    assert result["totalRunsWithInsights"] == 1
+    assert [r["runId"] for r in result["cohort"]] == ["z-001"]
+    assert all(d["prevalence"] == 0 and d["intensityTotal"] == 0 and d["presentInRuns"] == 0 for d in result["fingerprint"])

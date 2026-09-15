@@ -4,7 +4,7 @@ Default composer for turning a generic EvidencePackage into an ExecutiveBrief.
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 from lib.executive_reporting.composer import ExecutiveBriefComposer
 from lib.executive_reporting.models import (

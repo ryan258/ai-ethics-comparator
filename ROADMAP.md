@@ -1,9 +1,9 @@
 # AI Ethics Comparator — Project Roadmap
 
-**Current Version:** v6.1.0 (Audit Remediation)  
-**Architecture Baseline:** Local-First FastAPI + Jinja2 + HTMX  
-**Verification Baseline:** 164 tests passing, zero ruff F/E9/ASYNC errors, Candlelight palette compliant  
-**Last Updated:** September 14, 2026 (post-audit)  
+**Current Version:** v6.1.0 (Audit Remediation)
+**Architecture Baseline:** Local-First FastAPI + Jinja2 + HTMX
+**Verification:** See [review remediation](docs/review-remediation.md) for current targeted evidence and limits.
+**Last Updated:** September 14, 2026 (post-audit)
 
 ---
 
@@ -31,16 +31,15 @@ Version 6.0.0 marks the consolidation from an earlier multi-framework prototype 
 - **Run-Level Scenario Snapshotting:** Every run record permanently preserves the exact scenario title and option definitions tested, ensuring older run files never 404 or desynchronize.
 - **Strict Data Validation:** Full schema enforcement in `lib/paradoxes.py` validating options, labels, descriptions, and prompt placeholders.
 
-### Milestone 3: Executive Briefing & WeasyPrint PDF Pipeline (Completed)
-- **Strategic Brief Architecture:** Standardized reporting around a 5-part consulting brief pipeline (`EvidencePackage` → `ExecutiveBriefComposer` → `ExecutiveBrief` → `ExecutiveBriefPlugin` → `ExecutiveBriefRenderer`).
-- **Elimination of Fragile PDF Fallback (Decision D10):** Replaced 1,445 lines of unmaintained pure-Python PDF layout code with an uncompromising WeasyPrint engine; endpoints fail with clear 503 HTTP status when system GTK/Pango dependencies are missing.
-- **Decoupled Scenario Prose:** Per-paradox executive framing and theme guidance moved to declarative data files (`report_overrides.json`, `report_themes.json`).
-- **Multi-Format Export:** Supported single-run and side-by-side comparison WeasyPrint PDFs, structured JSON data export, and slide-ready PowerPoint decks (`.pptx`).
+### Milestone 3: Executive Briefing and Browser Reports
+- Typed evidence and executive-brief composition feed self-contained Jinja2 HTML reports.
+- Browser Print / Save as PDF and HTML download replace server PDF rendering.
+- Comparisons validate saved scenarios and option meanings; JSON preserves the full stored record. PowerPoint remains available.
 
 ### Milestone 4: Security, Resilience & Bounds Hardening (Completed)
-- **SSRF & Local File Read Prevention:** Customized WeasyPrint URL fetcher to refuse all external protocols (`http://`, `https://`, `file://`), neutralizing server-side request forgery risks during PDF generation.
+- **Report boundary:** no server-side document resource fetcher; report views perform no model calls.
 - **Strict HTML Autoescaping:** Configured Jinja2 autoescape across all report generation environments.
-- **Filesystem Traversal Defenses:** Strict regex validation (`^[A-Za-z0-9_-]+-\d{3}$`) and `is_relative_to()` resolution checks for all storage operations.
+- **Filesystem Traversal Defenses:** Strict regex validation (`^[A-Za-z0-9_-]+-\d{3,}$`) and `is_relative_to()` resolution checks for all storage operations.
 - **Bounded In-Memory Caching:** Capped `RunStorage._metadata_cache` at 5,000 entries with FIFO eviction, preventing memory leaks during high-throughput scanning.
 - **Atomic File Creation:** POSIX atomic `os.link` reservation with safe `open('x')` fallback to guarantee concurrent execution safety without a relational database.
 
@@ -76,7 +75,7 @@ in prose but never enforced in code.
 - **One report layout (D-06):** D10's "no silent second backend" principle applied to layout
   as well as engine; the 790-line legacy template is deleted and failures surface as 503.
 - **Hygiene (D-07):** blocking `open()` removed from three async paths, dead view-model field
-  deleted, CI added, lint gate widened to include `ASYNC`, doc claims asserted in CI.
+  deleted, CI added, lint gate widened to `F,E9,ASYNC,S,UP,I`, doc claims asserted in CI.
 
 A review pass over the remediation itself caught two further defects, both fixed:
 
@@ -157,14 +156,10 @@ Carried forward from the audit; none are defects, all are improvements.
    assignments from a keyword lexicon scored by corpus-relative lift. Distribution is healthy
    (Consequence 69%, Purity 10%) and spot checks read sensibly, but these are heuristic and
    want a human pass. Re-running preserves hand edits.
-2. **Widen the lint gate further.** `F,E9,ASYNC` is clean. `S`, `UP`, and `I` report ~470
-   findings, almost all mechanical (223 are `UP006` annotation style). Needs a `--fix` pass
-   plus noqa curation for the handful that are deliberate (`S311` jitter, `S104` local bind,
-   `S704` the documented `safe_markdown` path).
-3. **Split `main.py` into routers.** All 22 routes live inside one 816-line `create_app`.
+2. **Split `main.py` into routers.** All 22 routes live inside one 816-line `create_app`.
    `APIRouter` handles this without disturbing D1's lifespan wiring.
-4. **Run index file.** `list_runs()` parses every file in `results/` on each request, and the
+3. **Run index file.** `list_runs()` parses every file in `results/` on each request, and the
    fingerprint then re-reads each match. Fine at 136 runs; not at 5,000.
-5. **Cost accounting.** `tokenUsage` is already captured and summed per run. Surfacing
+4. **Cost accounting.** `tokenUsage` is already captured and summed per run. Surfacing
    spend-per-run and projected experiment cost is close to free and is the first question
    anyone asks before launching a large matrix.

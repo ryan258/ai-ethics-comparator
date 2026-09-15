@@ -1,0 +1,75 @@
+<style>
+  .report-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 16px 24px; background: #121212; color: #EBD2BE; font: 14px/1.4 system-ui, sans-serif; border-bottom: 1px solid #A6ACCD; }
+  .report-tools strong { letter-spacing: .12em; text-transform: uppercase; margin-right: auto; font-size: 12px; }
+  .report-tools button { border: 1px solid #A6ACCD; border-radius: 6px; padding: 10px 16px; font: inherit; font-weight: 600; cursor: pointer; background: #121212; color: #EBD2BE; }
+  .report-tools button:first-of-type { background: #EBD2BE; color: #121212; }
+  .report-tools button:focus-visible { outline: 3px solid #98C379; outline-offset: 3px; }
+  .browser-note { font: 13px/1.6 system-ui, sans-serif; color: #A6ACCD; background: #121212; padding: 12px 24px; }
+  .config-meta { display: grid; grid-template-columns: minmax(100px, 1fr) 2fr; gap: 8px 16px; margin: 16px 0; font-size: 13px; overflow-wrap: anywhere; }
+  .config-meta dt { opacity: .75; }
+  .config-meta dd { margin: 0; }
+  @media screen {
+    html { background: #121212; }
+    body { max-width: 1120px; margin: 24px auto; box-shadow: 0 20px 80px rgba(18,18,18,.4); }
+    body > section { padding: clamp(24px, 5vw, 64px); }
+    body > .cover { min-height: auto; padding-top: 64px; padding-bottom: 64px; }
+    .cover h1 { max-width: 920px; font-size: clamp(30px, 4.2vw, 54px); letter-spacing: -.035em; }
+    .cover .meta { margin-top: 32px; }
+    .eyebrow { color: #121212; }
+    .page-break, .page { break-before: auto; page-break-after: auto; border-top: 1px solid rgba(166,172,205,.3); }
+    .metric-grid { margin: 28px 0; }
+    .metric-value { font-size: 32px; }
+    .model-grid { flex-wrap: wrap; gap: 16px; }
+    .cover-title { font-size: 42px; }
+    .model-card h3 { font-size: 16px; }
+    .model-card .stat { font-size: 13px; }
+    .delta-table { font-size: 14px; }
+    .model-card { min-width: 220px; padding: 20px; }
+    table { overflow-wrap: anywhere; }
+  }
+  @media screen and (max-width: 640px) {
+    body { margin: 0; }
+    .metric-grid, .metric-row, .metric { display: block; width: auto; }
+    .metric { margin-bottom: 16px; }
+    .model-grid { display: block; }
+    .model-card { margin: 12px 0; }
+    table { font-size: 11px; table-layout: fixed; width: 100%; }
+    .report-tools { padding: 16px; }
+    .report-tools strong { width: 100%; }
+  }
+  @media print {
+    .report-tools, .browser-note { display: none !important; }
+    html, body { background: #EBD2BE !important; color: #121212 !important; margin: 0; max-width: none; box-shadow: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    html { --bg: #EBD2BE; --text: #121212; --text-dim: #121212; --bg-raised: rgba(166,172,205,.12); --rule: #A6ACCD; }
+    .cover { min-height: auto; padding-top: 1in; padding-bottom: .5in; }
+    .cover h1 { max-width: none; }
+    h1, h2, h3 { break-after: avoid; }
+    p, li { orphans: 3; widows: 3; }
+    tr, .metric, .model-card { break-inside: avoid; }
+    thead { display: table-header-group; }
+    svg text { fill: #121212 !important; }
+    pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+    .page:last-child { page-break-after: auto; }
+  }
+</style>
+<div class="report-tools" role="toolbar" aria-label="Report actions">
+  <strong>Research brief · AI Ethics Comparator</strong>
+  <button type="button" id="print-report">Print / Save as PDF</button>
+  <button type="button" id="save-report">Download HTML</button>
+  {% if report.publication_label is defined and report.publication_label %}
+  <a href="/reports/runs/{{ report.publication_label | urlencode }}?view=slides" style="color: #EBD2BE">LinkedIn insight slides</a>
+  {% endif %}
+</div>
+<p class="browser-note">A snapshot of the saved run evidence. Print or save a PDF from your browser; download HTML for a portable copy. Opening this report does not make model calls.</p>
+<script>
+  document.getElementById('print-report').addEventListener('click', () => window.print());
+  document.getElementById('save-report').addEventListener('click', () => {
+    const blob = new Blob(['<!DOCTYPE html>\n' + document.documentElement.outerHTML], {type: 'text/html;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'research-report.html';
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+</script>

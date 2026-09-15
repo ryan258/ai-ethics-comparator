@@ -10,8 +10,8 @@ from pydantic import Field
 
 from lib.executive_reporting.models import (
     BriefFinding,
-    BriefRecommendation,
     BriefingModel,
+    BriefRecommendation,
     EvidenceMetric,
     EvidenceQuote,
     EvidenceTable,

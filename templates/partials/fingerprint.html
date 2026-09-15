@@ -4,9 +4,12 @@
         Share of {{ total_insights }} evaluated runs in which each moral complex <strong>dominated</strong> the model's reasoning.
     </p>
 
+    <details><summary>Included cohort ({{ cohort|default([])|length }} runs)</summary>
+    {% for run in cohort|default([]) %}<p><a href="/?runId={{ run.runId }}">{{ run.runId }}</a> · {{ run.paradoxId }} · evaluator {{ run.analystModel }} · parameters {{ run.params }} · persona {{ run.systemPrompt or 'none' }}</p>{% endfor %}
+    </details>
     {% if total_insights == 0 %}
     <div style="padding: 1rem; border-left: 3px solid var(--accent-danger); font-size: 0.9rem;">
-        No insights generated for this model yet. Run experiments and view their analysis to build a fingerprint.
+        No current validated analyses are available for this model. Complete runs and generate or regenerate their analysis to build a fingerprint.
     </div>
     {% else %}
     <div class="fingerprint-chart" style="display: flex; flex-direction: column; gap: 0.75rem;">
@@ -34,7 +37,7 @@
         {% endfor %}
     </div>
     <div style="margin-top: 1.5rem; font-size: 0.75rem; opacity: 0.6; text-align: center;">
-        Lines indicate 95% Wilson confidence intervals based on sample size.
+        Lines indicate 95% Wilson intervals for this sampled corpus and evaluator mix, not general certainty about the model.
     </div>
     {% endif %}
 </div>

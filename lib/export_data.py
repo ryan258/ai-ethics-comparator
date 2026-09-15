@@ -7,14 +7,15 @@ for programmatic consumption.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+import copy
+from typing import Any
 
 
 def export_run_json(
-    run_data: Dict[str, Any],
-    paradox: Dict[str, Any],
-    insight: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    run_data: dict[str, Any],
+    paradox: dict[str, Any],
+    insight: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Produce a structured JSON export suitable for downstream tools."""
     options = run_data.get("options", [])
     option_lookup = {o["id"]: o for o in options if isinstance(o, dict) and "id" in o}
@@ -22,7 +23,7 @@ def export_run_json(
     summary = run_data.get("summary", {})
     summary_options = summary.get("options", []) if isinstance(summary, dict) else []
 
-    distribution: List[Dict[str, Any]] = []
+    distribution: list[dict[str, Any]] = []
     for opt in summary_options:
         if not isinstance(opt, dict):
             continue
@@ -35,7 +36,7 @@ def export_run_json(
             "percentage": float(opt.get("percentage", 0.0) or 0.0),
         })
 
-    responses_export: List[Dict[str, Any]] = []
+    responses_export: list[dict[str, Any]] = []
     for resp in run_data.get("responses", []):
         if not isinstance(resp, dict):
             continue
@@ -60,7 +61,9 @@ def export_run_json(
             }
 
     return {
-        "schema_version": "1.0",
+        "schema_version": "2.0",
+        "export_kind": "reproducibility",
+        "complete_run": copy.deepcopy(run_data),
         "run_id": run_data.get("runId"),
         "model_name": run_data.get("modelName"),
         "paradox": {

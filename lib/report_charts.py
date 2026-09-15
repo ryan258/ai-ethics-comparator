@@ -1,5 +1,5 @@
 """
-Inline SVG chart rendering for WeasyPrint PDF reports.
+Inline SVG chart rendering for printable HTML reports.
 
 Renders inline SVG strings for report template injection.
 Zero external dependencies.
@@ -8,12 +8,11 @@ Zero external dependencies.
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List, Optional
-
+from typing import Any
 
 # ── Shared palette constants ─────────────────────────────────────────────────
 
-PALETTE_DARK: Dict[str, str] = {
+PALETTE_DARK: dict[str, str] = {
     "bg": "#121212",
     "bg_raised": "#A6ACCD",
     "text": "#EBD2BE",
@@ -22,7 +21,7 @@ PALETTE_DARK: Dict[str, str] = {
     "danger": "#E06C75",
 }
 
-PALETTE_LIGHT: Dict[str, str] = {
+PALETTE_LIGHT: dict[str, str] = {
     "bg": "#EBD2BE",
     "bg_raised": "#A6ACCD",
     "text": "#121212",
@@ -37,21 +36,21 @@ PALETTE_LIGHT: Dict[str, str] = {
 # ══════════════════════════════════════════════════════════════════════════════
 
 def render_donut_svg(
-    data: List[Dict[str, Any]],
-    palette: Dict[str, str],
+    data: list[dict[str, Any]],
+    palette: dict[str, str],
     *,
     width: int = 170,
     height: int = 170,
     outer_r: int = 74,
     inner_r: int = 46,
 ) -> str:
-    """Render a donut chart as inline SVG for WeasyPrint."""
+    """Render a donut chart as inline SVG for browser reports."""
     total = sum(d["value"] for d in data)
     if total == 0:
         return ""
 
     cx, cy = width / 2, height / 2
-    parts: List[str] = [
+    parts: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" '
         f'width="{width}" height="{height}" '
         f'viewBox="0 0 {width} {height}">',
@@ -124,9 +123,9 @@ _MAX_HEATMAP_COLS = 25
 
 
 def render_heatmap_svg(
-    decision_sequence: List[Optional[int]],
-    option_ids: List[int],
-    palette: Dict[str, str],
+    decision_sequence: list[int | None],
+    option_ids: list[int],
+    palette: dict[str, str],
     *,
     cell: int = 16,
     gap: int = 2,
@@ -142,7 +141,7 @@ def render_heatmap_svg(
     h = hh + no * (cell + gap) + gap
     bg = palette.get("bg_raised", "#A6ACCD")
 
-    parts: List[str] = [
+    parts: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" '
         f'width="{w}" height="{h}" viewBox="0 0 {w} {h}">',
     ]

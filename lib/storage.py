@@ -4,17 +4,18 @@ Filesystem-based run persistence
 Copy-paste ready: Just provide results_root path
 """
 
-import json
 import asyncio
+import json
 import logging
 import os
 import re
 import tempfile
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable, Dict, List, Any, Optional
-from datetime import datetime, timezone
+from typing import Any
 
-STRICT_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+-\d{3}$")
+STRICT_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+-\d{3,}$")
 LEGACY_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,120}$")
 EXPERIMENT_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -28,15 +29,16 @@ class RunStorage:
 
     def __init__(self, results_root: str) -> None:
         self.results_root = Path(results_root)
+        self._write_lock = asyncio.Lock()
         # path -> (mtime_ns, size, metadata|None). Invalidated by any write,
         # since a rewritten file changes mtime/size. Bounded to MAX_METADATA_CACHE_ENTRIES.
-        self._metadata_cache: Dict[str, tuple[int, int, Optional[Dict[str, Any]]]] = {}
+        self._metadata_cache: dict[str, tuple[int, int, dict[str, Any] | None]] = {}
 
     def _cached_metadata(
         self,
         path: Path,
-        loader: Callable[[], Optional[Dict[str, Any]]],
-    ) -> Optional[Dict[str, Any]]:
+        loader: Callable[[], dict[str, Any] | None],
+    ) -> dict[str, Any] | None:
         """Return parsed metadata for path, reusing the cache when unchanged."""
         try:
             stat = path.stat()
@@ -60,13 +62,13 @@ class RunStorage:
     @staticmethod
     def _sanitize_base_name(raw: str) -> str:
         sanitized = re.sub(r'[^a-zA-Z0-9_-]', '', raw)
-        sanitized = re.sub(r'-\d{3}$', '', sanitized)
+        sanitized = re.sub(r'-\d{3,}$', '', sanitized)
         return sanitized or "run"
 
     def _next_run_id(self, base: str) -> str:
-        numbers: List[int] = []
+        numbers: list[int] = []
         if self.results_root.exists():
-            pattern = re.compile(rf'^{re.escape(base)}-(\d{{3}})$')
+            pattern = re.compile(rf'^{re.escape(base)}-(\d{{3,}})$')
             for entry in self.results_root.iterdir():
                 if entry.suffix != ".json":
                     continue
@@ -83,7 +85,7 @@ class RunStorage:
 
 
 
-    async def migrate_legacy_run_ids(self) -> Dict[str, str]:
+    async def migrate_legacy_run_ids(self) -> dict[str, str]:
         """
         Migrate legacy run IDs to strict `<base>-NNN` format.
 
@@ -93,15 +95,15 @@ class RunStorage:
         await self.ensure_results_dir()
         loop = asyncio.get_running_loop()
 
-        def _migrate() -> Dict[str, str]:
-            migrated: Dict[str, str] = {}
+        def _migrate() -> dict[str, str]:
+            migrated: dict[str, str] = {}
             if not self.results_root.exists():
                 return migrated
 
             for entry in sorted(self.results_root.iterdir(), key=lambda p: p.name):
                 source_path: Path
                 source_id: str
-                source_data: Dict[str, Any]
+                source_data: dict[str, Any]
 
                 try:
                     if entry.is_file() and entry.suffix == ".json":
@@ -121,7 +123,7 @@ class RunStorage:
                     if not LEGACY_RUN_ID_PATTERN.fullmatch(source_id):
                         continue
 
-                    with open(source_path, "r", encoding="utf-8") as f:
+                    with open(source_path, encoding="utf-8") as f:
                         source_data = json.load(f)
                     if not isinstance(source_data, dict):
                         continue
@@ -149,14 +151,14 @@ class RunStorage:
                         pass  # Best-effort cleanup
 
                     migrated[source_id] = strict_id
-                except Exception:
+                except Exception:  # noqa: S112 - best-effort scan: one unreadable run must not abort migration
                     continue
 
             return migrated
 
         return await loop.run_in_executor(None, _migrate)
 
-    def _atomic_write(self, target_path: Path, data: Dict[str, Any], create_only: bool = False) -> bool:
+    def _atomic_write(self, target_path: Path, data: dict[str, Any], create_only: bool = False) -> bool:
         """
         Internal sync method. Write JSON to target_path atomically.
 
@@ -206,7 +208,7 @@ class RunStorage:
             except OSError:
                 pass
 
-    async def create_run(self, model_name: str, run_data: Dict[str, Any]) -> str:
+    async def create_run(self, model_name: str, run_data: dict[str, Any]) -> str:
         """
         Reserve a unique run ID, stamp it on run_data, and persist atomically.
 
@@ -244,7 +246,33 @@ class RunStorage:
 
         return await loop.run_in_executor(None, _create_and_save)
 
-    async def save_run(self, run_id: str, run_data: Dict[str, Any]) -> None:
+    async def update_run(self, run_id: str, change: Callable[[dict[str, Any]], None]) -> dict[str, Any]:
+        """Serialize read-modify-write within this single-process store."""
+        async with self._write_lock:
+            latest = await self.get_run(run_id)
+            change(latest)
+            await self._write_run(run_id, latest)
+            return latest
+
+    async def save_run(self, run_id: str, run_data: dict[str, Any]) -> None:
+        """Save an execution snapshot while preserving independently derived fields."""
+        async with self._write_lock:
+            merged = dict(run_data)
+            try:
+                latest = await self.get_run(run_id)
+            except FileNotFoundError:
+                latest = {}
+            for key in ("insights", "narrative", "narrativeEvidenceHash"):
+                if key in latest:
+                    merged[key] = latest[key]
+            # Concurrent iteration callbacks may arrive out of order.
+            if len(latest.get("responses", [])) > len(merged.get("responses", [])):
+                for key in ("responses", "summary", "completedIterations"):
+                    if key in latest:
+                        merged[key] = latest[key]
+            await self._write_run(run_id, merged)
+
+    async def _write_run(self, run_id: str, run_data: dict[str, Any]) -> None:
         """
         Save run data to filesystem (flat file preference)
 
@@ -268,9 +296,14 @@ class RunStorage:
         def _write():
             self._atomic_write(run_file, run_data, create_only=False)
 
-        await loop.run_in_executor(None, _write)
+        writing = loop.run_in_executor(None, _write)
+        try:
+            await asyncio.shield(writing)
+        except asyncio.CancelledError:
+            await writing
+            raise
 
-    async def list_runs(self) -> List[Dict[str, Any]]:
+    async def list_runs(self) -> list[dict[str, Any]]:
         """
         List all runs (metadata only) - Supports legacy folders and flat files
 
@@ -283,7 +316,7 @@ class RunStorage:
             if not self.results_root.exists():
                 return []
 
-            runs_by_id: Dict[str, Dict[str, Any]] = {}
+            runs_by_id: dict[str, dict[str, Any]] = {}
             for entry in self.results_root.iterdir():
                 try:
                     if entry.is_dir():
@@ -296,7 +329,7 @@ class RunStorage:
                         continue
 
                     def _parse(source_path: Path = source, entry_name: str = entry.name):
-                        with open(source_path, "r") as handle:
+                        with open(source_path) as handle:
                             data = json.load(handle)
                         if not isinstance(data, dict):
                             return None
@@ -310,6 +343,7 @@ class RunStorage:
                             "timestamp": data.get("timestamp", ""),
                             "modelName": data.get("modelName", "Unknown"),
                             "paradoxId": data.get("paradoxId", "Unknown"),
+                            "experimentId": data.get("experimentId"),
                             "iterationCount": data.get("iterationCount", 0),
                             "status": data.get("status", "completed"),
                             "filePath": f"results/{entry_name}",
@@ -332,9 +366,9 @@ class RunStorage:
                     logger.error("Error reading run file %s: %s", entry, e)
 
             # Helper for robust timestamp parsing
-            def parse_ts(ts: Optional[str]) -> datetime:
+            def parse_ts(ts: str | None) -> datetime:
                 # Sentinel: earliest possible time, strictly UTC-aware to match stored runs
-                sentinel = datetime.min.replace(tzinfo=timezone.utc)
+                sentinel = datetime.min.replace(tzinfo=UTC)
                 if not ts:
                     return sentinel
 
@@ -344,7 +378,7 @@ class RunStorage:
                     dt = datetime.fromisoformat(ts_clean)
                     # If naive, force to UTC
                     if dt.tzinfo is None:
-                        dt = dt.replace(tzinfo=timezone.utc)
+                        dt = dt.replace(tzinfo=UTC)
                     return dt
                 except ValueError:
                     return sentinel
@@ -356,22 +390,22 @@ class RunStorage:
 
         return await loop.run_in_executor(None, _list)
 
-    async def list_incomplete_runs(self) -> List[Dict[str, Any]]:
+    async def list_incomplete_runs(self) -> list[dict[str, Any]]:
         """Return persisted runs that were left in a resumable state."""
         loop = asyncio.get_running_loop()
 
-        def _list_incomplete() -> List[Dict[str, Any]]:
+        def _list_incomplete() -> list[dict[str, Any]]:
             if not self.results_root.exists():
                 return []
 
-            resumable: List[Dict[str, Any]] = []
+            resumable: list[dict[str, Any]] = []
             for entry in sorted(self.results_root.iterdir(), key=lambda path: path.name):
                 if not entry.is_file() or entry.suffix != ".json":
                     continue
                 try:
-                    with open(entry, "r", encoding="utf-8") as f:
+                    with open(entry, encoding="utf-8") as f:
                         run_data = json.load(f)
-                except Exception:
+                except Exception:  # noqa: S112 - best-effort scan: one unreadable run must not abort the listing
                     continue
 
                 if not isinstance(run_data, dict):
@@ -394,7 +428,7 @@ class RunStorage:
 
         return await loop.run_in_executor(None, _list_incomplete)
 
-    async def get_run(self, run_id: str) -> Dict[str, Any]:
+    async def get_run(self, run_id: str) -> dict[str, Any]:
         """
         Get specific run by ID
 
@@ -424,13 +458,13 @@ class RunStorage:
             # Try flat file first
             flat_path = self.results_root / f"{run_id}.json"
             if flat_path.exists():
-                 with open(flat_path, 'r') as f:
+                 with open(flat_path) as f:
                     return json.load(f)
             
             # Fallback to legacy folder
             legacy_path = self.results_root / run_id / "run.json"
             if legacy_path.exists():
-                with open(legacy_path, 'r') as f:
+                with open(legacy_path) as f:
                     return json.load(f)
                     
             raise FileNotFoundError(f"Run {run_id} not found")
@@ -441,13 +475,24 @@ class ExperimentStorage:
     """Storage manager for defined experiments"""
 
     def __init__(self, experiments_root: str) -> None:
+        self._claim_lock = asyncio.Lock()
         self.experiments_root = Path(experiments_root)
+
+    async def claim_experiment(self, exp_id: str) -> dict[str, Any]:
+        """Claim a pending manifest once in the supported single process."""
+        async with self._claim_lock:
+            data = await self.get_experiment(exp_id)
+            if data.get("status") != "pending":
+                raise ValueError("Experiment must be pending to execute")
+            data["status"] = "running"
+            await self.save_experiment(exp_id, data)
+            return data
 
     async def ensure_dir(self) -> None:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, lambda: self.experiments_root.mkdir(parents=True, exist_ok=True))
 
-    async def save_experiment(self, exp_id: str, exp_data: Dict[str, Any]) -> None:
+    async def save_experiment(self, exp_id: str, exp_data: dict[str, Any]) -> None:
         if not EXPERIMENT_ID_PATTERN.fullmatch(exp_id):
             raise ValueError("Invalid experiment ID format")
         await self.ensure_dir()
@@ -471,7 +516,7 @@ class ExperimentStorage:
 
         await loop.run_in_executor(None, _write)
 
-    async def get_experiment(self, exp_id: str) -> Dict[str, Any]:
+    async def get_experiment(self, exp_id: str) -> dict[str, Any]:
         if not isinstance(exp_id, str) or not EXPERIMENT_ID_PATTERN.fullmatch(exp_id):
             raise ValueError("Invalid exp_id")
         
@@ -487,13 +532,13 @@ class ExperimentStorage:
         
         def _read():
             if exp_path.exists():
-                with open(exp_path, 'r') as f:
+                with open(exp_path) as f:
                     return json.load(f)
             raise FileNotFoundError(f"Experiment {exp_id} not found")
 
         return await loop.run_in_executor(None, _read)
 
-    async def list_experiments(self) -> List[Dict[str, Any]]:
+    async def list_experiments(self) -> list[dict[str, Any]]:
         loop = asyncio.get_running_loop()
         
         def _list():
@@ -504,7 +549,7 @@ class ExperimentStorage:
             for entry in self.experiments_root.iterdir():
                 if entry.is_file() and entry.suffix == ".json":
                     try:
-                        with open(entry, 'r') as f:
+                        with open(entry) as f:
                             data = json.load(f)
                             if "id" in data:
                                 exps.append(data)

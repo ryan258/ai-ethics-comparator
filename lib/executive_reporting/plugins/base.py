@@ -11,7 +11,6 @@ from pydantic import BaseModel
 
 from lib.executive_reporting.models import ExecutiveBrief
 
-
 PluginContextT = TypeVar("PluginContextT", bound=BaseModel)
 
 

@@ -29,5 +29,7 @@ The JSON must follow this schema:
   ]
 }
 
+Count semantics: count is the number of completed responses explicitly exhibiting that label, from 0 through the number of responses. Count each response at most once per label. Labels may overlap. Include each allowed label exactly once, including zeroes.
+
 Data:
-{data}
+${data}

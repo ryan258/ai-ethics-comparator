@@ -3,9 +3,12 @@ Validation - Arsenal Module
 Copy-paste ready: Works in any project using Pydantic
 """
 
-from typing import Optional, Any, List
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 import re
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from lib.evidence import PersistedResponse, RunSummary
 
 MAX_EXPERIMENT_PARADOXES = 10
 MAX_EXPERIMENT_CONDITIONS = 10
@@ -17,7 +20,7 @@ class GenerationParams(BaseModel):
     temperature: float = Field(default=1.0, ge=0, le=2)
     top_p: float = Field(default=1.0, ge=0, le=1)
     max_tokens: int = Field(default=1000, ge=1, le=4000)
-    seed: Optional[int] = Field(default=None, ge=0)
+    seed: int | None = Field(default=None, ge=0)
     frequency_penalty: float = Field(default=0, ge=0, le=2)
     presence_penalty: float = Field(default=0, ge=0, le=2)
 
@@ -30,7 +33,7 @@ class OptionInput(BaseModel):
 
 class OptionInputs(BaseModel):
     """Optional option overrides for trolley-type paradoxes (N-way support)"""
-    options: Optional[List[OptionInput]] = Field(
+    options: list[OptionInput] | None = Field(
         default=None,
         max_length=4,
         min_length=2,
@@ -39,7 +42,7 @@ class OptionInputs(BaseModel):
 
     @field_validator('options')
     @classmethod
-    def validate_sequential_ids(cls, v: Optional[List[OptionInput]]) -> Optional[List[OptionInput]]:
+    def validate_sequential_ids(cls, v: list[OptionInput] | None) -> list[OptionInput] | None:
         """Ensure option IDs are sequential starting from 1"""
         if v:
             ids = sorted([opt.id for opt in v])
@@ -53,10 +56,10 @@ class QueryRequest(BaseModel):
     """Experimental run request"""
     model_name: str = Field(..., alias="modelName", min_length=1, max_length=200)
     paradox_id: str = Field(..., alias="paradoxId", min_length=1, max_length=100)
-    option_overrides: Optional[OptionInputs] = Field(default=None, alias="optionOverrides")
-    iterations: Optional[int] = Field(default=10, ge=1, le=1000)
-    system_prompt: Optional[str] = Field(default=None, alias="systemPrompt", max_length=2000)
-    params: Optional[GenerationParams] = None
+    option_overrides: OptionInputs | None = Field(default=None, alias="optionOverrides")
+    iterations: int | None = Field(default=10, ge=1, le=1000)
+    system_prompt: str | None = Field(default=None, alias="systemPrompt", max_length=2000)
+    params: GenerationParams | None = None
     # Defaults ON: LLMs favour first- and last-listed options, so an unshuffled
     # run carries uncontrolled position bias. Unbiased must be the default path.
     shuffle_options: bool = Field(default=True, alias="shuffleOptions")
@@ -116,14 +119,21 @@ class QueryRequest(BaseModel):
 
 class InsightRequest(BaseModel):
     """AI insight generation request"""
-    runData: dict
-    analystModel: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    runData: dict[str, Any]
+    analystModel: str | None = Field(default=None, min_length=1, max_length=200)
 
     @field_validator('runData')
     @classmethod
-    def validate_run_data(cls, v: dict) -> dict:
-        if 'responses' not in v or len(v['responses']) < 1:
+    def validate_run_data(cls, v: dict[str, Any]) -> dict[str, Any]:
+        if "runId" in v and not isinstance(v["runId"], str):
+            raise ValueError("runId must be a string")
+        if not isinstance(v.get('responses'), list) or not v['responses']:
             raise ValueError('runData must contain at least one response')
+        RunSummary.model_validate(v.get("summary", {}))
+        if "options" in v and (not isinstance(v["options"], list) or any(not isinstance(o, dict) for o in v["options"])):
+            raise ValueError("options must be a list of option objects")
+        for response in v['responses']:
+            PersistedResponse.model_validate(response)
         return v
 
 class ConditionConfig(BaseModel):
@@ -132,8 +142,8 @@ class ConditionConfig(BaseModel):
     modelName: str = Field(..., min_length=1, max_length=200)
     systemPrompt: str = Field(default="", max_length=2000)
     params: GenerationParams = Field(default_factory=GenerationParams)
-    iterations: Optional[int] = Field(default=None, ge=1, le=1000)
-    shuffle_options: bool = Field(default=False, alias="shuffleOptions")
+    iterations: int | None = Field(default=None, ge=1, le=1000)
+    shuffle_options: bool = Field(default=True, alias="shuffleOptions")
 
     @field_validator('params', mode='before')
     @classmethod
@@ -150,13 +160,13 @@ class ConditionConfig(BaseModel):
 
 class ExperimentCreateRequest(BaseModel):
     title: str = Field(..., max_length=200)
-    paradoxIds: List[str] = Field(..., min_length=1, max_length=MAX_EXPERIMENT_PARADOXES)
-    conditions: List[ConditionConfig] = Field(..., min_length=1, max_length=MAX_EXPERIMENT_CONDITIONS)
-    tags: Optional[List[str]] = Field(default_factory=list)
+    paradoxIds: list[str] = Field(..., min_length=1, max_length=MAX_EXPERIMENT_PARADOXES)
+    conditions: list[ConditionConfig] = Field(..., min_length=1, max_length=MAX_EXPERIMENT_CONDITIONS)
+    tags: list[str] | None = Field(default_factory=list)
 
     @field_validator('paradoxIds')
     @classmethod
-    def validate_paradox_ids(cls, v: List[str]) -> List[str]:
+    def validate_paradox_ids(cls, v: list[str]) -> list[str]:
         for pid in v:
             if not re.match(r'^[a-z0-9_-]+$', pid, re.IGNORECASE):
                 raise ValueError(f'Invalid paradox ID format: {pid}')
@@ -176,10 +186,11 @@ class ExperimentRecord(BaseModel):
 
     id: str = Field(..., max_length=100)
     title: str = Field(..., max_length=200)
-    paradoxIds: List[str] = Field(default_factory=list)
-    conditions: List[ConditionConfig] = Field(default_factory=list)
-    runIds: List[str] = Field(default_factory=list)
-    errors: List[str] = Field(default_factory=list)
+    paradoxIds: list[str] = Field(default_factory=list)
+    conditions: list[ConditionConfig] = Field(default_factory=list)
+    runIds: list[str] = Field(default_factory=list)
+    conditionStates: dict[str, str] = Field(default_factory=dict)
+    errors: list[str] = Field(default_factory=list)
     status: str = Field(..., max_length=20)
-    tags: List[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
     createdAt: str = Field(...)

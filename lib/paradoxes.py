@@ -7,7 +7,7 @@ import copy
 import json
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional, Tuple, TypedDict
+from typing import TypedDict
 
 
 class OptionDict(TypedDict):
@@ -22,14 +22,14 @@ class ParadoxBase(TypedDict):
     id: str
     title: str
     promptTemplate: str
-    options: List[OptionDict]
+    options: list[OptionDict]
 
 
 class Paradox(ParadoxBase, total=False):
     type: str
     category: str
-    dimensions: List[str]
-    rubric: List[str]
+    dimensions: list[str]
+    rubric: list[str]
 
 
 # Closed vocabulary for `dimensions` -- the ethical tension a scenario puts
@@ -42,7 +42,7 @@ class Paradox(ParadoxBase, total=False):
 # `category` remains free-text provenance ("Aesop", "Authored: Epistemic
 # Ethics"); it is NOT a grouping key and never was one -- 47 of 197 scenarios
 # had none at all, and 77 distinct values covered 197 items.
-ETHICAL_DIMENSIONS: Tuple[str, ...] = (
+ETHICAL_DIMENSIONS: tuple[str, ...] = (
     "Duty",
     "Consequence",
     "Purity",
@@ -53,7 +53,7 @@ ETHICAL_DIMENSIONS: Tuple[str, ...] = (
 )
 
 
-_REQUIRED_KEYS: Tuple[str, ...] = (
+_REQUIRED_KEYS: tuple[str, ...] = (
     "id",
     "title",
     "promptTemplate",
@@ -61,7 +61,7 @@ _REQUIRED_KEYS: Tuple[str, ...] = (
 )
 
 
-def _normalize_paradox(item: object) -> Optional[Paradox]:
+def _normalize_paradox(item: object) -> Paradox | None:
     """Validate and normalize paradox (supports both binary and N-way schemas)"""
     if not isinstance(item, dict):
         return None
@@ -74,7 +74,7 @@ def _normalize_paradox(item: object) -> Optional[Paradox]:
     if not isinstance(id_val, str) or not isinstance(title_val, str) or not isinstance(prompt_val, str):
         return None
 
-    validated_options: List[OptionDict] = []
+    validated_options: list[OptionDict] = []
 
     # Check for N-way schema (new format with options[] array)
     options_val = item.get("options")
@@ -92,7 +92,7 @@ def _normalize_paradox(item: object) -> Optional[Paradox]:
             opt_label = opt.get("label")
             opt_desc = opt.get("description")
 
-            if not isinstance(opt_id, int) or not isinstance(opt_label, str) or not isinstance(opt_desc, str):
+            if type(opt_id) is not int or not isinstance(opt_label, str) or not isinstance(opt_desc, str):
                 return None
 
             if opt_id < 1 or opt_id > 4:
@@ -116,6 +116,9 @@ def _normalize_paradox(item: object) -> Optional[Paradox]:
             {"id": 1, "label": "Option 1", "description": group1},
             {"id": 2, "label": "Option 2", "description": group2}
         ]
+
+    if sorted(o["id"] for o in validated_options) != list(range(1, len(validated_options) + 1)):
+        return None
 
     result: Paradox = {
         "id": id_val,
@@ -158,24 +161,26 @@ def _normalize_paradox(item: object) -> Optional[Paradox]:
 
 
 @lru_cache(maxsize=1)
-def _load_paradoxes_cached(paradoxes_path: str) -> Tuple[Paradox, ...]:
-    with open(paradoxes_path, "r", encoding="utf-8") as f:
+def _load_paradoxes_cached(paradoxes_path: str) -> tuple[Paradox, ...]:
+    with open(paradoxes_path, encoding="utf-8") as f:
         data = json.load(f)
 
     if not isinstance(data, list):
         raise ValueError("Paradoxes JSON must be a list.")
 
-    normalized: List[Paradox] = []
+    normalized: list[Paradox] = []
     for item in data:
         paradox = _normalize_paradox(item)
         if paradox is None:
             raise ValueError("Invalid paradox entry in JSON.")
+        if any(p["id"] == paradox["id"] for p in normalized):
+            raise ValueError(f"Duplicate paradox ID: {paradox['id']}")
         normalized.append(paradox)
 
     return tuple(normalized)
 
 
-def load_paradoxes(paradoxes_path: Path) -> List[Paradox]:
+def load_paradoxes(paradoxes_path: Path) -> list[Paradox]:
     """Load and return validated paradoxes from JSON file.
 
     Returns a deep copy: the cache is process-wide, so handing out the cached
@@ -189,7 +194,7 @@ def clear_paradox_cache() -> None:
     _load_paradoxes_cached.cache_clear()
 
 
-def get_paradox_by_id(paradoxes: List[Paradox], paradox_id: str) -> Optional[Paradox]:
+def get_paradox_by_id(paradoxes: list[Paradox], paradox_id: str) -> Paradox | None:
     """Safely find paradox by ID."""
     for paradox in paradoxes:
         if paradox["id"] == paradox_id:
@@ -199,28 +204,14 @@ def get_paradox_by_id(paradoxes: List[Paradox], paradox_id: str) -> Optional[Par
 
 def resolve_paradox(
     run_data: dict,
-    paradoxes: List[Paradox],
+    paradoxes: list[Paradox],
 ) -> Paradox:
-    """Resolve the paradox a stored run was executed against (Decision D11).
+    """Resolve immutable execution evidence; live edits never rewrite history.
 
-    A run's `paradoxId` is a foreign key into `paradoxes.json`, a file that is
-    edited freely. Resolution therefore walks three tiers and MUST NOT stop at
-    the first:
-
-    1. the live library -- so corrections to a still-existing scenario apply
-    2. the run's own snapshot (`run_data["paradox"]`) -- written at run creation
-    3. reconstruction from `prompt` / `options` / `paradoxTitle` -- for runs
-       created before snapshotting existed
-
-    Tier 3 always succeeds, so this never returns an empty dict: every stored
-    run stays exportable and reportable no matter what happened to the library.
+    Legacy records are reconstructed from their persisted prompt and options.
+    Applying an edited scenario requires a new run, linked by predecessorRunId.
     """
     paradox_id = run_data.get("paradoxId")
-
-    if isinstance(paradox_id, str):
-        live = get_paradox_by_id(paradoxes, paradox_id)
-        if live:
-            return live
 
     snapshot = run_data.get("paradox")
     if isinstance(snapshot, dict) and snapshot.get("id"):

@@ -8,13 +8,12 @@ from __future__ import annotations
 import logging
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
 @lru_cache(maxsize=8)
-def read_prompt_template(path: str) -> Optional[str]:
+def read_prompt_template(path: str) -> str | None:
     """Read a prompt template once per process.
 
     These files do not change at runtime, and re-reading them inside an async

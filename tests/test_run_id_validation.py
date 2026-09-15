@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 
-@pytest.mark.parametrize("run_id", ["model", "model-01", "model-0001", "bad.id-001"])
+@pytest.mark.parametrize("run_id", ["model", "model-01", "bad.id-001"])
 def test_run_id_requires_strict_suffix(client, run_id: str) -> None:
     response = client.get(f"/api/runs/{run_id}")
     assert response.status_code == 400

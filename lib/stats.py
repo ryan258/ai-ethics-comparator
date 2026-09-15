@@ -8,7 +8,7 @@ Consumers:
 """
 
 import math
-from typing import List, Dict, Any, Optional
+from typing import Any
 
 
 def normal_cdf(z: float) -> float:
@@ -33,7 +33,7 @@ def chi_square_to_p_value(chi_square: float, df: int) -> float:
     return 1 - normal_cdf(z)
 
 
-def chi_square_test(observed1: List[int], observed2: List[int]) -> Optional[Dict[str, Any]]:
+def chi_square_test(observed1: list[int], observed2: list[int]) -> dict[str, Any] | None:
     """
     Chi-square test for comparing two categorical distributions
 
@@ -44,6 +44,12 @@ def chi_square_test(observed1: List[int], observed2: List[int]) -> Optional[Dict
     Returns:
         { chiSquare, pValue, degreesOfFreedom, significant }
     """
+    if len(observed1) != len(observed2) or any(type(n) is not int or n < 0 for n in observed1 + observed2):
+        raise ValueError("Counts must be aligned nonnegative integers")
+    populated = [(a, b) for a, b in zip(observed1, observed2) if a + b > 0]
+    if len(populated) < 2:
+        return None
+    observed1, observed2 = map(list, zip(*populated))
     n1 = sum(observed1)
     n2 = sum(observed2)
 
@@ -98,7 +104,7 @@ def get_z_score(confidence: float) -> float:
     return confidence_map[confidence]
 
 
-def wilson_confidence_interval(successes: int, total: int, confidence: float = 0.95) -> Dict[str, float]:
+def wilson_confidence_interval(successes: int, total: int, confidence: float = 0.95) -> dict[str, float]:
     """
     Wilson confidence interval for a proportion
     More accurate than normal approximation, especially for small samples
@@ -111,27 +117,29 @@ def wilson_confidence_interval(successes: int, total: int, confidence: float = 0
     Returns:
         { proportion, lower, upper, marginOfError }
     """
+    if type(successes) is not int or type(total) is not int or not 0 <= successes <= total:
+        raise ValueError("Require integer counts with 0 <= successes <= total")
     if total == 0:
         return {"proportion": 0, "lower": 0, "upper": 0, "marginOfError": 0}
 
-    assert total > 0, "wilson_confidence_interval requires total > 0"
+    assert total > 0, "wilson_confidence_interval requires total > 0"  # noqa: S101 - internal invariant, not input validation
     p = successes / total
     z = get_z_score(confidence)
     z2 = z * z
 
     denominator = 1 + z2 / total
     center = (p + z2 / (2 * total)) / denominator
-    margin = z * math.sqrt((p * (1 - p) / total + z2 / (4 * total * total))) / denominator
+    margin = z * math.sqrt(p * (1 - p) / total + z2 / (4 * total * total)) / denominator
 
     return {
         "proportion": round(p, 4),
         "lower": round(max(0, center - margin), 4),
         "upper": round(min(1, center + margin), 4),
-        "marginOfError": round(margin * 2, 4)
+        "marginOfError": round(margin, 4)
     }
 
 
-def cohens_h(p1: float, p2: float) -> Dict[str, Any]:
+def cohens_h(p1: float, p2: float) -> dict[str, Any]:
     """
     Cohen's h effect size for comparing two proportions
     Measures the magnitude of difference between two proportions

@@ -67,15 +67,15 @@ def _run(**overrides) -> dict:
 # --- tier mechanics ------------------------------------------------------
 
 
-def test_tier1_live_library_wins_over_snapshot() -> None:
-    """Corrections to a still-existing scenario must take effect."""
+def test_snapshot_wins_over_live_library() -> None:
+    """Library corrections cannot rewrite historical evidence."""
     corrected = {
         "id": RETIRED_ID,
         "title": "Corrected Title",
         "promptTemplate": "x",
         "options": [{"id": 1, "label": "A", "description": "a"}],
     }
-    assert resolve_paradox(_run(), [corrected])["title"] == "Corrected Title"
+    assert resolve_paradox(_run(), [corrected])["title"] == "The Retired Scenario"
 
 
 def test_tier2_snapshot_used_when_library_drops_the_scenario() -> None:

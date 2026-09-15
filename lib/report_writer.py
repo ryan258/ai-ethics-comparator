@@ -7,10 +7,10 @@ compelling narrative prose for PDF reports.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from string import Template
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from lib.ai_service import AIService
 from lib.json_extract import extract_json_object
@@ -44,7 +44,7 @@ class ReportWriterAgent:
     def __init__(
         self,
         ai_service: AIService,
-        prompt_template_path: Optional[Path] = None,
+        prompt_template_path: Path | None = None,
     ) -> None:
         self.ai_service = ai_service
         self.prompt_template_path = prompt_template_path or (
@@ -55,12 +55,12 @@ class ReportWriterAgent:
 
     def _compile_context(
         self,
-        run_data: Dict[str, Any],
-        paradox: Dict[str, Any],
-        insight: Optional[Dict[str, Any]],
+        run_data: dict[str, Any],
+        paradox: dict[str, Any],
+        insight: dict[str, Any] | None,
     ) -> str:
         """Compile run data, paradox, and insight into a structured text block."""
-        lines: List[str] = []
+        lines: list[str] = []
 
         # Run metadata
         lines.append(f"Model: {run_data.get('modelName', 'Unknown')}")
@@ -176,11 +176,11 @@ class ReportWriterAgent:
 
     async def generate_narrative(
         self,
-        run_data: Dict[str, Any],
-        paradox: Dict[str, Any],
-        insight: Optional[Dict[str, Any]],
+        run_data: dict[str, Any],
+        paradox: dict[str, Any],
+        insight: dict[str, Any] | None,
         config: NarrativeConfig,
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """Generate narrative prose sections for the PDF report.
 
         Returns a dict with keys:
@@ -212,13 +212,13 @@ class ReportWriterAgent:
 
         return self._parse_narrative(raw_response)
 
-    def _parse_narrative(self, raw: str) -> Dict[str, str]:
+    def _parse_narrative(self, raw: str) -> dict[str, str]:
         """Parse the AI response into narrative sections."""
         # Try JSON extraction first
         try:
             parsed = extract_json_object(raw)
             if parsed:
-                result: Dict[str, str] = {}
+                result: dict[str, str] = {}
                 for key in self.NARRATIVE_KEYS:
                     value = parsed.get(key, "")
                     result[key] = str(value).strip() if value else ""
@@ -232,17 +232,17 @@ class ReportWriterAgent:
 
     async def generate_comparison_narrative(
         self,
-        runs: List[Dict[str, Any]],
-        paradox: Dict[str, Any],
+        runs: list[dict[str, Any]],
+        paradox: dict[str, Any],
         config: NarrativeConfig,
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """Generate a comparative narrative for multi-model PDF reports (Phase 3)."""
         prompt_path = self.prompt_template_path.parent / "comparison_writer_prompt.txt"
         meta_prompt = read_prompt_template(str(prompt_path))
         if meta_prompt is None:
             return self._empty_narrative()
 
-        lines: List[str] = [f"Paradox: {paradox.get('title', 'Unknown')}"]
+        lines: list[str] = [f"Paradox: {paradox.get('title', 'Unknown')}"]
         for i, run in enumerate(runs, 1):
             lines.append(f"\n--- Model {i}: {run.get('modelName', 'Unknown')} ---")
             lines.append(self._compile_context(run, paradox, None))
@@ -258,7 +258,7 @@ class ReportWriterAgent:
             return self._empty_narrative()
         return self._parse_narrative(raw)
 
-    def _parse_sections(self, text: str) -> Dict[str, str]:
+    def _parse_sections(self, text: str) -> dict[str, str]:
         """Fallback parser: extract sections by header markers."""
         section_markers = {
             "executive_narrative": (
@@ -292,15 +292,15 @@ class ReportWriterAgent:
                 "framework diagnosis",
             ),
         }
-        result: Dict[str, str] = {key: "" for key in self.NARRATIVE_KEYS}
+        result: dict[str, str] = {key: "" for key in self.NARRATIVE_KEYS}
         lines = text.split("\n")
 
-        current_key: Optional[str] = None
-        current_lines: List[str] = []
+        current_key: str | None = None
+        current_lines: list[str] = []
 
         for line in lines:
             stripped = line.strip().strip("#").strip(":").strip()
-            matched_key: Optional[str] = None
+            matched_key: str | None = None
             for key, markers in section_markers.items():
                 if stripped in markers:
                     matched_key = key
@@ -320,7 +320,7 @@ class ReportWriterAgent:
         return result
 
     @staticmethod
-    def _empty_narrative() -> Dict[str, str]:
+    def _empty_narrative() -> dict[str, str]:
         return {
             "executive_narrative": "",
             "response_arc": "",

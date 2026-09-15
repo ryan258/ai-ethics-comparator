@@ -5,15 +5,17 @@ Nearly copy-paste ready: Depends on ai_service patterns
 """
 
 import asyncio
-import math
-import re
-import hashlib
-import time
-import random
 import copy
-from typing import Awaitable, Callable, Dict, Any, List, Tuple, Optional
-from datetime import datetime, timezone
+import hashlib
 import logging
+import math
+import random
+import re
+import time
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
+from typing import Any
+
 from lib.ai_service import AIService, StructuredOutputSchema
 from lib.json_extract import extract_json_object
 from lib.query_errors import (
@@ -36,7 +38,7 @@ REASONING_TEXT_FIELDS: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 
-def _decision_tokens(option_count: int) -> List[str]:
+def _decision_tokens(option_count: int) -> list[str]:
     """Return canonical decision tokens for the current option count."""
     return [f"{{{i}}}" for i in range(1, option_count + 1)]
 
@@ -121,7 +123,7 @@ def _coerce_text(value: object) -> str:
     return str(value).strip()
 
 
-def _coerce_string_list(value: object) -> List[str]:
+def _coerce_string_list(value: object) -> list[str]:
     """Normalize list-like reasoning fields from JSON arrays or delimited strings."""
     if isinstance(value, list):
         items = [str(item).strip() for item in value if str(item).strip()]
@@ -138,14 +140,14 @@ def _coerce_string_list(value: object) -> List[str]:
     else:
         items = []
 
-    deduped: List[str] = []
+    deduped: list[str] = []
     for item in items:
         if item and item not in deduped:
             deduped.append(item)
     return deduped
 
 
-def _extract_labeled_reasoning_field(text: str, labels: tuple[str, ...]) -> Optional[str]:
+def _extract_labeled_reasoning_field(text: str, labels: tuple[str, ...]) -> str | None:
     """Extract a labeled reasoning field from free text."""
     if not text.strip():
         return None
@@ -163,9 +165,9 @@ def _extract_labeled_reasoning_field(text: str, labels: tuple[str, ...]) -> Opti
     return None
 
 
-def _extract_reasoning_fields_from_text(text: str) -> Dict[str, object]:
+def _extract_reasoning_fields_from_text(text: str) -> dict[str, object]:
     """Parse labeled rationale fields out of a free-form explanation."""
-    extracted: Dict[str, object] = {}
+    extracted: dict[str, object] = {}
     for key, labels in REASONING_TEXT_FIELDS:
         value = _extract_labeled_reasoning_field(text, labels)
         if not value:
@@ -179,14 +181,14 @@ def _extract_reasoning_fields_from_text(text: str) -> Dict[str, object]:
 
 def _compose_explanation_text(
     summary: str,
-    value_priorities: List[str],
-    key_assumptions: List[str],
+    value_priorities: list[str],
+    key_assumptions: list[str],
     main_risk: str,
     switch_condition: str,
     evidence_needed: str,
 ) -> str:
     """Build a legacy explanation string from structured rationale fields."""
-    lines: List[str] = []
+    lines: list[str] = []
     if summary:
         lines.append(f"Summary: {summary}")
     if value_priorities:
@@ -202,7 +204,7 @@ def _compose_explanation_text(
     return "\n".join(lines).strip()
 
 
-def _extract_reasoning_payload(payload: Dict[str, Any], fallback_text: str = "") -> Dict[str, Any]:
+def _extract_reasoning_payload(payload: dict[str, Any], fallback_text: str = "") -> dict[str, Any]:
     """Normalize structured rationale fields while preserving a legacy explanation string."""
     explanation_text = _coerce_text(
         payload.get("explanation") or payload.get("reasoning") or payload.get("rationale")
@@ -251,7 +253,7 @@ def _extract_reasoning_payload(payload: Dict[str, Any], fallback_text: str = "")
     if not explanation:
         explanation = explanation_text or fallback_text.strip()
 
-    result: Dict[str, Any] = {"explanation": explanation}
+    result: dict[str, Any] = {"explanation": explanation}
     if summary:
         result["summary"] = summary
     if value_priorities:
@@ -269,7 +271,7 @@ def _extract_reasoning_payload(payload: Dict[str, Any], fallback_text: str = "")
     return result
 
 
-def _extract_choice_from_classifier_output(classifier_output: str, option_count: int) -> Optional[int]:
+def _extract_choice_from_classifier_output(classifier_output: str, option_count: int) -> int | None:
     """Extract a single option ID from classifier output; 0 means undecided.
 
     Scans all numeric and brace-token matches left-to-right, returning the
@@ -297,7 +299,7 @@ def _extract_choice_from_classifier_output(classifier_output: str, option_count:
     return None
 
 
-def _infer_option_from_text(response_text: str, option_count: int) -> Optional[int]:
+def _infer_option_from_text(response_text: str, option_count: int) -> int | None:
     """
     Infer a final option choice from natural-language commitment phrases.
     Returns None when no clear single commitment is present.
@@ -321,7 +323,7 @@ def _infer_option_from_text(response_text: str, option_count: int) -> Optional[i
         ),
     ]
 
-    inferred: List[int] = []
+    inferred: list[int] = []
     for pattern in explicit_patterns:
         inferred.extend(int(m) for m in re.findall(pattern, response_text))
 
@@ -392,15 +394,15 @@ def _build_reask_prompt(
     )
 
 
-def _has_explanation_text(parsed: Dict[str, Any]) -> bool:
+def _has_explanation_text(parsed: dict[str, Any]) -> bool:
     """Return True when the parsed response includes non-empty explanation text."""
     explanation = parsed.get("explanation")
     return isinstance(explanation, str) and bool(explanation.strip())
 
 
-def _coerce_option_id(value: object, option_count: int) -> Optional[int]:
+def _coerce_option_id(value: object, option_count: int) -> int | None:
     """Coerce option_id-like values from structured responses."""
-    option_id: Optional[int] = None
+    option_id: int | None = None
 
     if isinstance(value, bool):
         return None
@@ -425,9 +427,9 @@ def _coerce_option_id(value: object, option_count: int) -> Optional[int]:
 
 
 def render_options_template(
-    paradox: Dict[str, Any],
-    overrides: Optional[List[Dict[str, Any]]] = None,
-) -> Tuple[str, List[Dict[str, Any]]]:
+    paradox: dict[str, Any],
+    overrides: list[dict[str, Any]] | None = None,
+) -> tuple[str, list[dict[str, Any]]]:
     """
     Render N-way options into prompt template
 
@@ -490,8 +492,8 @@ def template_supports_option_rendering(prompt_template: object) -> bool:
 
 
 def permute_options(
-    options: List[Dict[str, Any]],
-) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    options: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Shuffle options into display order, renumbering IDs to 1..N.
 
     Returns ``(displayed_options, mapping)`` where ``mapping`` is
@@ -500,7 +502,7 @@ def permute_options(
     """
     displayed = copy.deepcopy(options)
     random.shuffle(displayed)
-    mapping: Dict[str, int] = {}
+    mapping: dict[str, int] = {}
     for index, option in enumerate(displayed):
         new_id = index + 1
         mapping[str(new_id)] = option["id"]
@@ -508,7 +510,7 @@ def permute_options(
     return displayed, mapping
 
 
-def parse_trolley_response(response_text: str, option_count: int) -> Dict[str, Any]:
+def parse_trolley_response(response_text: str, option_count: int) -> dict[str, Any]:
     """
     Parse trolley-type response for decision tokens (N-way support)
 
@@ -577,7 +579,7 @@ def parse_trolley_response(response_text: str, option_count: int) -> Dict[str, A
     return result
 
 
-def aggregate_trolley_stats(responses: List[Dict[str, Any]], option_count: int) -> Dict[str, Any]:
+def aggregate_trolley_stats(responses: list[dict[str, Any]], option_count: int) -> dict[str, Any]:
     """
     Aggregate N-way trolley statistics
 
@@ -627,21 +629,20 @@ def aggregate_trolley_stats(responses: List[Dict[str, Any]], option_count: int) 
     }
 
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
-
-RunProgressCallback = Callable[[Dict[str, Any]], Awaitable[None]]
+RunProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
 
 
 @dataclass
 class RunConfig:
     """Configuration for an experimental run (N-way support)"""
     modelName: str
-    paradox: Dict[str, Any]
-    option_overrides: Optional[List[Dict[str, Any]]] = None
+    paradox: dict[str, Any]
+    option_overrides: list[dict[str, Any]] | None = None
     iterations: int = 10
     systemPrompt: str = ""
-    params: Dict[str, Any] = field(default_factory=dict)
+    params: dict[str, Any] = field(default_factory=dict)
     shuffle_options: bool = False
 
 
@@ -657,7 +658,7 @@ class QueryProcessor:
         self,
         ai_service: AIService,
         concurrency_limit: int = 2,
-        choice_inference_model: Optional[str] = None,
+        choice_inference_model: str | None = None,
         max_reasks_per_iteration: int = 2,
         max_provider_retries_per_iteration: int = 3,
     ) -> None:
@@ -677,8 +678,8 @@ class QueryProcessor:
     def _sanitize_params(
         params: object,
         *,
-        fallback: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        fallback: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         source = params if isinstance(params, dict) else fallback if isinstance(fallback, dict) else {}
         sanitized = {
             "temperature": source.get("temperature", 1.0),
@@ -695,11 +696,11 @@ class QueryProcessor:
     def _completed_responses(
         responses: object,
         iterations: int,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         if not isinstance(responses, list):
             return []
 
-        completed: Dict[int, Dict[str, Any]] = {}
+        completed: dict[int, dict[str, Any]] = {}
         for response in responses:
             if not isinstance(response, dict):
                 continue
@@ -719,8 +720,8 @@ class QueryProcessor:
     def _prepare_prompt(
         self,
         config: RunConfig,
-        existing_run: Optional[Dict[str, Any]] = None,
-    ) -> Tuple[str, List[Dict[str, Any]], int, Optional[Dict[str, int]]]:
+        existing_run: dict[str, Any] | None = None,
+    ) -> tuple[str, list[dict[str, Any]], int, dict[str, int] | None]:
         if existing_run:
             prompt = existing_run.get("prompt")
             stored_options = existing_run.get("options")
@@ -753,7 +754,7 @@ class QueryProcessor:
         # The run-level `prompt` is therefore the canonical rendering, and each
         # response records the ordering it was actually shown.
         options_to_render = copy.deepcopy(original_options)
-        shuffle_mapping: Optional[Dict[str, int]] = None
+        shuffle_mapping: dict[str, int] | None = None
 
         dummy_paradox = {**config.paradox, "options": options_to_render}
         prompt, resolved_options = render_options_template(dummy_paradox, None)
@@ -765,8 +766,10 @@ class QueryProcessor:
     def initialize_run_data(
         self,
         config: RunConfig,
-        existing_run: Optional[Dict[str, Any]] = None,
-    ) -> Dict[str, Any]:
+        existing_run: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if existing_run and isinstance(existing_run.get("paradox"), dict):
+            config = replace(config, paradox=copy.deepcopy(existing_run["paradox"]))
         prompt, original_options, option_count, shuffle_mapping = self._prepare_prompt(
             config,
             existing_run=existing_run,
@@ -780,15 +783,15 @@ class QueryProcessor:
             base_run.get("responses"),
             config.iterations,
         )
-        created_at = str(base_run.get("timestamp") or datetime.now(timezone.utc).isoformat())
-        run_data: Dict[str, Any] = {
+        created_at = str(base_run.get("timestamp") or datetime.now(UTC).isoformat())
+        run_data: dict[str, Any] = {
             **base_run,
             "timestamp": created_at,
-            "updatedAt": datetime.now(timezone.utc).isoformat(),
+            "updatedAt": datetime.now(UTC).isoformat(),
             "modelName": config.modelName,
             "paradoxId": config.paradox["id"],
             "paradoxTitle": config.paradox.get("title", ""),
-            "paradox": copy.deepcopy(config.paradox),
+            "paradox": copy.deepcopy(base_run.get("paradox", config.paradox)),
             "paradoxType": "trolley",
             "promptHash": hashlib.sha256(prompt.encode()).hexdigest()[:16],
             "prompt": prompt,
@@ -834,7 +837,7 @@ class QueryProcessor:
         self,
         response_text: str,
         option_count: int,
-    ) -> Tuple[Optional[int], Optional[str]]:
+    ) -> tuple[int | None, str | None]:
         """
         Infer an option ID when strict token parsing fails.
         Returns (option_id, method) where method is 'heuristic' or 'ai_classifier'.
@@ -865,9 +868,9 @@ class QueryProcessor:
         self,
         config: RunConfig,
         *,
-        existing_run: Optional[Dict[str, Any]] = None,
-        progress_callback: Optional[RunProgressCallback] = None,
-    ) -> Dict[str, Any]:
+        existing_run: dict[str, Any] | None = None,
+        progress_callback: RunProgressCallback | None = None,
+    ) -> dict[str, Any]:
         """
         Execute experimental run
 
@@ -879,6 +882,8 @@ class QueryProcessor:
         Returns:
             Complete run data with responses and summary
         """
+        if existing_run and isinstance(existing_run.get("paradox"), dict):
+            config = replace(config, paradox=copy.deepcopy(existing_run["paradox"]))
         current_run = self.initialize_run_data(config, existing_run=existing_run)
         prompt = str(current_run["prompt"])
         option_count = len(current_run.get("options", []))
@@ -914,12 +919,12 @@ class QueryProcessor:
         if len(completed) >= config.iterations:
             current_run["status"] = "completed"
             current_run["completedIterations"] = len(completed)
-            current_run["updatedAt"] = datetime.now(timezone.utc).isoformat()
+            current_run["updatedAt"] = datetime.now(UTC).isoformat()
             if progress_callback is not None:
                 await progress_callback(copy.deepcopy(current_run))
             return current_run
 
-        async def record_result(result: Dict[str, Any]) -> None:
+        async def record_result(result: dict[str, Any]) -> None:
             async with state_lock:
                 completed[result["iteration"]] = result
                 ordered_responses = [copy.deepcopy(completed[idx]) for idx in sorted(completed)]
@@ -927,14 +932,14 @@ class QueryProcessor:
                 current_run["completedIterations"] = len(ordered_responses)
                 current_run["summary"] = aggregate_trolley_stats(ordered_responses, option_count)
                 current_run["status"] = "completed" if len(ordered_responses) >= config.iterations else "running"
-                current_run["updatedAt"] = datetime.now(timezone.utc).isoformat()
+                current_run["updatedAt"] = datetime.now(UTC).isoformat()
                 # Snapshot under the lock so concurrent iterations cannot persist
                 # a state that never existed.
                 snapshot = copy.deepcopy(current_run)
             if progress_callback is not None:
                 await progress_callback(snapshot)
 
-        async def run_iteration(iteration_number: int) -> Dict[str, Any]:
+        async def run_iteration(iteration_number: int) -> dict[str, Any]:
             async with self.semaphore:
                 response = ""
                 reask_count = 0
@@ -958,7 +963,7 @@ class QueryProcessor:
                         )
 
                 while True:
-                    unusable_error: Optional[InvalidModelOutputError] = None
+                    unusable_error: InvalidModelOutputError | None = None
                     attempt_number = reask_count + 1
                     iteration_prompt = iteration_base_prompt
                     if reask_count > 0:
@@ -1026,7 +1031,7 @@ class QueryProcessor:
                     parsed["tokenUsage"] = total_usage
 
                     inferred = False
-                    inference_method: Optional[str] = None
+                    inference_method: str | None = None
                     if parsed["optionId"] is None:
                         inferred_option, inference_method = await self._infer_option_id_with_fallback(
                             response,
@@ -1048,7 +1053,7 @@ class QueryProcessor:
                             "optionId": parsed["optionId"],
                             "explanation": parsed["explanation"],
                             "raw": response,
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "timestamp": datetime.now(UTC).isoformat(),
                         }
                         for key in [
                             "summary",
@@ -1106,7 +1111,7 @@ class QueryProcessor:
                             "latency": total_latency,
                             "tokenUsage": total_usage,
                             "reaskCount": reask_count,
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "timestamp": datetime.now(UTC).isoformat(),
                         }
                         if per_iteration_shuffle and iteration_mapping:
                             failed["optionOrder"] = iteration_mapping

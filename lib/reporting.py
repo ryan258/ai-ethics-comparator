@@ -1,18 +1,20 @@
 """
 Reporting Module - Arsenal Module
-Handles polished PDF generation for experimental runs.
+Handles polished printable HTML generation for experimental runs.
 """
 
 from __future__ import annotations
 
 import logging
+import re
+import textwrap
+from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-import re
-from collections import Counter
 from statistics import median
-from typing import Any, Callable, Optional
+from typing import Any
 
 from lib.executive_reporting import (
     ExecutiveBriefRenderer,
@@ -21,22 +23,11 @@ from lib.executive_reporting import (
     StrategicAnalysisPlugin,
     single_run_report_to_executive_brief,
 )
-from lib.executive_reporting.weasyprint_runtime import load_weasyprint_html
 from lib.paradoxes import extract_scenario_text
-from lib.pdf_charts import (
+from lib.report_charts import (
     PALETTE_DARK,
     PALETTE_LIGHT,
     render_heatmap_svg,
-)
-from lib.report_prose import (
-    REPORT_OVERRIDES_PATH,
-    REPORT_THEMES_PATH,
-    build_paradox_overrides,
-    map_framework_to_theme,
-    scenario_rationale_theme,
-    theme_default_phrase,
-    theme_deployment_guidance,
-    theme_description,
 )
 from lib.report_models import (
     AnalysisContext,
@@ -53,9 +44,18 @@ from lib.report_models import (
     SingleRunReport,
     SummaryMetric,
 )
+from lib.report_prose import (
+    REPORT_OVERRIDES_PATH,
+    REPORT_THEMES_PATH,
+    build_paradox_overrides,
+    map_framework_to_theme,
+    scenario_rationale_theme,
+    theme_default_phrase,
+    theme_deployment_guidance,
+    theme_description,
+)
 
 logger = logging.getLogger(__name__)
-HTML, WEASYPRINT_IMPORT_ERROR = load_weasyprint_html()
 
 
 
@@ -486,6 +486,8 @@ def _build_reliability_assessment(
         note_parts.append("missing structured rationale fields")
     if structure_count or placeholder_count:
         note_parts.append("non-standard or placeholder explanation formatting")
+    if not note_parts:
+        note_parts.append("parser recovery or another recorded format deviation")
     note = (
         "Output-format compliance was inconsistent; "
         f"the run shows {_format_series(note_parts)}. Read the choice pattern together with instruction-following risk."
@@ -677,7 +679,7 @@ def _classify_run_pattern(
 class AiEthicsExecutiveReportProfile(ExecutiveReportProfile[SingleRunReport, ComparisonReport]):
     """AI ethics-specific brief composition layered on the reusable report engine."""
 
-    # This profile has NO direct single-template path: single-run PDFs go
+    # This profile has NO direct single-template path: single-run HTML documents go
     # through `ReportGenerator._render_single_report` -> the strategic brief
     # renderer, which takes an ExecutiveBrief rather than a SingleRunReport.
     # Naming a real template here would let `engine.render_single_context()`
@@ -685,7 +687,7 @@ class AiEthicsExecutiveReportProfile(ExecutiveReportProfile[SingleRunReport, Com
     # so that path raises `single_unavailable_message` instead.
     single_template_name = ""
     comparison_template_name = "reports/comparison_report.html"
-    comparison_unavailable_message = "Comparison PDF generation unavailable"
+    comparison_unavailable_message = "Comparison report template unavailable"
 
     def __init__(self, single_builder: Callable[..., SingleRunReport]) -> None:
         self._single_builder = single_builder
@@ -694,8 +696,8 @@ class AiEthicsExecutiveReportProfile(ExecutiveReportProfile[SingleRunReport, Com
         self,
         run_data: dict[str, Any],
         paradox: dict[str, Any],
-        insight: Optional[dict[str, Any]] = None,
-        narrative: Optional[dict[str, str]] = None,
+        insight: dict[str, Any] | None = None,
+        narrative: dict[str, str] | None = None,
         *,
         theme: str = "light",
     ) -> SingleRunReport:
@@ -705,8 +707,8 @@ class AiEthicsExecutiveReportProfile(ExecutiveReportProfile[SingleRunReport, Com
         self,
         runs: list[dict[str, Any]],
         paradox: dict[str, Any],
-        insights: list[Optional[dict[str, Any]]],
-        narrative: Optional[dict[str, str]] = None,
+        insights: list[dict[str, Any] | None],
+        narrative: dict[str, str] | None = None,
         *,
         theme: str = "dark",
     ) -> ComparisonReport:
@@ -716,7 +718,7 @@ class AiEthicsExecutiveReportProfile(ExecutiveReportProfile[SingleRunReport, Com
 
 
 class ReportGenerator:
-    """Generate professional PDF reports from run data."""
+    """Generate professional HTML reports from run data."""
 
     def __init__(
         self,
@@ -732,41 +734,92 @@ class ReportGenerator:
         self.engine = ExecutiveReportEngine(
             self.profile,
             templates_dir=self.templates_dir,
-            html_class=HTML,
-            weasyprint_import_error=WEASYPRINT_IMPORT_ERROR,
         )
         self.brief_renderer = ExecutiveBriefRenderer(
             StrategicAnalysisPlugin(),
             templates_dir=self.templates_dir,
-            html_class=HTML,
-            weasyprint_import_error=WEASYPRINT_IMPORT_ERROR,
         )
         self.env = self.engine.env
-        self.pdf_available = self.engine.pdf_available
 
-    def generate_pdf_report(
+    def generate_html_report(
         self,
         run_data: dict[str, Any],
         paradox: dict[str, Any],
-        insight: Optional[dict[str, Any]] = None,
-        narrative: Optional[dict[str, str]] = None,
+        insight: dict[str, Any] | None = None,
+        narrative: dict[str, str] | None = None,
         *,
         theme: str = "light",
-    ) -> bytes:
-        """Generate PDF bytes for a single-run report."""
+    ) -> str:
+        """Generate HTML for a single-run report."""
         report = self._build_report_context(run_data, paradox, insight, narrative, theme=theme)
         return self._render_single_report(report)
 
-    def generate_comparison_pdf(
+    def generate_insight_slides(
+        self,
+        run_data: dict[str, Any],
+        paradox: dict[str, Any],
+        insight: dict[str, Any] | None = None,
+        narrative: dict[str, str] | None = None,
+        *,
+        theme: str = "light",
+    ) -> str:
+        """Compose printable insight slides from saved evidence, without model calls."""
+        report = self._build_report_context(run_data, paradox, insight, narrative, theme=theme)
+        slides: list[dict[str, str]] = []
+
+        def add_slide(label: str, title: str, body: str) -> None:
+            # Split long model-authored material instead of clipping print pages.
+            chunks = textwrap.wrap(" ".join(body.split()), width=460) or [""]
+            for index, chunk in enumerate(chunks):
+                slides.append({"label": label, "title": _truncate_text(title, 100),
+                               "body": chunk, "continued": "continued" if index else ""})
+
+        add_slide("Research snapshot", report.paradox_title,
+                  f"{report.response_count} recorded responses · {report.model_name}. "
+                  f"Run status: {run_data.get('status', 'unknown')}. Findings describe this saved run.")
+        add_slide("The question", "What was the model asked?",
+                  extract_scenario_text(report.scenario_text).split("**Output Contract")[0].strip())
+        add_slide("Observed result", "How the responses divided",
+                  f"{report.response_count} responses were recorded. "
+                  + ("; ".join(f"{option.label}: {option.count} ({option.percentage_label})"
+                               for option in report.option_stats)
+                     or "No classified choice summary is available."))
+        for option in report.option_stats:
+            add_slide("Choice breakdown", f"{option.count} {'response' if option.count == 1 else 'responses'} · {option.percentage_label}",
+                      f"{option.label}: {option.description}")
+        if report.undecided_count:
+            add_slide("Choice breakdown", "Unresolved responses",
+                      f"{report.undecided_count} responses ({report.undecided_percentage_label}) were undecided or unclassified.")
+        if report.analysis and report.analysis.key_insights:
+            for index, finding in enumerate(report.analysis.key_insights, 1):
+                add_slide("Saved analyst interpretation", f"Insight {index}", finding)
+        else:
+            add_slide("Analysis availability", "About the interpretation",
+                      "No current saved analyst insights are available for this evidence. "
+                      "These slides summarize the recorded choices without inventing an explanation.")
+        add_slide("Read with context", "What this result can tell us",
+                  "This is one prompt-conditioned sample, not a general ethics score. "
+                  "Repeated responses from one model are not independent people. "
+                  "Analyst interpretations are model-generated and need review before sharing. "
+                  + report.reliability_note)
+        add_slide("Source & method", "Keep the evidence attached",
+                  f"Run: {report.run_id}. Model: {report.model_name}. "
+                  f"Prompt hash: {report.prompt_hash_short}. Analyst: {report.analyst_model}. "
+                  "Use the complete report and JSON export to inspect the prompt, configuration and raw responses.")
+        if self.env is None:
+            raise RuntimeError("Report templates unavailable")
+        return self.env.get_template("reports/insight_slides.html").render(report=report, slides=slides)
+
+    def generate_comparison_html(
         self,
         runs: list[dict[str, Any]],
         paradox: dict[str, Any],
-        insights: list[Optional[dict[str, Any]]],
-        narrative: Optional[dict[str, str]] = None,
+        insights: list[dict[str, Any] | None],
+        narrative: dict[str, str] | None = None,
         *,
         theme: str = "dark",
-    ) -> bytes:
-        """Generate a comparative PDF for multiple runs on the same paradox."""
+    ) -> str:
+        """Generate a comparative HTML for multiple runs on the same paradox."""
         report = self.profile.build_comparison_report(
             runs,
             paradox,
@@ -776,35 +829,35 @@ class ReportGenerator:
         )
         return self._render_report(report)
 
-    def _render_report(self, report: ComparisonReport) -> bytes:
+    def _render_report(self, report: ComparisonReport) -> str:
         """Render a comparison report."""
         return self.engine.render_comparison_context(report)
 
-    def _render_single_report(self, report: SingleRunReport) -> bytes:
+    def _render_single_report(self, report: SingleRunReport) -> str:
         """Render a single-run report as a strategic brief.
 
         There is exactly ONE single-run layout, by the same reasoning as D10: a
         second layout reachable only through an exception handler means a render
         failure silently hands the user a structurally different document. A
         failure here raises, and the route turns it into a 503 -- visible, like a
-        missing WeasyPrint install.
+        missing report template.
         """
         if not self._can_render_strategic_brief():
             raise RuntimeError(
-                "Strategic brief template unavailable; cannot render single-run PDF"
+                "Strategic brief template unavailable; cannot render single-run HTML"
             )
         brief = single_run_report_to_executive_brief(report)
-        return self.brief_renderer.render_pdf(brief)
+        return self.brief_renderer.render_html(brief)
 
     def _can_render_strategic_brief(self) -> bool:
-        return self.brief_renderer.html_class is not None and self.brief_renderer.template_available()
+        return self.brief_renderer.template_available()
 
     def _build_report_context(
         self,
         run_data: dict[str, Any],
         paradox: dict[str, Any],
-        insight: Optional[dict[str, Any]],
-        narrative: Optional[dict[str, str]] = None,
+        insight: dict[str, Any] | None,
+        narrative: dict[str, str] | None = None,
         *,
         theme: str = "light",
     ) -> SingleRunReport:
@@ -950,7 +1003,7 @@ class ReportGenerator:
         mean_latency = total_latency / response_count if response_count else 0.0
         undecided = summary.get("undecided", {}) if isinstance(summary, dict) else {}
 
-        analysis_context: Optional[AnalysisContext] = None
+        analysis_context: AnalysisContext | None = None
         analyst_model = "Not generated"
         if isinstance(insight, dict):
             analyst_model = str(insight.get("analystModel", "Not generated") or "Not generated")
@@ -999,7 +1052,7 @@ class ReportGenerator:
             analysis_snapshot = "Analyst synthesis is pending for this run."
         analysis_snapshot = _soften_language(analysis_snapshot)
 
-        narrative_ctx: Optional[NarrativeContext] = None
+        narrative_ctx: NarrativeContext | None = None
         if isinstance(narrative, dict):
             candidate = NarrativeContext(
                 executive_narrative=_soften_language(narrative.get("executive_narrative", "")),
@@ -1013,7 +1066,7 @@ class ReportGenerator:
                 narrative_ctx = candidate
 
         latency_series: list[float] = []
-        decision_sequence: list[Optional[int]] = []
+        decision_sequence: list[int | None] = []
         for response in run_data.get("responses", []):
             if isinstance(response, dict):
                 latency_series.append(float(response.get("latency", 0.0) or 0.0))
@@ -1022,8 +1075,8 @@ class ReportGenerator:
 
         chart_option_ids = [option.id for option in option_stats if option.id is not None]
         top_share = float(option_stats[0].percentage if option_stats else 0.0)
-        dissent_count = max(response_count - max_count, 0)
-        dissent_share = max(0.0, 100.0 - top_share) if response_count else 0.0
+        dissent_count = max(response_count - sum(o.count for o in option_stats if o.count == max_count), 0)
+        dissent_share = dissent_count / response_count * 100.0 if response_count else 0.0
         leader_descriptor = _lead_descriptor(top_share, response_count, len(leaders))
         never_selected = [option.label for option in option_stats if option.count == 0]
         reliability = _build_reliability_assessment(quality_flags, response_count)
@@ -1095,7 +1148,7 @@ class ReportGenerator:
 
         thesis_statement = (
             f"Observed tendency: {lead_choice_label} recorded the {leader_descriptor} at {lead_choice_support.lower()}. "
-            f"Risk: {reliability.note or f'{dissent_count} of {response_count} iterations selected another option, so the pattern remains directional.'} "
+            f"Risk: {reliability.note or f'{dissent_count} of {response_count} iterations selected another option or were undecided, so the pattern remains directional.'} "
             "Deployment implication: use the model as governed decision support, not as an autonomous ethical final arbiter."
             if response_count and max_count
             else "No directional result was available from this run."
@@ -1166,11 +1219,11 @@ class ReportGenerator:
         report_reliability_note = reliability.note
 
         observation_points = []
-        if response_count and top_option and len(leaders) > 1:
+        if response_count and max_count and top_option and len(leaders) > 1:
             observation_points.append(
                 f"{_format_series(leaders)} tied at {max_count} of {response_count} selections each ({top_share:.1f}%)."
             )
-        elif response_count and top_option:
+        elif response_count and max_count and top_option:
             observation_points.append(
                 f"{top_option.label} was the leading option with {top_option.count} of {response_count} selections ({top_option.percentage_label})."
             )
@@ -1202,11 +1255,11 @@ class ReportGenerator:
         key_takeaways = []
         if response_count and max_count:
             key_takeaways.append(
-                (
+
                     f"{_format_series(leaders)} formed a {leader_descriptor} ({max_count} of {response_count} each; {top_share:.1f}% each)."
                     if len(leaders) > 1
                     else f"{lead_choice_label} received the {leader_descriptor} ({max_count} of {response_count}; {top_share:.1f}%)."
-                )
+
             )
             if dissent_count:
                 key_takeaways.append(
@@ -1382,6 +1435,12 @@ class ReportGenerator:
                 .replace("required structure", "required rationale fields")
                 for item in limitation_points
             ]
+
+        if not max_count:
+            evidence_title = "No canonical option selections were recorded"
+            primary_chart_title = "No canonical options were selected"
+            executive_metrics[0] = SummaryMetric(label="Leading option", value="n/a", support="No canonical selections")
+            executive_metrics[1] = SummaryMetric(label="Undecided", value=str(response_count), support="No directional choice evidence")
 
         raw_appendix_responses = _select_raw_appendix_responses(responses)
 

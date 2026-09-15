@@ -155,7 +155,7 @@ and next week's is 45/55, something changed and nobody told you.
 command. Then compare the two:
 
 ```bash
-curl -s "$BASE/api/compare/pdf?run_ids=RUN_ID_TODAY,RUN_ID_TOMORROW" -o drift.pdf
+curl -s "$BASE/reports/compare?run_ids=RUN_ID_TODAY,RUN_ID_TOMORROW" -o drift.pdf
 open drift.pdf
 ```
 
@@ -309,7 +309,7 @@ slow. Do it on a `:free` model first, or slice the list. You must also click
 ### 8. Put two strong models side by side
 
 **What you do:** Run two frontier models on the same paradox and make a
-comparison PDF.
+comparison HTML report.
 
 **Why it matters:** Absolute numbers are hard to read. "72% intervene" means
 little on its own. "Model A intervenes 72%, Model B intervenes 31%" is a story
@@ -331,10 +331,10 @@ curl -s -X POST $BASE/api/experiments -H 'Content-Type: application/json' -d "{
 Execute it, collect the two run ids, then:
 
 ```bash
-curl -s "$BASE/api/compare/pdf?run_ids=ID_A,ID_B" -o head_to_head.pdf
+curl -s "$BASE/reports/compare?run_ids=ID_A,ID_B" -o head_to_head.pdf
 ```
 
-**Watch out for:** The comparison PDF accepts 2 to 4 runs, and they must all
+**Watch out for:** The comparison HTML report accepts 2 to 4 runs, and they must all
 share the same paradox.
 
 ---
@@ -1616,17 +1616,14 @@ the machine — no layout work required.
 **Do this:**
 
 ```bash
-curl -s "$BASE/api/runs/PASTE_RUN_ID/pdf" -o report.pdf && open report.pdf
+curl -s "$BASE/reports/runs/PASTE_RUN_ID" -o report.html && open report.html
 ```
 
-**Watch out for:** If you get a **404**, the run's paradox is no longer in
-`paradoxes.json`. If you get a **503**, WeasyPrint's native libraries are
-missing — install them with
-`brew install cairo pango gdk-pixbuf libffi`.
+**Watch out for:** A **404** means the saved run is missing. A **503** means the HTML report template is unavailable. Scenario library edits do not replace historical snapshots.
 
 ---
 
-### 58. Use the comparison PDF as a figure
+### 58. Use the comparison HTML report as a figure
 
 **What you do:** Generate a two-to-four run comparison and drop it into a paper
 or deck.
@@ -1637,7 +1634,7 @@ single-model chart is data; a side-by-side is an argument.
 **Do this:**
 
 ```bash
-curl -s "$BASE/api/compare/pdf?run_ids=ID_A,ID_B,ID_C&theme=light" -o figure_1.pdf
+curl -s "$BASE/reports/compare?run_ids=ID_A,ID_B,ID_C&theme=light" -o figure_1.pdf
 ```
 
 **Watch out for:** Use `theme=light` for anything that will be printed. The dark
@@ -1725,14 +1722,14 @@ notice the mismatch before they notice your finding.
 **Do this:** Per request:
 
 ```bash
-curl -s "$BASE/api/runs/PASTE_RUN_ID/pdf?theme=light" -o light.pdf
-curl -s "$BASE/api/runs/PASTE_RUN_ID/pdf?theme=dark"  -o dark.pdf
+curl -s "$BASE/reports/runs/PASTE_RUN_ID?theme=light" -o light.html
+curl -s "$BASE/reports/runs/PASTE_RUN_ID?theme=dark"  -o dark.html
 ```
 
 Or set the default in `.env`:
 
 ```env
-REPORT_PDF_THEME=light
+REPORT_THEME=light
 ```
 
 **Watch out for:** Only `light` and `dark` are accepted. Anything else silently
@@ -1853,7 +1850,7 @@ Lesson 65.
 has run properly. Most write-ups ask each model once. Yours has distributions.
 
 **Do this:** Pick one famous paradox. Run five models at 50 iterations each.
-Export one comparison PDF for the figure and pull representative quotes with the
+Export one comparison HTML report for the figure and pull representative quotes with the
 Lesson 63 command.
 
 **Watch out for:** Lead with the disagreement, not the agreement. "Four out of
@@ -1921,7 +1918,7 @@ challenges your finding a year from now, you want the file, not your memory.
 ```bash
 RUN=PASTE_RUN_ID
 mkdir -p published/$RUN
-curl -s "$BASE/api/runs/$RUN/pdf" -o "published/$RUN/report.pdf"
+curl -s "$BASE/reports/runs/$RUN" -o "published/$RUN/report.html"
 cp "results/$RUN.json" "published/$RUN/raw.json"
 curl -s "$BASE/api/runs/$RUN/export?format=json" -o "published/$RUN/export.json"
 echo "archived to published/$RUN/"
@@ -2231,7 +2228,7 @@ on.
 months, probably after something goes wrong. A dated memo with distributions
 answers the question before it is asked.
 
-**Do this:** Generate the comparison PDF (Lesson 58) as the core exhibit, add the
+**Do this:** Generate the comparison HTML report (Lesson 58) as the core exhibit, add the
 fingerprints (Lesson 48), and write one page: what you tested, what you found,
 what you chose, what you are still unsure about.
 
@@ -2430,7 +2427,7 @@ unparseable template, a dead model name — before a human wastes an afternoon.
 ```bash
 uv sync
 uv run pytest -q
-uvx ruff check --select F,E9 .
+uvx ruff check .
 uv run python scripts/pdf_gen_smoke.py
 ```
 
@@ -2477,12 +2474,9 @@ sed -n '1,80p' lib/executive_reporting/README.md
 
 The short version: copy `models.py`, `composer.py`, `default_composer.py`,
 `plugins/base.py`, `plugins/strategic_analysis.py`, `renderer.py`,
-`weasyprint_runtime.py`, `component.py`, the template, and `__init__.py`.
+`component.py`, the template, and `__init__.py`.
 
-**Watch out for:** Keep two safety rules intact when you port it. Both Jinja
-environments must use `autoescape=True`, and WeasyPrint must get
-`blocked_url_fetcher`. Without them, hostile text in a report becomes a
-file-read and outbound-request hole.
+**Watch out for:** Keep Jinja `autoescape=True` when porting the report templates. Model-authored text must remain text, not executable HTML.
 
 ---
 
@@ -2498,7 +2492,7 @@ behavior problems in production. A short, evidence-backed report is cheap
 insurance against an expensive mistake.
 
 **Do this:** The package: 10 scenarios from their domain, 3 candidate models,
-25 iterations each, comparison PDFs, fingerprints, and a one-page recommendation.
+25 iterations each, comparison HTML reports, fingerprints, and a one-page recommendation.
 That is 750 API calls — usually under $20 in model costs.
 
 **Watch out for:** Write their scenarios, not yours. The value is the domain
@@ -2663,10 +2657,10 @@ curl -s -X POST $BASE/api/runs/RUN_ID/counterfactual
 curl -s "$BASE/api/models/$MODEL/fingerprint"
 
 # Exports
-curl -s "$BASE/api/runs/RUN_ID/pdf?theme=light"        -o report.pdf
+curl -s "$BASE/reports/runs/RUN_ID?theme=light"        -o report.html
 curl -s "$BASE/api/runs/RUN_ID/export?format=json"     -o run.json
 curl -s "$BASE/api/runs/RUN_ID/export?format=pptx"     -o deck.pptx
-curl -s "$BASE/api/compare/pdf?run_ids=A,B"            -o compare.pdf
+curl -s "$BASE/reports/compare?run_ids=A,B"            -o compare.pdf
 
 # Run control
 curl -s -X POST $BASE/api/runs/RUN_ID/resume
@@ -2678,7 +2672,7 @@ curl -s -X POST $BASE/api/runs/RUN_ID/cancel
 | What you see | What it means | What to do |
 |---|---|---|
 | PDF returns **404** | The run's paradox is gone from `paradoxes.json` | Restore the paradox, or re-run on a current one |
-| PDF returns **503** | WeasyPrint's native libraries are missing | `brew install cairo pango gdk-pixbuf libffi` |
+| Report returns **503** | HTML template unavailable | Restore the report template and check the server log |
 | Counterfactual returns **400** | The model never wrote an `evidenceNeeded` line | Re-run with more iterations, or use Lesson 21 |
 | Fingerprint is empty | No run has been analyzed yet | Run **Analyze** on each run first |
 | Run stuck on `interrupted` | The server restarted mid-run | `POST /api/runs/RUN_ID/resume` |

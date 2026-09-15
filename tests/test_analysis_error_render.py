@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 
-
 def _setup_analysis_failure(client, monkeypatch):
     """Monkeypatch storage and analysis engine to simulate an analysis error."""
     services = client.app.state.services

@@ -54,8 +54,8 @@
 ## Blocking I/O Discipline
 - All filesystem access from async code goes through `run_in_executor` (`storage.py`) or a
   process-lifetime cache (`prompt_templates.py`, `paradoxes.py`)
-- **Rule**: never call `open()` in an async function body. The `F,E9` lint gate does not catch
-  this; CI selects `ASYNC` as well, which does
+- **Rule**: never call `open()` in an async function body. `F,E9` does not catch this; the
+  gate selects `ASYNC` as well, which does
 
 ## Path Traversal Defense (`lib/storage.py`)
 - `save_run()` (`storage.py`) validates the run ID BEFORE building a path — an
@@ -66,7 +66,7 @@
 - **Rule**: always validate the ID pattern THEN resolve+check the path — never trust input paths
 
 ## Input Validation Gates
-- Model names: `^[a-z0-9\-_/:.]+$`, paradox IDs: `^[a-z0-9_-]+$`, run IDs: `^[A-Za-z0-9_-]+-\d{3}$`
+- Model names: `^[a-z0-9\-_/:.]+$`, paradox IDs: `^[a-z0-9_-]+$`, run IDs: `^[A-Za-z0-9_-]+-\d{3,}$`
 - Experiment IDs: `^exp_[0-9]+_[a-f0-9]+$`, option IDs: ints 1-4 sequential
 - Iterations: Pydantic `ge=1, le=1000`, further capped by `config.MAX_ITERATIONS` in the route and
   re-checked when resuming a stored run (`main.py:_build_run_config_from_saved_run`)
@@ -83,12 +83,4 @@
 
 ## XSS Defense + Defensive Data Handling
 - Web UI: `safe_markdown()` escapes HTML → renders markdown → strips `<a>`/`<img>` tags
-- PDF reports: both Jinja environments are built with `autoescape=True`
-  (`engine.py`, `renderer.py`), and WeasyPrint is given `blocked_url_fetcher`
-- **Rule**: NEVER render model text into a report template without autoescape. WeasyPrint
-  resolves any URL it finds — including `file://` — so unescaped model output is an
-  arbitrary-file-read and SSRF primitive, not just a cosmetic bug.
-- **Rule**: NEVER use `|safe` on user/model content; the only permitted uses are on
-  internally generated SVG that interpolates numbers and palette constants only
-- AI response extraction: 7-layer fallback; insight parsing: brace-match → fence-strip → validate → legacy
-- **Rule**: never assume AI output matches requested schema — always degrade gracefully
+- HTML reports use autoescaping in both Jinja environments. Model text must remain text, never executable markup. Report pages are self-contained and opening them performs no model calls.

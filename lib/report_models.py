@@ -4,10 +4,9 @@ Typed report context models.
 
 from __future__ import annotations
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
-
 
 ThemeName = Literal["dark", "light"]
 RunPattern = Literal["unanimous", "dominant", "contested", "split", "ambiguous"]
@@ -41,7 +40,7 @@ class DonutSlice(StrictModel):
 
 
 class ReportOptionStat(StrictModel):
-    id: Optional[int]
+    id: int | None
     token: str
     label: str
     description: str = ""
@@ -53,8 +52,8 @@ class ReportOptionStat(StrictModel):
 
 class ReportResponse(StrictModel):
     iteration: int
-    decision_token: Optional[str] = None
-    option_id: Optional[int] = None
+    decision_token: str | None = None
+    option_id: int | None = None
     option_label: str = "Undecided"
     latency_label: str = ""
     token_usage_label: str = ""
@@ -163,14 +162,14 @@ class SingleRunReport(StrictModel):
     undecided_percentage_label: str = "0.0%"
     responses: list[ReportResponse] = Field(default_factory=list)
     raw_appendix_responses: list[ReportResponse] = Field(default_factory=list)
-    analysis: Optional[AnalysisContext] = None
-    narrative: Optional[NarrativeContext] = None
+    analysis: AnalysisContext | None = None
+    narrative: NarrativeContext | None = None
     theme: ThemeName = "light"
     executive_metrics: list[SummaryMetric] = Field(default_factory=list)
     method_metadata_items: list[MetadataItem] = Field(default_factory=list)
     metadata_items: list[MetadataItem] = Field(default_factory=list)
     latency_series: list[float] = Field(default_factory=list)
-    decision_sequence: list[Optional[int]] = Field(default_factory=list)
+    decision_sequence: list[int | None] = Field(default_factory=list)
     chart_option_ids: list[int] = Field(default_factory=list)
     donut_data: list[DonutSlice] = Field(default_factory=list)
     donut_svg: str = ""
@@ -180,7 +179,7 @@ class SingleRunReport(StrictModel):
 
 
 class ComparisonOptionStat(StrictModel):
-    id: Optional[int]
+    id: int | None
     label: str
     count: int = 0
     percentage: float = 0.0
@@ -192,6 +191,7 @@ class ComparisonOptionStat(StrictModel):
 
 
 class ComparisonModelSummary(StrictModel):
+    experimental_factors: list[MetadataItem] = Field(default_factory=list)
     model_name: str
     run_id: str
     response_count: int = 0
@@ -206,7 +206,7 @@ class ChiSquareResult(StrictModel):
     pValue: float
     degreesOfFreedom: int
     significant: bool
-    warning: Optional[str] = None
+    warning: str | None = None
 
 
 class OptionEffect(StrictModel):
@@ -220,7 +220,7 @@ class OptionEffect(StrictModel):
 class PairwiseComparison(StrictModel):
     model_a: str
     model_b: str
-    chi_square: Optional[ChiSquareResult] = None
+    chi_square: ChiSquareResult | None = None
     option_effects: list[OptionEffect] = Field(default_factory=list)
 
 
@@ -231,7 +231,7 @@ class DeltaValue(StrictModel):
 
 
 class DeltaRow(StrictModel):
-    option_id: Optional[int]
+    option_id: int | None
     label: str
     values: list[DeltaValue] = Field(default_factory=list)
 
@@ -250,5 +250,5 @@ class ComparisonReport(StrictModel):
     models: list[ComparisonModelSummary] = Field(default_factory=list)
     comparisons: list[PairwiseComparison] = Field(default_factory=list)
     delta_table: DeltaTable
-    narrative: Optional[NarrativeContext] = None
+    narrative: NarrativeContext | None = None
     sections: list[SectionLink] = Field(default_factory=list)

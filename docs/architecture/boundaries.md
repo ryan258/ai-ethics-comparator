@@ -7,7 +7,7 @@
 - `lib/validation.py` validates SHAPE ONLY — it MUST NOT import `lib/query_processor` or build
   business objects. `ConditionConfig` → `RunConfig` conversion lives in
   `experiment_runner.condition_to_run_config()`
-- Query-parameter endpoints (`/api/compare/pdf`) validate inline in the route
+- Query-parameter endpoints (`/reports/compare`) validate inline in the route
 - `QueryRequest` → `RunConfig` conversion happens in the route, not in `lib/`
 - HTMX requests (`HX-Request` header) return template partials; JSON clients get raw dicts
 - Routes MUST NOT contain business logic, aggregation, or AI calls directly
@@ -24,7 +24,7 @@
 
 ## Seam 3: Business Logic ↔ Storage
 - **Contract**: `RunStorage` and `ExperimentStorage` are the ONLY filesystem writers
-- `RunStorage` path: `results/<run_id>.json` — strict pattern `^[A-Za-z0-9_-]+-\d{3}$`
+- `RunStorage` path: `results/<run_id>.json` — strict pattern `^[A-Za-z0-9_-]+-\d{3,}$`
 - `ExperimentStorage` path: `experiments/<exp_id>.json` — pattern `^[A-Za-z0-9_-]+$`
 - All storage methods are `async` — blocking I/O wrapped in `run_in_executor`
 - `create_run()` prefers POSIX atomic `os.link`; if hard links are unavailable it falls back to `open('x')` reservation + replace
@@ -47,7 +47,7 @@
 - Missing keys → automatic fallback to `{"legacy_text": ...}` — templates handle both
 
 ## Seam 5b: Report Context ↔ Scenario Prose
-- **Contract**: scenario-specific report prose lives in `report_overrides.json`, keyed by paradox ID
+- **Contract**: static scenario context lives in `report_overrides.json`, keyed by paradox ID; outcome claims and metrics are derived from measured results
 - Theme deployment guidance lives in `report_themes.json`, keyed by rationale-theme label
 - **Rule**: NEVER add `if paradox_id == "..."` branches to `lib/reporting.py` — adding a
   scenario is a data change
@@ -61,14 +61,14 @@
 - **Contract**: a run record is self-describing. `paradoxTitle` and a full `paradox` deep copy
   are written by `initialize_run_data()` and are the run's own property, not a live lookup
 - **Rule**: routes MUST resolve a paradox via `resolve_paradox(run_data, paradoxes)` — the
-  single three-tier implementation. Calling `get_paradox_by_id(...) or {}` at a call site is a
+  single stored-evidence implementation. Calling `get_paradox_by_id(...) or {}` at a call site is a
   regression: it silently produces null-paradox exports and "Unknown Paradox" cards (see D11)
 - **Rule**: report builders receive a resolved paradox dict — they MUST NOT read
   `paradoxes.json` themselves
 
 ## Seam 5c-2: Report Profile ↔ Engine
 - **Contract**: `AiEthicsExecutiveReportProfile.single_template_name` is deliberately EMPTY
-- **Why**: single-run PDFs render through `ReportGenerator._render_single_report()` → the
+- **Why**: single-run printable HTML reports render through `ReportGenerator._render_single_report()` → the
   strategic brief renderer, which takes an `ExecutiveBrief`. The engine's
   `render_single_context()` would pass a `SingleRunReport` instead, so naming a real template
   there lets brief markup render against the wrong context object
@@ -89,5 +89,6 @@
 - **Contract**: `RunViewModel.build(run_data, paradox)` → flat dict with pre-rendered HTML
 - Templates MUST NOT access raw run data — the view model is the only surface
 - `safe_markdown()` escapes HTML BEFORE rendering markdown — `|safe` is NEVER used on user input
-- PDF report templates rely on `autoescape=True` plus a blocking WeasyPrint `url_fetcher`
+- Report HTML uses automatic escaping; model-authored text cannot become HTML, scripts or external resource tags.
+
 - View models strip `<a>` and `<img>` tags post-render for XSS hardening

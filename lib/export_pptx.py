@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import io
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 try:
     from pptx import Presentation
-    from pptx.util import Inches, Pt
     from pptx.dml.color import RGBColor
+    from pptx.util import Inches, Pt
 except ModuleNotFoundError:  # pragma: no cover
     Presentation = None  # type: ignore[assignment,misc]
 
@@ -26,9 +26,9 @@ def pptx_available() -> bool:
 
 
 def generate_pptx(
-    run_data: Dict[str, Any],
-    paradox: Dict[str, Any],
-    insight: Optional[Dict[str, Any]] = None,
+    run_data: dict[str, Any],
+    paradox: dict[str, Any],
+    insight: dict[str, Any] | None = None,
 ) -> bytes:
     """Generate PPTX bytes for a single run."""
     if Presentation is None:
@@ -93,7 +93,7 @@ def _add_textbox(
     return txBox
 
 
-def _add_title_slide(prs: Any, run_data: Dict[str, Any], paradox: Dict[str, Any]) -> None:
+def _add_title_slide(prs: Any, run_data: dict[str, Any], paradox: dict[str, Any]) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
     _set_slide_bg(slide, _BG)
 
@@ -137,7 +137,7 @@ def _add_title_slide(prs: Any, run_data: Dict[str, Any], paradox: Dict[str, Any]
     _add_textbox(slide, 0.8, 6.5, 11, 0.4, meta, font_size=10, color=_ACCENT)
 
 
-def _add_distribution_slide(prs: Any, run_data: Dict[str, Any], paradox: Dict[str, Any]) -> None:
+def _add_distribution_slide(prs: Any, run_data: dict[str, Any], paradox: dict[str, Any]) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _set_slide_bg(slide, _BG)
 
@@ -170,7 +170,7 @@ def _add_distribution_slide(prs: Any, run_data: Dict[str, Any], paradox: Dict[st
             y += 0.45
 
 
-def _add_analysis_slide(prs: Any, insight: Dict[str, Any]) -> None:
+def _add_analysis_slide(prs: Any, insight: dict[str, Any]) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     _set_slide_bg(slide, _BG)
 

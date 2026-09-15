@@ -12,7 +12,7 @@ AI Ethics Comparator lets you:
 - capture decision tokens (`{1}`, `{2}`, `{3}`, `{4}`)
 - aggregate per-option decision rates
 - generate analyst summaries from stored run data
-- export run reports as PDF
+- open printable HTML reports and use browser Save as PDF
 
 Current scope:
 
@@ -59,7 +59,7 @@ Run the app:
 ```bash
 ./run_server.sh
 # or
-uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000
 ```
 
 Open [http://localhost:8000](http://localhost:8000).
@@ -112,7 +112,7 @@ Each run card includes:
 Each card also has:
 
 - `View Analysis` modal action
-- `PDF` export action
+- `Open Report` action
 - expandable raw JSON dump
 
 ## 6. Ethical Analysis Flow
@@ -131,7 +131,7 @@ Insight outputs are stored in the run’s `insights[]` array.
 Run IDs are strict and validated as:
 
 - pattern: `<base>-NNN`
-- regex: `^[A-Za-z0-9_-]+-\d{3}$`
+- regex: `^[A-Za-z0-9_-]+-\d{3,}$`
 
 Examples:
 
@@ -169,7 +169,7 @@ Runs
 - `POST /api/runs/{run_id}/counterfactual` — generate a counterfactual run
 
 Analysis
-- `POST /api/insight` — generate insight (non-persistent)
+- `POST /api/insight` — generate insight; persists when a valid stored runId is supplied
 - `POST /api/runs/{run_id}/analyze` — generate/regenerate stored insights
 
 Paradoxes
@@ -185,8 +185,8 @@ Fingerprinting
 - `GET /fragments/fingerprint?model_id=...`
 
 Export
-- `GET /api/runs/{run_id}/pdf` — single-run PDF
-- `GET /api/compare/pdf?run_ids=a,b` — comparison PDF (2-4 runs)
+- `GET /reports/runs/{run_id}` — single-run printable HTML report
+- `GET /reports/compare?run_ids=a,b` — comparison HTML report (2-4 runs)
 - `GET /api/runs/{run_id}/export?format=json|pptx`
 
 System
@@ -200,8 +200,8 @@ Run:
 uv run pytest
 ```
 
-164 tests across 26 modules. CI (`.github/workflows/ci.yml`) additionally runs
-`uvx ruff check --select F,E9,ASYNC .` and `scripts/check_doc_claims.py`, which fails the
+192 tests passed in Ryan’s local `uv run pytest -q` run (2.60s; terminal output supplied 2026-09-14). CI (`.github/workflows/ci.yml`) additionally runs
+`uvx ruff check .` and `scripts/check_doc_claims.py`, which fails the
 build if this handbook or the README quotes a test or scenario count that is no longer true.
 
 Coverage focus:
@@ -209,7 +209,7 @@ Coverage focus:
 - startup, health, version header, strict run ID validation and migration
 - run execution budgets (re-ask / provider retry caps, progress persistence)
 - option permutation and un-shuffling (position bias)
-- three-tier paradox resolution across every consumer
+- immutable stored-evidence resolution across every consumer
 - fingerprint dominance weighting and cross-model separation
 - report rendering security (autoescape, blocked URL fetcher, DOM text swap)
 

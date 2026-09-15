@@ -63,19 +63,3 @@
 - **Rule**: treat as immutable — do NOT write back to env or modify fields after startup
 
 ## Known Import-Time Side Effect
-### `ensure_weasyprint_runtime_environment()` (weasyprint_runtime.py)
-- Mutates `os.environ["DYLD_FALLBACK_LIBRARY_PATH"]` when `lib/reporting` is imported on macOS
-- This is a DELIBERATE exception to the no-module-level-state rule: WeasyPrint's CFFI bindings
-  cannot locate Homebrew's GTK/Pango without it, and the import must happen before `HTML` is bound
-- It is idempotent and additive — it never removes existing entries
-- **Rule**: do not add further import-time environment mutation; this one is the only sanctioned case
-
-## Orthogonality Rules
-- UI state (templates, view models) MUST NOT import or depend on storage internals
-- Storage MUST NOT know about AI service or parsing logic
-- Analysis MUST NOT know about routing or HTTP concerns
-- `QueryProcessor` owns iteration orchestration — `AnalysisEngine` owns post-run insight generation
-- `CounterfactualEngine` and `ExperimentRunner` compose `QueryProcessor` + `RunStorage` — they do NOT subclass or extend them
-- `fingerprint.py` and `stats.py` are pure read-only consumers of storage data
-- `validation.py` is shape-validation only — it MUST NOT import `query_processor`
-- Adding a new `lib/` module MUST NOT require modifying existing `lib/` modules

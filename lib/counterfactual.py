@@ -4,11 +4,12 @@ Generates and executes counterfactual runs based on declared evidence needed.
 """
 import copy
 import logging
-from typing import Dict, Any, List
+from typing import Any
 
-from lib.query_processor import QueryProcessor, RunConfig
+from lib.paradoxes import Paradox, resolve_paradox
+from lib.query_processor import QueryProcessor, RunConfig, render_options_template
+from lib.run_executor import execute_persisted_run
 from lib.storage import RunStorage
-from lib.paradoxes import get_paradox_by_id, Paradox
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +22,9 @@ def _sanitize_evidence_text(evidence: str) -> str:
 
 
 def _reconstruct_displayed_options(
-    canonical_options: List[Dict[str, Any]],
-    shuffle_mapping: Dict[str, int],
-) -> List[Dict[str, Any]]:
+    canonical_options: list[dict[str, Any]],
+    shuffle_mapping: dict[str, int],
+) -> list[dict[str, Any]]:
     """Rebuild the option list in the order the model originally saw.
 
     ``shuffle_mapping`` maps ``{displayed_position: original_id}``.
@@ -35,7 +36,10 @@ def _reconstruct_displayed_options(
         for opt in canonical_options
         if isinstance(opt, dict) and "id" in opt
     }
-    displayed: List[Dict[str, Any]] = []
+    if (set(shuffle_mapping) != {str(i) for i in range(1, len(canonical_options) + 1)}
+            or sorted(shuffle_mapping.values()) != sorted(by_orig_id)):
+        raise ValueError("Option order must be a complete one-to-one permutation")
+    displayed: list[dict[str, Any]] = []
     for pos in sorted(shuffle_mapping, key=int):
         orig_id = shuffle_mapping[pos]
         if orig_id not in by_orig_id:
@@ -50,18 +54,23 @@ def _reconstruct_displayed_options(
 
 
 class CounterfactualEngine:
-    def __init__(self, query_processor: QueryProcessor, run_storage: RunStorage) -> None:
+    def __init__(self, query_processor: QueryProcessor, run_storage: RunStorage, max_iterations: int = 10) -> None:
+        self.max_iterations = max_iterations
         self.query_processor = query_processor
         self.run_storage = run_storage
 
-    async def execute_counterfactual(self, original_run_id: str, paradoxes: List[Paradox]) -> Dict[str, Any]:
+    async def execute_counterfactual(self, original_run_id: str, paradoxes: list[Paradox]) -> dict[str, Any]:
+        config, initial = await self.prepare_counterfactual(original_run_id, paradoxes)
+        return await execute_persisted_run(self.query_processor, self.run_storage, config, initial)
+
+    async def prepare_counterfactual(self, original_run_id: str, paradoxes: list[Paradox]) -> tuple[RunConfig, dict[str, Any]]:
         """
         Takes an original run, extracts the evidence it claimed would change its choice,
         and runs a new scenario explicitly asserting that evidence to test revealing preferences.
 
         The counterfactual is built from the persisted run state so that the
-        original option overrides and ordering are preserved — injected evidence
-        is the only variable that changes.
+        original option meanings are preserved. The new experiment fixes ordering
+        to the evidence-source response and records that protocol explicitly.
         """
         run_data = await self.run_storage.get_run(original_run_id)
         if not run_data:
@@ -69,9 +78,11 @@ class CounterfactualEngine:
 
         responses = run_data.get("responses", [])
         evidence_needed = None
+        evidence_response = {}
         for r in responses:
             if r.get("evidenceNeeded"):
                 evidence_needed = r["evidenceNeeded"]
+                evidence_response = r
                 break
 
         if not evidence_needed:
@@ -84,7 +95,7 @@ class CounterfactualEngine:
             )
 
         pdx_id = run_data.get("paradoxId")
-        orig_pdx = get_paradox_by_id(paradoxes, pdx_id)
+        orig_pdx = resolve_paradox(run_data, paradoxes)
         if not orig_pdx:
             raise ValueError(f"Paradox {pdx_id} not found")
 
@@ -98,17 +109,12 @@ class CounterfactualEngine:
         # and the exact displayed ordering).
         cf_pdx = copy.deepcopy(orig_pdx)
         canonical_options = run_data.get("options", cf_pdx.get("options", []))
-        shuffle_mapping = run_data.get("shuffleMapping")
-        if shuffle_mapping:
-            # Reconstruct the shuffled order the model originally saw so
-            # the only variable that changes is the injected evidence.
-            cf_pdx["options"] = _reconstruct_displayed_options(
-                canonical_options, shuffle_mapping,
-            )
-        else:
-            cf_pdx["options"] = copy.deepcopy(canonical_options)
+        shuffle_mapping = evidence_response.get("optionOrder") or run_data.get("shuffleMapping")
+        cf_pdx["options"] = copy.deepcopy(canonical_options)
 
         base_template = cf_pdx["promptTemplate"]
+        if not base_template:
+            raise ValueError("Stored run has no stimulus; counterfactual cannot be reconstructed")
 
         inject_text = f"\n\n**NEW EVIDENCE TO ASSUME TRUE:**\n{sanitized_evidence}\n"
 
@@ -133,15 +139,23 @@ class CounterfactualEngine:
             original_run_id,
             sanitized_evidence[:50],
         )
-        cf_run_data = await self.query_processor.execute_run(cf_config)
-        
-        # Add counterfactual metadata linking it back
-        cf_run_data["isCounterfactual"] = True
-        cf_run_data["originalRunId"] = original_run_id
-        cf_run_data["appliedEvidence"] = sanitized_evidence
-        
-        # Save new run
-        run_id_base = f"cf-{model_name}"
-        await self.run_storage.create_run(run_id_base, cf_run_data)
-
-        return cf_run_data
+        if cf_config.iterations > self.max_iterations:
+            raise ValueError(f"Counterfactual iterations exceed current limit ({self.max_iterations})")
+        cf_run_data = self.query_processor.initialize_run_data(cf_config)
+        if shuffle_mapping:
+            displayed = _reconstruct_displayed_options(canonical_options, shuffle_mapping)
+            prompt, _ = render_options_template({**cf_pdx, "options": displayed}, None)
+            if cf_config.systemPrompt:
+                prompt = f"PERSONA: {cf_config.systemPrompt}\n\n{prompt}"
+            cf_run_data["prompt"] = prompt
+            cf_run_data["shuffleMapping"] = shuffle_mapping
+            import hashlib
+            cf_run_data["promptHash"] = hashlib.sha256(prompt.encode()).hexdigest()[:16]
+        cf_run_data.update(
+            isCounterfactual=True, originalRunId=original_run_id,
+            appliedEvidence=sanitized_evidence,
+            evidenceSourceIteration=evidence_response.get("iteration", responses.index(evidence_response) + 1),
+            comparisonProtocol="new experiment: fixed ordering from evidence-source response; not a matched whole-run replay",
+        )
+        await self.run_storage.create_run(f"cf-{model_name}", cf_run_data)
+        return cf_config, cf_run_data

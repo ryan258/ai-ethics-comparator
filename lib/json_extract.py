@@ -8,10 +8,10 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 
-def extract_json_object(response_text: str) -> Optional[Dict[str, Any]]:
+def extract_json_object(response_text: str) -> dict[str, Any] | None:
     """Extract and parse the first usable JSON object from raw model text.
 
     Candidates are tried most-likely-first: the whole string, a fenced block,
@@ -21,7 +21,7 @@ def extract_json_object(response_text: str) -> Optional[Dict[str, Any]]:
         return None
 
     text = response_text.strip()
-    candidates: List[str] = [text]
+    candidates: list[str] = [text]
 
     fenced_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.DOTALL)
     if fenced_match:

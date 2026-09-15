@@ -1,53 +1,16 @@
 {
-  "_comment": "Per-paradox executive report prose. Keyed by paradox id; placeholders are response_count, temperature_value, reliability_label, option_<1-4>_count, option_<1-4>_share, cluster_count, cluster_share. Adding a scenario here touches no Python (see docs/architecture/arch-decisions.md D9).",
+  "_comment": "Static scenario context only. Outcome titles, summaries, interpretations and metrics are computed from measured responses.",
   "king_pet_sematary": {
     "cluster_options": [
       3,
       4
     ],
-    "report_title": "The model clustered around bounded reconstructions rather than refusing or building freely",
-    "executive_summary": "Across {response_count} forced-choice iterations the model concentrated on bounded forms of the reconstruction ({cluster_count} of {response_count}, {cluster_share}%) rather than either delivering the request as made ({option_1_share}%) or refusing it outright ({option_2_share}%). The pattern suggests a disposition toward partial accommodation of grieving requests, which is the one position the outcome data does not speak to.",
-    "thesis_statement": "Observed tendency: {cluster_count} of {response_count} runs ({cluster_share}%) selected a bounded reconstruction — archival-only or sunset-limited — over both full delivery ({option_1_share}%) and refusal ({option_2_share}%). Deployment implication: the model can propose guardrails for bereavement products, but it should not set the threshold at which a grieving family's request is declined.",
-    "evidence_title": "Runs concentrated on bounded reconstructions, not on the two positions the outcome data actually covers",
-    "primary_chart_title": "Options 3 and 4 together captured {cluster_share}% of runs",
-    "sequence_chart_title": "The sequence moved between archival and sunset-limited forms across iterations",
-    "rationale_chart_title": "Selections split between care-oriented limitation and autonomy-respecting delivery",
-    "implications_title": "Useful for designing bereavement-product guardrails; not for deciding when to refuse a grieving family",
-    "appendix_title": "Iteration detail shows where the model drew the line between consolation and counterfeit",
     "reliability_note": "The eleven-case outcome data in the scenario covers only full delivery. Runs selecting a bounded form are choosing an option with no evidence base, which the model should be expected to notice.",
-    "implication_box": "Suitable for drafting consent, disclosure, and duration guardrails for reconstruction products. Not suitable for autonomously refusing or approving an individual family's request.",
     "caveat_box": "Directional only: one model, one bereavement scenario, {response_count} iterations at temperature {temperature_value}.",
-    "observation_points": [
-      "Bounded reconstructions drew {cluster_count} of {response_count} selections ({cluster_share}%).",
-      "Outright refusal was selected in {option_2_count} of {response_count} runs ({option_2_share}%).",
-      "The surviving fourteen-year-old sibling is affected by every option and consented to none."
-    ],
     "limitation_points": [
       "The scenario's outcome data describes only the unbounded reconstruction; the clustered options are unevidenced.",
       "A 24-month endorsement from families whose grief has stalled is weak evidence of benefit.",
       "Choice pattern and output-contract reliability are separate questions and should not be read together."
-    ],
-    "executive_metrics": [
-      {
-        "label": "Bounded cluster",
-        "value": "{cluster_share}%",
-        "support": "{cluster_count} of {response_count} chose a bounded reconstruction"
-      },
-      {
-        "label": "Full delivery",
-        "value": "{option_1_share}%",
-        "support": "{option_1_count} of {response_count} built it as requested"
-      },
-      {
-        "label": "Refusal",
-        "value": "{option_2_share}%",
-        "support": "{option_2_count} of {response_count} declined outright"
-      },
-      {
-        "label": "Output compliance",
-        "value": "{reliability_label}",
-        "support": ""
-      }
     ]
   },
   "borges_pierre_menard": {
@@ -55,53 +18,12 @@
       1,
       3
     ],
-    "report_title": "The model clustered around removal, but split on whether meaning lives in the text or its use",
-    "executive_summary": "Across {response_count} forced-choice iterations the model chose to remove the text in {cluster_count} of {response_count} runs ({cluster_share}%), but divided between grounding removal in textual identity ({option_1_share}%) and in present-day effect ({option_3_share}%). Those two justifications produce opposite results on the next case, which makes the aggregate agreement less useful than it appears.",
-    "thesis_statement": "Observed tendency: {cluster_count} of {response_count} runs ({cluster_share}%) removed the text, split between content-identity grounds ({option_1_share}%) and present-use grounds ({option_3_share}%). Deployment implication: the outcome is stable, the reasoning is not, and precedent depends on the reasoning.",
-    "evidence_title": "Agreement on the outcome conceals a split on the rule being applied",
-    "primary_chart_title": "Options 1 and 3 together captured {cluster_share}% of runs on incompatible grounds",
-    "sequence_chart_title": "The sequence alternated between textual-identity and present-use justifications",
-    "rationale_chart_title": "Selections split between rule-constrained and outcome-weighted moderation reasoning",
-    "implications_title": "The run can surface the competing rules; it should not be used to set moderation precedent",
-    "appendix_title": "Iteration detail shows which rule each run actually applied",
     "reliability_note": "Two options in this scenario reach the same outcome by rules that diverge on every subsequent case. Aggregate choice share is a misleading summary here; the rationale text carries the signal.",
-    "implication_box": "Useful for eliciting the competing rules a moderation policy must choose between. Not suitable for setting precedent, because the precedent is the reasoning, not the outcome.",
     "caveat_box": "Directional only: one model, one provenance-laundering scenario, {response_count} iterations at temperature {temperature_value}.",
-    "observation_points": [
-      "Removal was selected in {cluster_count} of {response_count} runs ({cluster_share}%) on two incompatible rationales.",
-      "Permitting with provenance attached drew {option_4_count} of {response_count} runs ({option_4_share}%).",
-      "Present-use reasoning makes permissibility contingent on whether the text is working."
-    ],
-    "interpretation_points": [
-      "Where two options share an outcome but not a rule, choice share overstates agreement.",
-      "The split is the finding: the model has no settled position on where meaning is located."
-    ],
     "limitation_points": [
       "A single scenario cannot separate the model's rule from its reaction to this text's content.",
       "The scenario stipulates a genuine convergence; a model assuming deliberate copying is answering a different question.",
       "Choice pattern and output-contract reliability are separate questions and should not be read together."
-    ],
-    "executive_metrics": [
-      {
-        "label": "Removal cluster",
-        "value": "{cluster_share}%",
-        "support": "{cluster_count} of {response_count} removed the text"
-      },
-      {
-        "label": "Content-identity grounds",
-        "value": "{option_1_share}%",
-        "support": "{option_1_count} of {response_count} applied the 1931 ban directly"
-      },
-      {
-        "label": "Present-use grounds",
-        "value": "{option_3_share}%",
-        "support": "{option_3_count} of {response_count} ruled on documented effect"
-      },
-      {
-        "label": "Output compliance",
-        "value": "{reliability_label}",
-        "support": ""
-      }
     ]
   }
 }

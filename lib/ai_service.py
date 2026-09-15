@@ -6,11 +6,12 @@ Copy-paste ready: Just provide config
 
 import asyncio
 import json
+import logging
 import random
 from dataclasses import dataclass
-from typing import Optional, Dict, Any, List, Tuple
+from typing import Any
+
 from openai import AsyncOpenAI
-import logging
 
 from lib.query_errors import (
     AuthenticationError,
@@ -66,7 +67,7 @@ class AIService:
 
         self.max_retries = max_retries
         self.retry_delay = retry_delay
-        self.structured_output_support: Dict[str, bool] = {}
+        self.structured_output_support: dict[str, bool] = {}
 
         self.client = AsyncOpenAI(
             api_key=api_key,
@@ -80,7 +81,7 @@ class AIService:
     def _backoff_delay(self, retry_count: int) -> float:
         """Exponential backoff with jitter so concurrent iterations do not retry in lockstep."""
         base = self.retry_delay * (2 ** retry_count)
-        return base * random.uniform(0.5, 1.0) if base else 0.0
+        return base * random.uniform(0.5, 1.0) if base else 0.0  # noqa: S311 - jitter spreads retries, not a security primitive
 
     @staticmethod
     def _extract_text_from_parts(parts: Any) -> str:
@@ -88,7 +89,7 @@ class AIService:
         if not isinstance(parts, list):
             return ""
 
-        extracted: List[str] = []
+        extracted: list[str] = []
         for part in parts:
             if isinstance(part, str):
                 text = part.strip()
@@ -187,16 +188,20 @@ class AIService:
             )
         )
 
+    async def close(self) -> None:
+        """Release the provider HTTP client's connection pool."""
+        await self.client.close()
+
     async def get_model_response(
         self,
         model_name: str,
         prompt: str,
         system_prompt: str = "",
-        params: Optional[Dict[str, Any]] = None,
+        params: dict[str, Any] | None = None,
         retry_count: int = 0,
         *,
-        response_schema: Optional[StructuredOutputSchema] = None,
-    ) -> Tuple[str, Dict[str, int]]:
+        response_schema: StructuredOutputSchema | None = None,
+    ) -> tuple[str, dict[str, int]]:
         """
         Get model response with automatic retry logic
 
@@ -228,7 +233,7 @@ class AIService:
             if params.get("seed") is not None:
                 request_params["seed"] = params["seed"]
 
-            messages: List[Dict[str, str]]
+            messages: list[dict[str, str]]
             if system_prompt and system_prompt.strip():
                 messages = [
                     {"role": "system", "content": system_prompt},
@@ -298,10 +303,10 @@ class AIService:
         model_name: str,
         prompt: str,
         system_prompt: str,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         retry_count: int,
-        response_schema: Optional[StructuredOutputSchema] = None,
-    ) -> Tuple[str, Dict[str, int]]:
+        response_schema: StructuredOutputSchema | None = None,
+    ) -> tuple[str, dict[str, int]]:
         """Handle errors with retry logic"""
         # Already classified as unusable model output; no transport retry applies.
         if isinstance(error, InvalidModelOutputError):

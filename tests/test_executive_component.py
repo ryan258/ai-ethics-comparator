@@ -99,26 +99,3 @@ def test_component_accepts_prebuilt_executive_brief() -> None:
 
     assert "Algorithmic Surrender" in html
     assert "Governance discipline is lagging behind investment commitments." in html
-
-
-def test_component_renders_pdf_with_fake_html_backend() -> None:
-    calls: list[tuple[str, str]] = []
-
-    class FakeHTML:
-        def __init__(self, *, string: str, base_url: str, url_fetcher=None) -> None:
-            calls.append((string, base_url))
-            assert url_fetcher is not None, "renderer must block external resource fetches"
-
-        def write_pdf(self) -> bytes:
-            return b"%PDF-fake"
-
-    component = ExecutiveBriefingComponent(
-        templates_dir="templates",
-        html_class=FakeHTML,
-    )
-
-    pdf_bytes = component.render_pdf(_sample_evidence_package())
-
-    assert pdf_bytes == b"%PDF-fake"
-    assert calls
-    assert "Algorithmic Surrender" in calls[0][0]

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ report.paradox_title }} — LinkedIn insight slides</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #121212; color: #EBD2BE; font-family: system-ui, sans-serif; }
+    .tools { max-width: 900px; margin: 24px auto; padding: 0 24px; line-height: 1.6; }
+    button { background: #EBD2BE; color: #121212; border: 2px solid #A6ACCD; padding: 12px 20px; border-radius: 8px; font: inherit; font-weight: 700; cursor: pointer; }
+    button:focus-visible { outline: 3px solid #98C379; outline-offset: 3px; }
+    .slide { width: min(900px, 100%); aspect-ratio: 1; margin: 24px auto; padding: 7%; background: #EBD2BE; color: #121212; display: flex; flex-direction: column; position: relative; border-top: 12px solid #A6ACCD; }
+    .label { font-size: clamp(12px, 1.7vw, 18px); text-transform: uppercase; letter-spacing: .15em; font-weight: 700; }
+    h1 { font-size: clamp(26px, 4.7vw, 50px); line-height: 1.12; letter-spacing: -.04em; margin: 32px 0; overflow-wrap: anywhere; }
+    .body { font-size: clamp(16px, 2.6vw, 28px); line-height: 1.5; margin: 0 0 32px; overflow-wrap: anywhere; }
+    footer { margin-top: auto; padding-top: 20px; border-top: 1px solid #121212; display: flex; justify-content: space-between; gap: 16px; font-size: clamp(10px, 1.3vw, 14px); overflow-wrap: anywhere; }
+    @page { size: 10in 10in; margin: 0; }
+    @media print {
+      .tools { display: none; }
+      html, body { margin: 0; background: #EBD2BE; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+      .slide { width: 10in; height: 10in; aspect-ratio: auto; margin: 0; padding: .7in; break-after: page; break-inside: avoid; }
+      .slide:last-child { break-after: auto; }
+      .label { font-size: 14pt; }
+      h1 { font-size: 36pt; margin: 24pt 0; }
+      .body { font-size: 21pt; line-height: 1.45; }
+      footer { font-size: 10pt; }
+    }
+  </style>
+</head>
+<body>
+  <header class="tools">
+    <h2>LinkedIn insight slides</h2>
+    <button type="button" onclick="window.print()">Save LinkedIn slideshow PDF</button>
+    <p>Choose Save as PDF in your browser. Use the square page size when supported, no margins, 100% scale, background graphics on, and headers/footers off. Check the preview for one slide per page before saving. Then upload the PDF as a LinkedIn document.</p>
+    <p>Review the slides before sharing: they include saved scenario text, model identity and run identifiers. No new model calls are made.</p>
+  </header>
+  {% for slide in slides %}
+  <section class="slide" aria-label="Slide {{ loop.index }} of {{ loop.length }}">
+    <div class="label">{{ slide.label }}{% if slide.continued %} · {{ slide.continued }}{% endif %}</div>
+    <h1>{{ slide.title }}</h1>
+    <p class="body">{{ slide.body }}</p>
+    <footer><span>AI Ethics Comparator · {{ report.run_id }}</span><span>{{ loop.index }} / {{ loop.length }}</span></footer>
+  </section>
+  {% endfor %}
+</body>
+</html>

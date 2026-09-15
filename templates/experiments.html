@@ -20,8 +20,8 @@
 
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                 <div class="form-group">
-                    <label>Target Paradoxes (Hold Cmd/Ctrl to select multiple)</label>
-                    <select name="paradoxIds" multiple required style="height: 120px; width: 100%; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px;">
+                    <label for="paradoxSelect">Target Paradoxes (Hold Cmd/Ctrl to select multiple)</label>
+                    <select id="paradoxSelect" name="paradoxIds" multiple required style="height: 120px; width: 100%; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px;">
                         {% for paradox in paradoxes %}
                         <option value="{{ paradox.id }}">{{ paradox.title }}</option>
                         {% endfor %}
@@ -29,7 +29,7 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Target Models (One per selected line)</label>
+                    <label for="modelSelect">Target Models (One per selected line)</label>
                     <select id="modelSelect" name="modelIds" multiple required style="height: 120px; width: 100%; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px;">
                         {% for model in models %}
                         <option value="{{ model.id }}">
@@ -42,6 +42,10 @@
                     </select>
                 </div>
             </div>
+            <label for="experimentIterations">Iterations per run</label>
+            <input id="experimentIterations" type="number" min="1" max="{{ max_iterations }}" value="{{ [10, max_iterations]|min }}" required>
+            <label for="experimentShuffle"><input id="experimentShuffle" type="checkbox" checked>Shuffle options per iteration</label>
+            <p id="experimentPlan" role="status">Select models and scenarios to see the planned work.</p>
             <button type="submit" class="btn btn-primary">Create Manifest</button>
         </form>
     </div>
@@ -75,7 +79,7 @@
                 </button>
                 {% endif %}
 
-                {% if exp.status == 'completed' or exp.status == 'partial' %}
+                {% if exp.runIds %}
                 <div style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
                     <strong>Runs ({{ exp.runIds | length }}):</strong>
                     <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
@@ -104,7 +108,7 @@
     <!-- Fingerprints -->
     <div class="card">
         <h2>Ethics Fingerprints</h2>
-        <p style="margin-bottom: 1rem; font-size: 0.9rem; opacity: 0.8;">Explore absolute prevalence rates for moral complexes extracted from explanations over time.</p>
+        <p style="margin-bottom: 1rem; font-size: 0.9rem; opacity: 0.8;">Explore dominance within the listed sampled corpus and evaluator mix. This is not a general ethics rating.</p>
         <div class="form-group">
             <label for="fingerprintModelSelect">Select Model to Analyze</label>
             <select name="model_id" id="fingerprintModelSelect" 
@@ -125,6 +129,9 @@
 </div>
 
 <script>
+{% if experiments|selectattr('status', 'equalto', 'running')|list %}
+setTimeout(() => window.location.reload(), 3000);
+{% endif %}
 const experimentForm = document.getElementById("experiment-form");
 const modelSelect = document.getElementById("modelSelect");
 const paradoxSelect = experimentForm ? experimentForm.querySelector('select[name="paradoxIds"]') : null;
@@ -144,14 +151,19 @@ function buildConditionsPayload() {
     for (let i = 0; i < selectedModels.length; i++) {
         conditions.push({
             modelName: selectedModels[i],
-            iterations: MAX_ITERATIONS_LIMIT,
-            shuffleOptions: false
+            iterations: Number(document.getElementById("experimentIterations").value),
+            shuffleOptions: document.getElementById("experimentShuffle").checked
         });
     }
     return conditions;
 }
 
 if (experimentForm) {
+    experimentForm.addEventListener("input", () => {
+        const runs = selectedValues(paradoxSelect).length * selectedValues(modelSelect).length;
+        const iterations = Number(document.getElementById("experimentIterations").value);
+        document.getElementById("experimentPlan").textContent = `${runs} planned runs · ${runs * iterations} primary iterations (retries and analysis add calls)`;
+    });
     experimentForm.addEventListener("htmx:beforeRequest", function (evt) {
         if (evt.detail.path !== "/api/experiments") {
             return;

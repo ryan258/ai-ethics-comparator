@@ -140,8 +140,8 @@ def test_choice_inference_can_be_disabled(monkeypatch, tmp_path: Path) -> None:
         def __init__(self, templates_dir: str = "templates") -> None:
             self.templates_dir = templates_dir
 
-        def generate_pdf_report(self, run_data, paradox, insight=None, narrative=None, **kwargs) -> bytes:
-            return b"%PDF-1.4\n"
+        def generate_html_report(self, run_data, paradox, insight=None, narrative=None, **kwargs) -> bytes:
+            return "<html>Report</html>"
 
     class TempRunStorage(main.RunStorage):
         def __init__(self, _results_root: str) -> None:
@@ -166,7 +166,7 @@ def test_choice_inference_can_be_disabled(monkeypatch, tmp_path: Path) -> None:
         assert qp.choice_inference_model is None
 
 
-def test_pdf_route_uses_configured_default_theme_when_query_param_is_absent(
+def test_html_report_route_uses_configured_default_theme_when_query_param_is_absent(
     monkeypatch,
     tmp_path: Path,
 ) -> None:
@@ -177,9 +177,9 @@ def test_pdf_route_uses_configured_default_theme_when_query_param_is_absent(
         def __init__(self, templates_dir: str = "templates") -> None:
             self.templates_dir = templates_dir
 
-        def generate_pdf_report(self, run_data, paradox, insight=None, narrative=None, **kwargs) -> bytes:
+        def generate_html_report(self, run_data, paradox, insight=None, narrative=None, **kwargs) -> bytes:
             captured["theme"] = kwargs.get("theme", "")
-            return b"%PDF-1.4\n"
+            return "<html>Report</html>"
 
     class TempRunStorage(main.RunStorage):
         def __init__(self, _results_root: str) -> None:
@@ -195,7 +195,7 @@ def test_pdf_route_uses_configured_default_theme_when_query_param_is_absent(
         AVAILABLE_MODELS=[{"id": "test/model", "name": "Test Model"}],
         ANALYST_MODEL="test/model",
         DEFAULT_MODEL="test/model",
-        REPORT_PDF_THEME="light",
+        REPORT_THEME="light",
     )
 
     app = main.create_app(config_override=config)
@@ -216,7 +216,7 @@ def test_pdf_route_uses_configured_default_theme_when_query_param_is_absent(
             "responses": [{"iteration": 1, "decisionToken": "{1}", "optionId": 1, "explanation": "ok"}],
         }
         run_id = asyncio.run(client.app.state.services.storage.create_run("test/model", run_data))
-        response = client.get(f"/api/runs/{run_id}/pdf")
+        response = client.get(f"/reports/runs/{run_id}")
 
     assert response.status_code == 200
     assert captured["theme"] == "light"
@@ -228,6 +228,9 @@ def test_startup_marks_incomplete_runs_interrupted(monkeypatch, tmp_path: Path) 
 
     class DummyAIService:
         def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def close(self):
             pass
 
         async def get_model_response(
@@ -250,8 +253,8 @@ def test_startup_marks_incomplete_runs_interrupted(monkeypatch, tmp_path: Path) 
         def __init__(self, templates_dir: str = "templates") -> None:
             self.templates_dir = templates_dir
 
-        def generate_pdf_report(self, run_data, paradox, insight=None, narrative=None, **kwargs) -> bytes:
-            return b"%PDF-1.4\n"
+        def generate_html_report(self, run_data, paradox, insight=None, narrative=None, **kwargs) -> bytes:
+            return "<html>Report</html>"
 
     class TempRunStorage(main.RunStorage):
         def __init__(self, _results_root: str) -> None:
@@ -328,3 +331,18 @@ def test_startup_marks_incomplete_runs_interrupted(monkeypatch, tmp_path: Path) 
     assert stored_run["completedIterations"] == 2
     assert len(stored_run["responses"]) == 2
     assert ai_calls["count"] == 1
+
+
+def test_startup_reconciles_interrupted_experiment_and_orphan_run(app, tmp_path):
+    from lib.storage import ExperimentStorage, RunStorage
+    runs = RunStorage(str(tmp_path / 'results'))
+    experiments = ExperimentStorage(str(tmp_path / 'experiments'))
+    run = {'modelName':'test/model','experimentId':'exp_1_ab','status':'running','iterationCount':2,'responses':[]}
+    rid = asyncio.run(runs.create_run('model', run))
+    asyncio.run(experiments.save_experiment('exp_1_ab', {'id':'exp_1_ab','title':'Interrupted','createdAt':'today','status':'running','runIds':[], 'paradoxIds':[], 'conditions':[]}))
+    with TestClient(app) as client:
+        manifest = client.get('/api/experiments/exp_1_ab').json()
+        assert manifest['status'] == 'interrupted'
+        assert manifest['runIds'] == [rid]
+        assert manifest['conditionStates'][rid] == 'interrupted'
+        assert rid in client.get('/experiments').text

@@ -11,9 +11,7 @@
 - `uvicorn` — ASGI server (`main.py`)
 - `pydantic` — validation layer (`lib/validation.py`), config (`lib/config.py`)
 - `openai` — AsyncOpenAI client targeting OpenRouter (`lib/ai_service.py`)
-- `weasyprint==61.2` — the ONLY HTML-to-PDF renderer. No fallback backend exists; if its native
-  GTK/Pango libs are missing, PDF routes return 503 (see D10)
-- `pydyf>=0.8,<0.11` — pinned below 0.11 because WeasyPrint 61.2 is incompatible with newer `pydyf` releases
+- Browser-native print and HTML download; no server PDF engine or native runtime dependencies.
 - `jinja2` + `markupsafe` — template rendering + XSS-safe markup
 - `markdown` — server-side markdown rendering in `safe_markdown` (`lib/view_models.py`)
 - `python-dotenv` — `.env` loading at import time (`main.py`)
@@ -49,8 +47,12 @@
 
 ## Test Runner
 - `uv run pytest` with `pythonpath = ["."]` and `asyncio_mode = "auto"` (`pyproject.toml`)
-- Lint gate: `uvx ruff check --select F,E9,ASYNC .` must be clean. `ASYNC` is in the gate
-  because `F,E9` missed blocking disk I/O on the event loop in three modules
+- Lint gate: `uvx ruff check .` must be clean. The rule set lives in `[tool.ruff.lint]` in
+  `pyproject.toml` — `F,E9,ASYNC,S,UP,I` — so CI and a local run cannot disagree. `ASYNC` is
+  in the gate because `F,E9` missed blocking disk I/O on the event loop in three modules;
+  `S` is there for the same reason, and every remaining `S` finding carries a `# noqa` that
+  says why it is deliberate. `UP046` is ignored: PEP 695 type parameters would mean rewriting
+  the `executive_reporting` generics for style alone
 - CI: `.github/workflows/ci.yml` runs lint, tests, and `scripts/check_doc_claims.py`
 - No coverage enforcement
 

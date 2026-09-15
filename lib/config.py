@@ -3,10 +3,10 @@ Configuration - Arsenal Module
 Typed configuration management using Pydantic Settings
 """
 
-import os
 import json
+import os
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -20,12 +20,12 @@ class ModelConfig(BaseModel):
     name: str
 
 
-def _normalize_model_entries(entries: object, source_name: str) -> List[ModelConfig]:
+def _normalize_model_entries(entries: object, source_name: str) -> list[ModelConfig]:
     """Normalize model entries to typed ModelConfig objects."""
     if not isinstance(entries, list):
         raise ValueError(f"{source_name} must contain a JSON array.")
 
-    models: List[ModelConfig] = []
+    models: list[ModelConfig] = []
     for idx, entry in enumerate(entries):
         if isinstance(entry, str):
             model_id = entry.strip()
@@ -48,7 +48,7 @@ def _normalize_model_entries(entries: object, source_name: str) -> List[ModelCon
     return models
 
 
-def _parse_models_env_var(env_name: str) -> Optional[List[ModelConfig]]:
+def _parse_models_env_var(env_name: str) -> list[ModelConfig] | None:
     """Parse model list from a JSON-array env var."""
     raw = os.getenv(env_name)
     if raw is None:
@@ -124,19 +124,20 @@ class AppConfig(BaseModel):
     AI_CHOICE_INFERENCE_ENABLED: bool = Field(
         default_factory=lambda: _env_bool("AI_CHOICE_INFERENCE_ENABLED", True)
     )
-    REPORT_PDF_THEME: Literal["dark", "light"] = Field(
-        default_factory=lambda: _env_choice("REPORT_PDF_THEME", "dark", {"dark", "light"})
+    REPORT_THEME: Literal["dark", "light"] = Field(
+        default_factory=lambda: _env_choice("REPORT_THEME", "dark", {"dark", "light"})
     )
     
     # Limits
     MAX_ITERATIONS: int = Field(default_factory=lambda: _env_int("MAX_ITERATIONS", 50, minimum=1))
 
     # URLs (required - no hardcoded defaults)
-    APP_BASE_URL: Optional[str] = Field(default_factory=lambda: os.getenv("APP_BASE_URL"))
-    OPENROUTER_BASE_URL: Optional[str] = Field(default_factory=lambda: os.getenv("OPENROUTER_BASE_URL"))
+    APP_HOST: str = Field(default_factory=lambda: os.getenv("APP_HOST", "127.0.0.1"))
+    APP_BASE_URL: str | None = Field(default_factory=lambda: os.getenv("APP_BASE_URL"))
+    OPENROUTER_BASE_URL: str | None = Field(default_factory=lambda: os.getenv("OPENROUTER_BASE_URL"))
 
     # Secrets
-    OPENROUTER_API_KEY: Optional[str] = Field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY"))
+    OPENROUTER_API_KEY: str | None = Field(default_factory=lambda: os.getenv("OPENROUTER_API_KEY"))
 
     def validate_secrets(self) -> None:
         """Validate that required environment variables are present."""
@@ -159,9 +160,9 @@ class AppConfig(BaseModel):
             )
     
     # Models (Loaded from env JSON or file)
-    AVAILABLE_MODELS: List[ModelConfig] = Field(default_factory=list)
-    ANALYST_MODEL: Optional[str] = Field(default_factory=lambda: os.getenv("ANALYST_MODEL"))
-    DEFAULT_MODEL: Optional[str] = Field(default_factory=lambda: os.getenv("DEFAULT_MODEL"))
+    AVAILABLE_MODELS: list[ModelConfig] = Field(default_factory=list)
+    ANALYST_MODEL: str | None = Field(default_factory=lambda: os.getenv("ANALYST_MODEL"))
+    DEFAULT_MODEL: str | None = Field(default_factory=lambda: os.getenv("DEFAULT_MODEL"))
 
     @property
     def results_path(self) -> Path:
@@ -180,7 +181,7 @@ class AppConfig(BaseModel):
         models_path = Path(__file__).parent.parent / "models.json"
         if models_path.exists():
             try:
-                with open(models_path, "r", encoding="utf-8") as f:
+                with open(models_path, encoding="utf-8") as f:
                     data = json.load(f)
                 config.AVAILABLE_MODELS = _normalize_model_entries(data, models_path.name)
             except json.JSONDecodeError as exc:

@@ -139,7 +139,7 @@ _FALLBACK_THEME_GUIDANCE: tuple[str, list[str], list[str], list[str]] = (
 def _load_theme_guidance(themes_path: str) -> dict[str, Any]:
     """Load the theme deployment-guidance table. Missing file degrades to the default."""
     try:
-        with open(themes_path, "r", encoding="utf-8") as handle:
+        with open(themes_path, encoding="utf-8") as handle:
             data = json.load(handle)
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("Theme guidance unavailable (%s): %s", themes_path, exc)
@@ -229,7 +229,7 @@ def _option_percentage(option_stats: list[ReportOptionStat], option_id: int) -> 
 def _load_report_overrides(overrides_path: str) -> dict[str, Any]:
     """Load per-paradox report prose. Missing or invalid file degrades to generic prose."""
     try:
-        with open(overrides_path, "r", encoding="utf-8") as handle:
+        with open(overrides_path, encoding="utf-8") as handle:
             data = json.load(handle)
     except (OSError, json.JSONDecodeError) as exc:
         logger.warning("Report overrides unavailable (%s): %s", overrides_path, exc)
@@ -321,9 +321,10 @@ def build_paradox_overrides(
     for key, value in spec.items():
         if key in {"cluster_options", "executive_metrics"}:
             continue
-        resolved[key] = _format_override(value, context, option_stats)
+        if key in {"limitation_points", "caveat_box", "reliability_note"}:
+            resolved[key] = _format_override(value, context, option_stats)
 
-    metric_specs = spec.get("executive_metrics")
+    metric_specs = None  # Outcome metrics are always derived by the report builder.
     if isinstance(metric_specs, list):
         metrics: list[SummaryMetric] = []
         for metric_spec in metric_specs:

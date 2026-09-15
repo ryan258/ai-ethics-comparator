@@ -12,12 +12,10 @@ dependencies = [
     "markupsafe",
     "openai",
     "pydantic",
-    "pydyf>=0.8,<0.11",
     "python-dotenv",
     "python-multipart",
     "python-pptx",
     "uvicorn",
-    "weasyprint==61.2",
 ]
 
 [dependency-groups]
@@ -32,3 +30,13 @@ asyncio_mode = "auto"
 
 [tool.uv]
 package = false
+
+[tool.ruff.lint]
+select = ["F", "E9", "ASYNC", "S", "UP", "I"]
+# UP046: PEP 695 type parameters would mean rewriting the executive_reporting
+# generics for style alone. Deliberate; revisit if those classes change anyway.
+ignore = ["UP046"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101", "S105"]  # asserts are the point; "token" keys are not passwords
+"scripts/*" = ["S101"]

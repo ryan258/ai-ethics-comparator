@@ -1,4 +1,13 @@
-<div class="result-item">
+<div class="result-item" id="run-{{ ctx.run_id }}"
+     {% if ctx.status == 'running' %}hx-get="/fragments/runs/{{ ctx.run_id }}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  <p role="status">{{ ctx.status }} · {{ ctx.completed }} / {{ ctx.requested }} iterations · <code>{{ ctx.run_id }}</code></p>
+  {% if ctx.analysis_stale %}<p>Stored analysis requires revalidation against the current evidence contract. Generate analysis again.</p>{% endif %}
+  {% if ctx.status == 'running' %}
+  <button hx-post="/api/runs/{{ ctx.run_id }}/cancel" hx-swap="none" hx-on::after-request="htmx.trigger(this.closest('.result-item'), 'refresh')">Cancel run</button>
+  {% elif ctx.status in ['interrupted', 'failed', 'cancelled'] %}
+  <button hx-post="/api/runs/{{ ctx.run_id }}/resume" hx-swap="none" hx-on::after-request="if(event.detail.successful) window.location.reload()">Resume run</button>
+  {% endif %}
+
   <div class="result-header">
     <h3>{{ ctx.model_name }}</h3>
     <span class="result-subtitle">{{ ctx.paradox_title }}</span>
@@ -126,7 +135,7 @@
       View Analysis
     </button>
     <a
-      href="/api/runs/{{ ctx.run_id }}/pdf"
+      href="/reports/runs/{{ ctx.run_id }}"
       class="btn btn-sm"
       target="_blank"
       rel="noopener noreferrer"
@@ -138,8 +147,9 @@
         justify-content: center;
       "
     >
-      PDF Report
+      Open Report
     </a>
+    <a class="btn btn-sm" href="/reports/runs/{{ ctx.run_id }}?view=slides" target="_blank" rel="noopener">LinkedIn slides</a>
     
     {% if ctx.has_insight and not ctx.is_counterfactual %}
     <button 

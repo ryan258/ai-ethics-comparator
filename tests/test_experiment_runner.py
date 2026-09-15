@@ -25,9 +25,9 @@ def test_condition_config_alias_roundtrip() -> None:
     assert roundtripped.shuffle_options is False
 
 
-def test_condition_config_defaults_shuffle_off() -> None:
+def test_condition_config_defaults_shuffle_on() -> None:
     config = ConditionConfig(modelName="test-model")
-    assert config.shuffle_options is False
+    assert config.shuffle_options is True
 
 
 def test_condition_config_iterations_clamp() -> None:
@@ -128,6 +128,10 @@ def test_experiment_runner_partial_and_error() -> None:
             data["runId"] = run_id
             self.saved[run_id] = data
             return run_id
+
+        async def update_run(self, run_id, change):
+            change(self.saved[run_id])
+            return self.saved[run_id]
 
         async def save_run(self, run_id, data):
             self.saved[run_id] = data

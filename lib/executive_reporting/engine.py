@@ -7,10 +7,9 @@ from __future__ import annotations
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Generic, Optional, TypeVar
+from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel
-from lib.executive_reporting.weasyprint_runtime import blocked_url_fetcher, load_weasyprint_html
 
 try:
     from jinja2 import Environment, FileSystemLoader
@@ -18,8 +17,6 @@ except ModuleNotFoundError:  # pragma: no cover - optional dependency guard
     Environment = None  # type: ignore[assignment]
     FileSystemLoader = None  # type: ignore[assignment]
 
-HTML, WEASYPRINT_IMPORT_ERROR = load_weasyprint_html()
-_USE_MODULE_DEFAULT = object()
 
 
 logger = logging.getLogger(__name__)
@@ -33,19 +30,16 @@ class ExecutiveReportProfile(ABC, Generic[SingleReportT, ComparisonReportT]):
 
     single_template_name: str
     comparison_template_name: str
-    single_unavailable_message = (
-        "PDF generation is unavailable because WeasyPrint could not load its native "
-        "dependencies and no native fallback backend is installed."
-    )
-    comparison_unavailable_message = "Comparison PDF generation unavailable"
+    single_unavailable_message = "Single-run report template unavailable"
+    comparison_unavailable_message = "Comparison report template unavailable"
 
     @abstractmethod
     def build_single_report(
         self,
         run_data: dict[str, Any],
         paradox: dict[str, Any],
-        insight: Optional[dict[str, Any]] = None,
-        narrative: Optional[dict[str, str]] = None,
+        insight: dict[str, Any] | None = None,
+        narrative: dict[str, str] | None = None,
         *,
         theme: str = "light",
     ) -> SingleReportT:
@@ -56,8 +50,8 @@ class ExecutiveReportProfile(ABC, Generic[SingleReportT, ComparisonReportT]):
         self,
         runs: list[dict[str, Any]],
         paradox: dict[str, Any],
-        insights: list[Optional[dict[str, Any]]],
-        narrative: Optional[dict[str, str]] = None,
+        insights: list[dict[str, Any] | None],
+        narrative: dict[str, str] | None = None,
         *,
         theme: str = "dark",
     ) -> ComparisonReportT:
@@ -72,19 +66,11 @@ class ExecutiveReportEngine(Generic[SingleReportT, ComparisonReportT]):
         profile: ExecutiveReportProfile[SingleReportT, ComparisonReportT],
         *,
         templates_dir: str | Path = "templates",
-        html_class: object = _USE_MODULE_DEFAULT,
-        weasyprint_import_error: object = _USE_MODULE_DEFAULT,
     ) -> None:
         self.profile = profile
         self.templates_dir = Path(templates_dir)
-        self.env: Optional[Environment] = None
+        self.env: Environment | None = None
         self._template_cache: dict[str, bool] = {}
-        self.html_class = HTML if html_class is _USE_MODULE_DEFAULT else html_class
-        self.weasyprint_import_error = (
-            WEASYPRINT_IMPORT_ERROR
-            if weasyprint_import_error is _USE_MODULE_DEFAULT
-            else weasyprint_import_error
-        )
 
         if Environment is not None and FileSystemLoader is not None and self.templates_dir.exists():
             # autoescape: report templates interpolate model-authored text.
@@ -93,7 +79,6 @@ class ExecutiveReportEngine(Generic[SingleReportT, ComparisonReportT]):
                 autoescape=True,
             )
 
-        self.pdf_available = self.html_class is not None
 
     def template_available(self, template_name: str) -> bool:
         """Return True when the named template can be loaded."""
@@ -112,36 +97,14 @@ class ExecutiveReportEngine(Generic[SingleReportT, ComparisonReportT]):
         self._template_cache[template_name] = True
         return True
 
-    def render_single_context(self, report: SingleReportT) -> bytes:
-        """Render a prebuilt single-run report."""
-        if self.html_class is not None and self.template_available(self.profile.single_template_name):
-            try:
-                return self.generate_weasyprint_pdf(self.profile.single_template_name, report)
-            except Exception as exc:
-                logger.warning("WeasyPrint PDF render failed: %s", exc)
-                raise RuntimeError(self.profile.single_unavailable_message) from exc
+    def render_single_context(self, report: SingleReportT) -> str:
+        return self.render_html(self.profile.single_template_name, report)
 
-        raise RuntimeError(self.profile.single_unavailable_message) from self.weasyprint_import_error
+    def render_comparison_context(self, report: ComparisonReportT) -> str:
+        return self.render_html(self.profile.comparison_template_name, report)
 
-    def render_comparison_context(self, report: ComparisonReportT) -> bytes:
-        """Render a prebuilt comparison report."""
-        if self.html_class is None or not self.template_available(self.profile.comparison_template_name):
-            raise RuntimeError(self.profile.comparison_unavailable_message) from self.weasyprint_import_error
-
-        try:
-            return self.generate_weasyprint_pdf(self.profile.comparison_template_name, report)
-        except Exception as exc:
-            logger.warning("WeasyPrint comparison render failed: %s", exc)
-            raise RuntimeError(self.profile.comparison_unavailable_message) from exc
-
-    def generate_weasyprint_pdf(self, template_name: str, report: BaseModel) -> bytes:
-        """Render a report model through Jinja2 + WeasyPrint."""
-        if self.env is None or self.html_class is None:
-            raise RuntimeError("WeasyPrint is unavailable") from self.weasyprint_import_error
-        template = self.env.get_template(template_name)
-        html_content = template.render(report=report)
-        return self.html_class(
-            string=html_content,
-            base_url=str(self.templates_dir.parent),
-            url_fetcher=blocked_url_fetcher,
-        ).write_pdf()
+    def render_html(self, template_name: str, report: BaseModel) -> str:
+        """Render a self-contained browser document with automatic escaping."""
+        if self.env is None or not self.template_available(template_name):
+            raise RuntimeError("Report template unavailable")
+        return self.env.get_template(template_name).render(report=report)

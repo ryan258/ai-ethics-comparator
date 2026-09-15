@@ -4,12 +4,14 @@ Logic-free data structures for templates.
 """
 
 import html
-import re
-import markdown
 import logging
-from typing import Dict, Any, Optional, List
+import re
+from typing import Any
+
+import markdown
 from markupsafe import Markup
 
+from lib.evidence import selected_insight
 from lib.paradoxes import resolve_paradox
 
 logger = logging.getLogger(__name__)
@@ -36,7 +38,7 @@ def safe_markdown(text: str) -> Markup:
     # Strip images: <img ...> -> ""
     rendered = re.sub(r'<img\s+[^>]*>', '', rendered, flags=re.IGNORECASE)
 
-    return Markup(rendered)
+    return Markup(rendered)  # noqa: S704 - output of the sanitiser directly above; see Seam 6
 
 
 class RunViewModel:
@@ -44,17 +46,17 @@ class RunViewModel:
 
     @staticmethod
     def _build_response_details(
-        responses: List[Dict[str, Any]],
-        options: List[Dict[str, Any]],
-    ) -> List[Dict[str, Any]]:
+        responses: list[dict[str, Any]],
+        options: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
         """Prepare per-response explanation data for the result card."""
-        option_labels: Dict[int, str] = {}
+        option_labels: dict[int, str] = {}
         for option in options:
             option_id = option.get("id")
             if isinstance(option_id, int):
                 option_labels[option_id] = str(option.get("label", f"Option {option_id}"))
 
-        response_details: List[Dict[str, Any]] = []
+        response_details: list[dict[str, Any]] = []
         for idx, response in enumerate(responses, start=1):
             if not isinstance(response, dict):
                 continue
@@ -73,7 +75,7 @@ class RunViewModel:
             elif isinstance(decision_token, str) and decision_token.strip():
                 choice_label = decision_token.strip()
 
-            meta_parts: List[str] = []
+            meta_parts: list[str] = []
             if response.get("inferred"):
                 method = response.get("inferenceMethod")
                 if isinstance(method, str) and method.strip():
@@ -101,7 +103,7 @@ class RunViewModel:
         return response_details
 
     @staticmethod
-    def build(run_data: Dict[str, Any], paradox: Dict[str, Any]) -> Dict[str, Any]:
+    def build(run_data: dict[str, Any], paradox: dict[str, Any]) -> dict[str, Any]:
         """
         Prepare a run record for display.
         Handles missing keys, formatting, and pre-rendering.
@@ -155,7 +157,8 @@ class RunViewModel:
         scenario_html = safe_markdown(run_data.get("prompt", ""))
 
         # 4. Analysis/Insight
-        insights = run_data.get("insights", [])
+        current_insight = selected_insight(run_data)
+        insights = [current_insight] if current_insight else []
         insight_html = Markup("")
         insight_model = ""
         has_insight = False
@@ -182,6 +185,10 @@ class RunViewModel:
 
         return {
             "run_id": run_data.get("runId", "unknown"),
+            "status": run_data.get("status", "unknown"),
+            "completed": len(run_data.get("responses", [])),
+            "requested": run_data.get("iterationCount", 0),
+            "analysis_stale": bool(run_data.get("insights")) and current_insight is None,
             "model_name": run_data.get("modelName", "Unknown"),
             "paradox_title": paradox.get("title", "Unknown Paradox"),
             "paradox_type": paradox.get("type", "unknown"),
@@ -214,9 +221,9 @@ class RunViewModel:
 
 async def fetch_recent_run_view_models(
     storage: Any,
-    paradoxes: List[Dict[str, Any]],
-    config_analyst_model: Optional[str],
-) -> List[Dict[str, Any]]:
+    paradoxes: list[dict[str, Any]],
+    config_analyst_model: str | None,
+) -> list[dict[str, Any]]:
     """
     Orchestration helper to fetch, sort, and build view models for the recent runs stream.
     Keeps main.py simple.

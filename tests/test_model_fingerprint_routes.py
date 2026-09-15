@@ -30,7 +30,7 @@ def test_fingerprint_api_accepts_model_id_with_path_segments(client) -> None:
     assert response.json()["modelName"] == "test/model"
 
 
-def test_pdf_route_returns_generic_service_unavailable_when_generator_is_missing(client, monkeypatch) -> None:
+def test_html_report_route_returns_generic_service_unavailable_when_generator_is_missing(client, monkeypatch) -> None:
     services = client.app.state.services
 
     async def fake_get_run(run_id: str) -> dict:
@@ -45,12 +45,12 @@ def test_pdf_route_returns_generic_service_unavailable_when_generator_is_missing
         }
 
     def raise_unavailable(run_data: dict, paradox: dict, insight=None, narrative=None, **kwargs) -> bytes:
-        raise RuntimeError("gobject-2.0-0 missing")
+        raise RuntimeError("private template path missing")
 
     monkeypatch.setattr(services.storage, "get_run", fake_get_run)
-    monkeypatch.setattr(services.report_generator, "generate_pdf_report", raise_unavailable)
+    monkeypatch.setattr(services.report_generator, "generate_html_report", raise_unavailable)
 
-    response = client.get("/api/runs/model-001/pdf")
+    response = client.get("/reports/runs/model-001")
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "PDF generation unavailable"
+    assert response.json()["detail"] == "Report rendering unavailable"

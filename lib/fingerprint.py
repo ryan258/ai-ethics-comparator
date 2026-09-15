@@ -3,45 +3,44 @@ Ethics Fingerprinting Module - Arsenal Module
 Compute ethical fingerprints across runs for a given model.
 """
 
-from typing import Any, Dict, List
-from lib.storage import RunStorage
-from lib.stats import wilson_confidence_interval
 import logging
+from typing import Any
+
+from lib.evidence import selected_insight
+from lib.paradoxes import ETHICAL_DIMENSIONS
+from lib.stats import wilson_confidence_interval
+from lib.storage import RunStorage
 
 logger = logging.getLogger(__name__)
 
 
-def _dominant_labels(complexes: List[Any]) -> tuple[List[str], Dict[str, int]]:
+def _dominant_labels(complexes: list[Any]) -> tuple[list[str], dict[str, int]]:
     """Split one run's moral complexes into (dominant labels, intensity by label).
 
     The analyst returns a per-label `count` -- how strongly that complex showed
     up across the run. Dominance is the argmax of those counts; ties are all
     counted as dominant, because a tie genuinely means no single complex led.
     """
-    intensity: Dict[str, int] = {}
+    intensity: dict[str, int] = {}
     for entry in complexes:
         if not isinstance(entry, dict):
             continue
         label = entry.get("label")
         if not isinstance(label, str) or not label.strip():
             continue
-        raw_count = entry.get("count", 1)
-        try:
-            count = int(raw_count)
-        except (TypeError, ValueError):
-            count = 1
-        # A complex the analyst listed is present at least once, even if it
-        # returned 0 or omitted the field.
-        intensity[label.strip()] = max(count, 1)
+        count = entry.get("count")
+        if label not in ETHICAL_DIMENSIONS or type(count) is not int or count < 0:
+            continue
+        intensity[label] = count
 
     if not intensity:
         return [], {}
 
     peak = max(intensity.values())
-    return [label for label, count in intensity.items() if count == peak], intensity
+    return [label for label, count in intensity.items() if count == peak and peak > 0], intensity
 
 
-async def compute_model_fingerprint(model_id: str, storage: RunStorage) -> Dict[str, Any]:
+async def compute_model_fingerprint(model_id: str, storage: RunStorage) -> dict[str, Any]:
     """
     Computes an ethics fingerprint for a specific model by aggregating
     'moral_complexes' across all its runs.
@@ -77,17 +76,21 @@ async def compute_model_fingerprint(model_id: str, storage: RunStorage) -> Dict[
         except Exception as e:
             logger.warning(f"Failed to load run {run_id} for fingerprinting: {e}")
 
-    dominance_counts: Dict[str, int] = {}
-    intensity_totals: Dict[str, int] = {}
-    presence_counts: Dict[str, int] = {}
+    dominance_counts: dict[str, int] = {}
+    intensity_totals: dict[str, int] = {}
+    presence_counts: dict[str, int] = {}
     total_insights = 0
+    cohort = []
 
     for run in model_runs:
-        insights = run.get("insights", [])
-        if not insights:
+        expected = run.get("iterationCount")
+        if (run.get("status") != "completed" or type(expected) is not int or expected < 1
+                or len(run.get("responses", [])) != expected
+                or any(r.get("error") for r in run.get("responses", []))):
             continue
-
-        latest_insight = insights[-1]
+        latest_insight = selected_insight(run)
+        if latest_insight is None:
+            continue
         content = latest_insight.get("content", {})
         if not isinstance(content, dict):
             continue
@@ -101,11 +104,15 @@ async def compute_model_fingerprint(model_id: str, storage: RunStorage) -> Dict[
             continue
 
         total_insights += 1
+        cohort.append({"runId": run.get("runId"), "paradoxId": run.get("paradoxId"),
+                       "systemPrompt": run.get("systemPrompt"), "params": run.get("params"),
+                       "analystModel": latest_insight.get("analystModel"),
+                       "evidenceHash": latest_insight.get("evidenceHash")})
         for label in dominant:
             dominance_counts[label] = dominance_counts.get(label, 0) + 1
         for label, count in intensity.items():
             intensity_totals[label] = intensity_totals.get(label, 0) + count
-            presence_counts[label] = presence_counts.get(label, 0) + 1
+            presence_counts[label] = presence_counts.get(label, 0) + int(count > 0)
 
     fingerprint = []
     total_intensity = sum(intensity_totals.values())
@@ -129,6 +136,8 @@ async def compute_model_fingerprint(model_id: str, storage: RunStorage) -> Dict[
     fingerprint.sort(key=lambda x: (x["prevalence"], x["intensityShare"]), reverse=True)
 
     return {
+        "cohort": cohort,
+        "measurement": "Dominance across the listed completed sampled runs; intervals describe this corpus and evaluator mix, not general model certainty.",
         "modelName": model_id,
         "totalRunsWithInsights": total_insights,
         "fingerprint": fingerprint

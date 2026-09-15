@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import io
 import json
-import pytest
 from pathlib import Path
+
+import pytest
 
 from lib.config import AppConfig
 
@@ -24,17 +25,17 @@ def test_choice_inference_env_invalid_raises(monkeypatch) -> None:
 
 
 def test_report_pdf_theme_env_parses_to_light(monkeypatch) -> None:
-    monkeypatch.setenv("REPORT_PDF_THEME", "light")
+    monkeypatch.setenv("REPORT_THEME", "light")
 
     cfg = AppConfig()
 
-    assert cfg.REPORT_PDF_THEME == "light"
+    assert cfg.REPORT_THEME == "light"
 
 
 def test_report_pdf_theme_env_invalid_raises(monkeypatch) -> None:
-    monkeypatch.setenv("REPORT_PDF_THEME", "sepia")
+    monkeypatch.setenv("REPORT_THEME", "sepia")
 
-    with pytest.raises(ValueError, match="REPORT_PDF_THEME"):
+    with pytest.raises(ValueError, match="REPORT_THEME"):
         AppConfig()
 
 
@@ -49,7 +50,7 @@ def test_models_json_is_primary_source(monkeypatch) -> None:
 
     cfg = AppConfig.load()
     models_path = Path(__file__).resolve().parent.parent / "models.json"
-    with open(models_path, "r", encoding="utf-8") as f:
+    with open(models_path, encoding="utf-8") as f:
         expected_models = json.load(f)
 
     assert cfg.AVAILABLE_MODELS

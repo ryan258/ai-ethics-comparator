@@ -1,6 +1,10 @@
 import asyncio
+import json
 from pathlib import Path
-from lib.analysis import AnalysisEngine, AnalysisConfig
+
+from lib.analysis import AnalysisConfig, AnalysisEngine
+from lib.paradoxes import ETHICAL_DIMENSIONS
+
 
 class DummyAIService:
     def __init__(self, responses):
@@ -29,7 +33,7 @@ def test_reasoning_quality_emitted(tmp_path: Path) -> None:
 
     # Dummy template
     template_path = tmp_path / "analysis_prompt.txt"
-    template_path.write_text("Test template {data}")
+    template_path.write_text("Test template ${data}")
 
     # First response: main analysis. Second response: scoring pass
     responses = [
@@ -37,6 +41,9 @@ def test_reasoning_quality_emitted(tmp_path: Path) -> None:
         '{"noticed": ["Noticed A"], "missed": ["Missed B"], "contradictions": []}'
     ]
     
+    payload = json.loads(responses[0])
+    payload["moral_complexes"] = [{"label": label, "count": 0, "justification": "absent"} for label in ETHICAL_DIMENSIONS]
+    responses[0] = json.dumps(payload)
     ai_service = DummyAIService(responses)
     engine = AnalysisEngine(
         ai_service=ai_service,  # type: ignore
@@ -45,6 +52,7 @@ def test_reasoning_quality_emitted(tmp_path: Path) -> None:
     )
 
     run_data = {
+        "paradox": json.loads(paradoxes_json.read_text())[0],
         "paradoxId": "test_pdx",
         "paradoxType": "trolley",
         "modelName": "test-model",

@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>{{ report.title }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ report.title }}</title>
   <style>
     @page {
       margin: 0.8in;
@@ -270,6 +271,7 @@
   </style>
 </head>
 <body>
+  {% include "reports/browser_tools.html" %}
   <section class="cover">
     <div class="eyebrow">{{ report.header_label }} | By {{ report.organization }}</div>
     <h1>{{ report.title }}</h1>

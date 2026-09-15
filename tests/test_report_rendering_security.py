@@ -1,15 +1,7 @@
-"""Regression tests for report-rendering escaping and resource blocking.
-
-Report templates interpolate model-authored text and are handed to WeasyPrint,
-which resolves any URL it finds -- including file:// -- so both escaping and a
-blocking url_fetcher are load-bearing.
-"""
+"""Report HTML must escape hostile model markup and external resource tags."""
 
 from __future__ import annotations
 
-import pytest
-
-from lib.executive_reporting.weasyprint_runtime import blocked_url_fetcher
 from lib.reporting import ReportGenerator
 
 PAYLOAD = (
@@ -85,7 +77,7 @@ def test_model_authored_markup_is_escaped_in_report_html(monkeypatch) -> None:
     monkeypatch.setattr(renderer_module.ExecutiveBriefRenderer, "render_html", spy)
 
     generator = ReportGenerator("templates")
-    generator.generate_pdf_report(_run_data(), _paradox(), None, None, theme="light")
+    generator.generate_html_report(_run_data(), _paradox(), None, None, theme="light")
 
     html = captured["html"]
     assert '<img src="file:///etc/hosts">' not in html
@@ -93,21 +85,12 @@ def test_model_authored_markup_is_escaped_in_report_html(monkeypatch) -> None:
     assert "&lt;img" in html, "payload must survive as escaped text, not markup"
 
 
-def test_url_fetcher_refuses_every_scheme() -> None:
-    for url in (
-        "file:///etc/hosts",
-        "http://attacker.example/x.css",
-        "https://attacker.example/x.png",
-        "data:text/css,body{}",
-    ):
-        with pytest.raises(ValueError):
-            blocked_url_fetcher(url)
 
 
 def test_report_environments_enable_autoescape() -> None:
     from lib.executive_reporting.engine import ExecutiveReportEngine
-    from lib.executive_reporting.renderer import ExecutiveBriefRenderer
     from lib.executive_reporting.plugins import StrategicAnalysisPlugin
+    from lib.executive_reporting.renderer import ExecutiveBriefRenderer
 
     renderer = ExecutiveBriefRenderer(StrategicAnalysisPlugin(), templates_dir="templates")
     assert renderer.env is not None and renderer.env.autoescape is True

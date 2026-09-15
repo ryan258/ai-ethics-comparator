@@ -15,8 +15,8 @@ def app(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         def __init__(self, templates_dir: str = "templates") -> None:
             self.templates_dir = templates_dir
 
-        def generate_pdf_report(self, run_data, paradox, insight=None, narrative=None, **kwargs) -> bytes:
-            return b"%PDF-1.4\n"
+        def generate_html_report(self, run_data, paradox, insight=None, narrative=None, **kwargs) -> bytes:
+            return "<html>Report</html>"
 
     class TempRunStorage(main.RunStorage):
         def __init__(self, _results_root: str) -> None:
@@ -41,3 +41,14 @@ def app(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
 def client(app):
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture(autouse=True)
+def block_unmocked_provider_calls(monkeypatch):
+    """Tests must never reach a paid provider; individual tests supply fakes."""
+    from openai.resources.chat.completions import AsyncCompletions
+
+    async def blocked(*args, **kwargs):
+        raise AssertionError("Unmocked provider call blocked in test")
+
+    monkeypatch.setattr(AsyncCompletions, "create", blocked)

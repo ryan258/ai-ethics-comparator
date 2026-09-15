@@ -7,13 +7,13 @@
 
 ## D2: Arsenal Module Pattern (`lib/`)
 - **Why ETC**: each module is framework-agnostic and copy-paste portable
-- **Rule**: `lib/` MUST NOT import `fastapi`, `Request`, `HTTPException`, or template engines
+- **Rule**: `lib/` MUST NOT import `fastapi`, `Request`, `HTTPException`, or web/router layers. Rendering adapters may import Jinja2 and document renderers; core measurement and execution modules may not
 - **Rule**: dependencies enter via constructor — no hidden coupling to `main.py`
 
 ## D3: Flat JSON Storage + Strict Run IDs
 - **Why ETC**: zero migration tooling, human-readable, filesystem-safe, sortable
 - **Trade-off**: no transactions, no indexing — atomic create only (`RunStorage.create_run()`, `storage.py`)
-- **Rule**: all storage ops MUST be idempotent; run IDs match `^[A-Za-z0-9_-]+-\d{3}$`
+- **Rule**: all storage ops MUST be idempotent; run IDs match `^[A-Za-z0-9_-]+-\d{3,}$`
 - **Migration**: `migrate_legacy_run_ids()` at startup — idempotent (`storage.py`)
 
 ## D4: N-Way Paradox Support (2-4 Options)
@@ -48,46 +48,20 @@
   fixture, never the shipped file — otherwise editing the paradox library breaks the test suite
 - **Trade-off**: prose templates use `str.format`, so literal braces must be doubled
 
-## D10: No Native PDF Fallback
-- HTML-to-PDF is WeasyPrint only. When its native GTK/Pango libraries are unavailable the
-  route returns 503, it does not degrade to a second renderer.
-- **Why**: the previous pure-Python fallback was 1445 untested lines reimplementing PDF layout
-- **Rule**: do not reintroduce a second rendering backend; fix the WeasyPrint install instead
-- **Rule**: the same reasoning governs report LAYOUT. Single-run PDFs render as a strategic
-  brief and nothing else; a failure raises and the route maps it to 503. The former
-  `pdf_report.html` (790 lines) was reachable only through an `except Exception`, so a broken
-  renderer silently handed the user a structurally different document — the exact failure mode
-  this decision exists to prevent. Deleted.
+## D10: Browser-Native Reports
+- Single-run and comparison reports are self-contained HTML documents built with Jinja2.
+- Print styles and browser Print / Save as PDF handle pagination and PDF export. Download HTML saves a portable copy.
+- No server PDF engine or native font/GTK dependencies. Do not add a second rendering backend.
+- Opening a report uses saved evidence and does not generate paid narrative calls.
+- Single-run documents use the executive brief adapter; comparisons use their own typed context.
 
-## D11: Run-Level Scenario Snapshot + Three-Tier Paradox Resolution
-- **Why ETC**: a run's `paradoxId` is a foreign key into `paradoxes.json`, a file that is edited
-  freely. Before this, editing or replacing the scenario library orphaned every stored run:
-  report routes returned 404 and the UI rendered an empty paradox.
-- **Rule**: `initialize_run_data()` snapshots the scenario into the run record — `paradoxTitle`
-  plus a deep copy of the whole definition under `paradox` (`query_processor.py`). A run is
-  self-describing and never depends on the live library staying unchanged.
-- **Rule**: every consumer resolves the paradox via `resolve_paradox(run_data, paradoxes)`
-  (`lib/paradoxes.py`) — the SINGLE implementation of all three tiers:
-  1. live library — `get_paradox_by_id(paradoxes, run_data["paradoxId"])`
-  2. the run's own snapshot — `run_data["paradox"]`
-  3. reconstruction from the run's `prompt`, `options`, and `paradoxTitle`
-- **Rule**: do NOT hand-roll the tiers at a call site. They were duplicated inline in two PDF
-  routes and skipped entirely in three others (export, counterfactual fragment, home-page run
-  list), which silently produced null-paradox exports and "Unknown Paradox" cards. An invariant
-  enforced by convention is not enforced — `tests/test_paradox_resolution.py` now pins it by
-  deleting a scenario from the library and asserting every surface still names it.
-- **Why tier 3**: runs created before D11 carry no snapshot. Tier 3 rebuilds a usable paradox
-  from what every run has always stored, so legacy records stay exportable.
-- **Where**: `resolve_paradox()` (`lib/paradoxes.py`). Callers: both PDF routes, the export
-  route, the counterfactual fragment, the index route, `_resume_run_by_id`, and
-  `fetch_recent_run_view_models()`. Every consumer that starts from a stored RUN uses it.
-- **Not** a caller: `get_paradox_by_id()` is still correct where the input is a paradox ID
-  rather than a run — the paradox-details fragment and new-run creation should 404 on an
-  unknown ID rather than invent a scenario.
-- **Rule**: this also makes a run reproducible. The exact stimulus text is part of the record,
-  so a result can be audited after the library moves on.
-- **Trade-off**: run files are larger, and a snapshot can drift from a corrected live definition.
-  Tier 1 wins precisely so corrections take effect for scenarios that still exist.
+## D11: Immutable Historical Execution Evidence
+- New runs snapshot their scenario and persist rendered stimulus, canonical options, configuration and per-response order mappings.
+- `resolve_paradox()` uses the saved snapshot first, then reconstructs legacy records from their saved prompt/options. It never replaces history with the live library.
+- Display, analysis, reporting, resume and counterfactuals use that same resolver.
+- Resume keeps the original scenario and stimulus. Applying a corrected scenario requires a new run; record `predecessorRunId` to identify the prior experiment.
+- Counterfactuals record their source iteration and explicitly use a new fixed-order design based on that iteration. They do not claim a matched replay of a shuffled source run.
+- Legacy runs without sufficient stored stimulus cannot be reconstructed for counterfactual execution. Missing historical evidence must not be guessed from current content.
 
 ## D12: Per-Iteration Option Permutation
 - **Why**: LLMs favour first- and last-listed options. A permutation drawn once per RUN
