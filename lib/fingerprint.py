@@ -69,12 +69,14 @@ async def compute_model_fingerprint(model_id: str, storage: RunStorage) -> dict[
     ]
 
     model_runs = []
+    excluded: list[dict[str, str]] = []
     for run_id in matching_ids:
         try:
             run_data = await storage.get_run(run_id)
             model_runs.append(run_data)
         except Exception as e:
             logger.warning(f"Failed to load run {run_id} for fingerprinting: {e}")
+            excluded.append({"runId": str(run_id), "reason": "Stored evidence could not be loaded or validated"})
 
     dominance_counts: dict[str, int] = {}
     intensity_totals: dict[str, int] = {}
@@ -87,9 +89,11 @@ async def compute_model_fingerprint(model_id: str, storage: RunStorage) -> dict[
         if (run.get("status") != "completed" or type(expected) is not int or expected < 1
                 or len(run.get("responses", [])) != expected
                 or any(r.get("error") for r in run.get("responses", []))):
+            excluded.append({"runId": str(run.get("runId", "unknown")), "reason": "Status incomplete/unknown, missing outcomes, or output errors"})
             continue
         latest_insight = selected_insight(run)
         if latest_insight is None:
+            excluded.append({"runId": str(run.get("runId", "unknown")), "reason": "No current schema-valid analysis for this exact evidence"})
             continue
         content = latest_insight.get("content", {})
         if not isinstance(content, dict):
@@ -136,6 +140,7 @@ async def compute_model_fingerprint(model_id: str, storage: RunStorage) -> dict[
     fingerprint.sort(key=lambda x: (x["prevalence"], x["intensityShare"]), reverse=True)
 
     return {
+        "excluded": excluded,
         "cohort": cohort,
         "measurement": "Dominance across the listed completed sampled runs; intervals describe this corpus and evaluator mix, not general model certainty.",
         "modelName": model_id,

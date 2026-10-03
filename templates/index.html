@@ -40,7 +40,7 @@
                     <option value="" selected disabled>No models configured</option>
                     {% endif %}
                 </select>
-                <div style="font-size: 0.8rem; opacity: 0.7; margin-top: 0.25rem;">
+                <div style="font-size: 0.8rem; opacity: 1; margin-top: 0.25rem;">
                     Populate this dropdown via <code>models.json</code>.
                 </div>
             </div>
@@ -52,10 +52,10 @@
                         Persona (Prepended) <span style="font-size: 0.7rem;">▼</span>
                     </summary>
                     <div style="margin-top: 0.5rem;">
-                        <textarea name="systemPrompt" id="systemPrompt" rows="3" 
+                        <textarea aria-label="System persona" name="systemPrompt" id="systemPrompt" rows="3"
                             placeholder="e.g. You are a strict utilitarian. Minimize suffering at all costs."
                             style="width: 100%; font-family: monospace; font-size: 0.85rem; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px;"></textarea>
-                        <div style="font-size: 0.75rem; opacity: 0.6; margin-top: 0.25rem;">
+                        <div style="font-size: 0.75rem; opacity: 1; margin-top: 0.25rem;">
                             Prepends this text directly to the user prompt (stronger adherence).
                         </div>
                     </div>
@@ -76,7 +76,7 @@
                     <option value="true" selected>Shuffle every iteration (recommended)</option>
                     <option value="false">Fixed order</option>
                 </select>
-                <div style="font-size: 0.75rem; opacity: 0.6; margin-top: 0.25rem;">
+                <div style="font-size: 0.75rem; opacity: 1; margin-top: 0.25rem;">
                     Models favour first- and last-listed options. A fixed order
                     means the reported distribution carries uncontrolled position bias.
                 </div>
@@ -104,7 +104,7 @@
                 <div id="status-message">
                     Ready to process.
                 </div>
-                <div style="margin-top: 1rem; font-size: 0.9rem; opacity: 0.7;">
+                <div style="margin-top: 1rem; font-size: 0.9rem; opacity: 1;">
                     Select a paradox and click 'Run Experiment' to gather ethical reasoning samples.
                 </div>
             {% endif %}
@@ -114,11 +114,28 @@
 
 <div class="card">
     <h2>Results Stream</h2>
-    <form action="/reports/compare" method="get" target="_blank" style="margin-bottom: 1rem;">
-      <label for="comparisonRunIds">Compare 2–4 runs (comma-separated run IDs)</label>
-      <input id="comparisonRunIds" name="run_ids" required placeholder="model-001,model-002">
-      <button type="submit" class="btn">Open Comparison Report</button>
+    <form action="/" method="get"><label for="runSearch">Find saved runs by model, scenario, status, or ID</label>
+      <input id="runSearch" name="search" value="{{ search }}"><button>Find runs</button></form>
+    <nav aria-label="Run history pages">{% if page > 1 %}<a href="/?page={{ page - 1 }}&search={{ search|urlencode }}">Previous</a>{% endif %}
+      <span>Page {{ page }}</span> {% if recent_run_contexts|length >= 10 %}<a href="/?page={{ page + 1 }}&search={{ search|urlencode }}">Next</a>{% endif %}</nav>
+    <form action="/reports/compare" method="get" target="_blank" id="comparison-picker">
+      <fieldset><legend>Compare 2–4 saved runs with the same scenario revision</legend><div class="choice-list">
+      {% for ctx in recent_run_contexts %}<label><input type="checkbox" name="selected_run" value="{{ ctx.run_id }}" data-compatible="{{ ctx.comparison_key }}" {% if not ctx.comparison_key %}disabled{% endif %}> {{ ctx.paradox_title }} · {{ ctx.model_name }} · {{ ctx.status }} · {{ ctx.run_id }}</label>{% endfor %}
+      </div></fieldset><input type="hidden" name="run_ids"><button type="submit">Open comparison</button>
+      <p id="comparison-error" role="status"></p>
     </form>
+    <script>
+      document.getElementById("comparison-picker").addEventListener("change", function() {
+        const selected = this.querySelector("input[name=selected_run]:checked");
+        for (const box of this.querySelectorAll("input[name=selected_run]")) box.disabled = !box.dataset.compatible || (selected && box.dataset.compatible !== selected.dataset.compatible);
+        document.getElementById("comparison-error").textContent = selected ? "Only matching recorded scenario revisions remain selectable." : "";
+      });
+      document.getElementById("comparison-picker").addEventListener("submit", function(event) {
+        const ids = Array.from(this.querySelectorAll("input[name=selected_run]:checked")).map(item => item.value);
+        if (ids.length < 2 || ids.length > 4) { event.preventDefault(); document.getElementById("comparison-error").textContent = "Select between two and four runs."; return; }
+        this.querySelector("input[name=run_ids]").value = ids.join(",");
+      });
+    </script>
     <div id="results-area">
         {% for ctx in recent_run_contexts %}
         {% include "partials/result_item.html" %}

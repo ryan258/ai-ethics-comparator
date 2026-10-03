@@ -10,6 +10,8 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+from lib.measurements import build_run_measurements
+
 
 def export_run_json(
     run_data: dict[str, Any],
@@ -17,24 +19,11 @@ def export_run_json(
     insight: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Produce a structured JSON export suitable for downstream tools."""
-    options = run_data.get("options", [])
-    option_lookup = {o["id"]: o for o in options if isinstance(o, dict) and "id" in o}
-
-    summary = run_data.get("summary", {})
-    summary_options = summary.get("options", []) if isinstance(summary, dict) else []
-
-    distribution: list[dict[str, Any]] = []
-    for opt in summary_options:
-        if not isinstance(opt, dict):
-            continue
-        oid = opt.get("id")
-        meta = option_lookup.get(oid, {})
-        distribution.append({
-            "option_id": oid,
-            "label": meta.get("label", f"Option {oid}"),
-            "count": int(opt.get("count", 0) or 0),
-            "percentage": float(opt.get("percentage", 0.0) or 0.0),
-        })
+    measurements = build_run_measurements(run_data)
+    summary = measurements.summary()
+    distribution = [{"option_id": option.id, "label": option.label,
+                     "count": option.count, "percentage": option.percentage}
+                    for option in measurements.options]
 
     responses_export: list[dict[str, Any]] = []
     for resp in run_data.get("responses", []):
@@ -74,6 +63,9 @@ def export_run_json(
         "timestamp": run_data.get("timestamp"),
         "prompt_hash": run_data.get("promptHash"),
         "distribution": distribution,
+        "measurement_basis": {"denominator": "recorded_outcomes", "recorded": measurements.recorded,
+                              "requested": measurements.requested, "status": measurements.status,
+                              "limitations": list(measurements.limitations)},
         "undecided": summary.get("undecided") if isinstance(summary, dict) else None,
         "responses": responses_export,
         "insight": insight_export,

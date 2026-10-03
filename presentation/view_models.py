@@ -11,8 +11,10 @@ from typing import Any
 import markdown
 from markupsafe import Markup
 
-from lib.evidence import selected_insight
+from lib.evidence import comparison_identity, selected_insight
+from lib.measurements import build_run_measurements
 from lib.paradoxes import resolve_paradox
+from lib.storage import RunStorage
 
 logger = logging.getLogger(__name__)
 
@@ -114,16 +116,17 @@ class RunViewModel:
              return {}
 
         # Basic schema check
-        required_keys = ["modelName", "paradoxId", "summary"]
+        required_keys = ["modelName", "paradoxId"]
         missing = [k for k in required_keys if k not in run_data]
         if missing:
              logger.warning(f"Run data missing keys: {missing}")
 
         # 1. Build Options Summary (N-way support)
         options_summary = []
-        summary = run_data.get("summary", {})
+        measurements = build_run_measurements(run_data)
+        summary = measurements.summary()
 
-        if run_data.get("paradoxType") == "trolley":
+        if run_data.get("paradoxType", "trolley") == "trolley":
             options_from_run = run_data.get("options", [])
             options_from_summary = summary.get("options", [])
 
@@ -183,9 +186,17 @@ class RunViewModel:
 
             has_insight = True
 
+        try:
+            compatible_key = comparison_identity(run_data)
+        except ValueError:
+            compatible_key = ""
         return {
+            "comparison_key": compatible_key,
             "run_id": run_data.get("runId", "unknown"),
-            "status": run_data.get("status", "unknown"),
+            "status": measurements.status,
+            "last_error": str(run_data.get("lastError") or ""),
+            "can_analyze": measurements.recorded > 0 and measurements.status not in ("running", "pending"),
+            "evidence_limitations": measurements.limitations,
             "completed": len(run_data.get("responses", [])),
             "requested": run_data.get("iterationCount", 0),
             "analysis_stale": bool(run_data.get("insights")) and current_insight is None,
@@ -220,9 +231,11 @@ class RunViewModel:
         }
 
 async def fetch_recent_run_view_models(
-    storage: Any,
+    storage: RunStorage,
     paradoxes: list[dict[str, Any]],
     config_analyst_model: str | None,
+    page: int = 1,
+    search: str = "",
 ) -> list[dict[str, Any]]:
     """
     Orchestration helper to fetch, sort, and build view models for the recent runs stream.
@@ -234,8 +247,10 @@ async def fetch_recent_run_view_models(
         all_runs_meta = await storage.list_runs()
         # list_runs now handles sorting safely
 
-        # Top 5 - Fetch FULL data for view model
-        for meta in all_runs_meta[:5]:
+        if search:
+            all_runs_meta = [m for m in all_runs_meta if search.casefold() in " ".join(str(m.get(k, "")) for k in ("runId", "modelName", "paradoxId", "status")).casefold()]
+        offset = (max(1, page) - 1) * 10
+        for meta in all_runs_meta[offset:offset + 10]:
             try:
                 run_id = meta.get("runId")
                 if not run_id: continue

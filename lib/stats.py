@@ -81,9 +81,9 @@ def chi_square_test(observed1: list[int], observed2: list[int]) -> dict[str, Any
 
     return {
         "chiSquare": round(chi_square, 4),
-        "pValue": round(p_value, 4),
+        "pValue": p_value,
         "degreesOfFreedom": df,
-        "significant": p_value < 0.05,
+        "significant": warning is None and p_value < 0.05,
         "warning": warning
     }
 

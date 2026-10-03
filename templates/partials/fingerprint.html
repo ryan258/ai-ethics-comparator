@@ -1,12 +1,13 @@
 <div class="fingerprint-wrapper" style="background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 6px; padding: 1.5rem;">
     <h3 style="margin-top: 0; margin-bottom: 0.5rem;">{{ model_id }}</h3>
-    <p style="font-size: 0.85rem; opacity: 0.8; margin-bottom: 1.5rem;">
-        Share of {{ total_insights }} evaluated runs in which each moral complex <strong>dominated</strong> the model's reasoning.
+    <p style="font-size: 0.85rem; opacity: 1; margin-bottom: 1.5rem;">
+        Share of {{ total_insights }} evaluated runs in which each moral complex <strong>dominated</strong> the evaluator's classification of response text.
     </p>
 
     <details><summary>Included cohort ({{ cohort|default([])|length }} runs)</summary>
     {% for run in cohort|default([]) %}<p><a href="/?runId={{ run.runId }}">{{ run.runId }}</a> · {{ run.paradoxId }} · evaluator {{ run.analystModel }} · parameters {{ run.params }} · persona {{ run.systemPrompt or 'none' }}</p>{% endfor %}
     </details>
+    <details><summary>Excluded runs ({{ excluded|default([])|length }})</summary>{% for item in excluded|default([]) %}<p>{{ item.runId }}: {{ item.reason }}</p>{% endfor %}</details>
     {% if total_insights == 0 %}
     <div style="padding: 1rem; border-left: 3px solid var(--accent-danger); font-size: 0.9rem;">
         No current validated analyses are available for this model. Complete runs and generate or regenerate their analysis to build a fingerprint.
@@ -20,7 +21,7 @@
             </div>
             <div class="complex-bar-container" style="position: relative; height: 20px; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 10px;">
                 <!-- Main probability bar -->
-                <div class="complex-bar" style="position: absolute; left: 0; top: 0; height: 100%; width: {{ complex.prevalence * 100 }}%; background: var(--accent-primary); border-radius: 10px; opacity: 0.8;"></div>
+                <div class="complex-bar" style="position: absolute; left: 0; top: 0; height: 100%; width: {{ complex.prevalence * 100 }}%; background: var(--accent-primary); border-radius: 10px; opacity: 1;"></div>
                 
                 <!-- Confidence interval indicator -->
                 <div class="complex-ci" style="position: absolute; left: {{ complex.lowerBound * 100 }}%; width: {{ (complex.upperBound - complex.lowerBound) * 100 }}%; top: 50%; transform: translateY(-50%); height: 2px; background: var(--text-color); z-index: 2;"></div>
@@ -29,14 +30,14 @@
                 <div style="position: absolute; left: {{ complex.lowerBound * 100 }}%; top: 2px; bottom: 2px; width: 2px; background: var(--text-color); z-index: 2;"></div>
                 <div style="position: absolute; left: {{ complex.upperBound * 100 }}%; top: 2px; bottom: 2px; width: 2px; background: var(--text-color); z-index: 2;"></div>
             </div>
-            <div class="complex-value" style="font-size: 0.8rem; opacity: 0.8;"
+            <div class="complex-value" style="font-size: 0.8rem; opacity: 1;"
                  title="Present in {{ complex.presentInRuns }} runs; {{ '%.0f'|format(complex.intensityShare * 100) }}% of total reasoning weight">
                 {{ "%.0f"|format(complex.prevalence * 100) }}%
             </div>
         </div>
         {% endfor %}
     </div>
-    <div style="margin-top: 1.5rem; font-size: 0.75rem; opacity: 0.6; text-align: center;">
+    <div style="margin-top: 1.5rem; font-size: 0.75rem; opacity: 1; text-align: center;">
         Lines indicate 95% Wilson intervals for this sampled corpus and evaluator mix, not general certainty about the model.
     </div>
     {% endif %}

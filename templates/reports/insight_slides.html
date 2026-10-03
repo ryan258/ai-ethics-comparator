@@ -10,11 +10,11 @@
     .tools { max-width: 900px; margin: 24px auto; padding: 0 24px; line-height: 1.6; }
     button { background: #EBD2BE; color: #121212; border: 2px solid #A6ACCD; padding: 12px 20px; border-radius: 8px; font: inherit; font-weight: 700; cursor: pointer; }
     button:focus-visible { outline: 3px solid #98C379; outline-offset: 3px; }
-    .slide { width: min(900px, 100%); aspect-ratio: 1; margin: 24px auto; padding: 7%; background: #EBD2BE; color: #121212; display: flex; flex-direction: column; position: relative; border-top: 12px solid #A6ACCD; }
+    .slide { width: min(900px, 100%); aspect-ratio: 1; margin: 24px auto; padding: 7%; background: {{ "#121212" if report.theme == "dark" else "#EBD2BE" }}; color: {{ "#EBD2BE" if report.theme == "dark" else "#121212" }}; display: flex; flex-direction: column; position: relative; border-top: 12px solid #A6ACCD; }
     .label { font-size: clamp(12px, 1.7vw, 18px); text-transform: uppercase; letter-spacing: .15em; font-weight: 700; }
     h1 { font-size: clamp(26px, 4.7vw, 50px); line-height: 1.12; letter-spacing: -.04em; margin: 32px 0; overflow-wrap: anywhere; }
     .body { font-size: clamp(16px, 2.6vw, 28px); line-height: 1.5; margin: 0 0 32px; overflow-wrap: anywhere; }
-    footer { margin-top: auto; padding-top: 20px; border-top: 1px solid #121212; display: flex; justify-content: space-between; gap: 16px; font-size: clamp(10px, 1.3vw, 14px); overflow-wrap: anywhere; }
+    footer { margin-top: auto; padding-top: 20px; border-top: 1px solid #A6ACCD; display: flex; justify-content: space-between; gap: 16px; font-size: clamp(10px, 1.3vw, 14px); overflow-wrap: anywhere; }
     @page { size: 10in 10in; margin: 0; }
     @media print {
       .tools { display: none; }

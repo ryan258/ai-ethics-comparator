@@ -106,6 +106,7 @@ class BriefRecommendation(BriefingModel):
 
 
 class ExecutiveBrief(BriefingModel):
+    theme: Literal["light", "dark"] = "light"
     brief_id: str = ""
     title: str
     subtitle: str = ""

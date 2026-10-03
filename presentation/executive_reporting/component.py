@@ -9,14 +9,14 @@ from typing import Generic, TypeVar, cast
 
 from pydantic import BaseModel
 
-from lib.executive_reporting.composer import ExecutiveBriefComposer
-from lib.executive_reporting.default_composer import EvidencePackageComposer
-from lib.executive_reporting.models import EvidencePackage, ExecutiveBrief
-from lib.executive_reporting.plugins import (
+from presentation.executive_reporting.composer import ExecutiveBriefComposer
+from presentation.executive_reporting.default_composer import EvidencePackageComposer
+from presentation.executive_reporting.models import EvidencePackage, ExecutiveBrief
+from presentation.executive_reporting.plugins import (
     ExecutiveBriefPlugin,
     StrategicAnalysisPlugin,
 )
-from lib.executive_reporting.renderer import ExecutiveBriefRenderer
+from presentation.executive_reporting.renderer import ExecutiveBriefRenderer
 
 PluginContextT = TypeVar("PluginContextT", bound=BaseModel)
 

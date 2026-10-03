@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 
 from lib.evidence import validate_comparison
+from lib.measurements import build_run_measurements
 from lib.report_charts import (
     PALETTE_DARK,
     PALETTE_LIGHT,
@@ -103,7 +104,8 @@ def _build_model_summary(
     color_idx: int,
 ) -> ComparisonModelSummary:
     """Summarise a single run for the comparison context."""
-    summary = run.get("summary", {})
+    measurements = build_run_measurements(run)
+    summary = measurements.summary()
     summary_options = summary.get("options", []) if isinstance(summary, dict) else []
 
     option_stats: list[ComparisonOptionStat] = []
@@ -134,7 +136,7 @@ def _build_model_summary(
         option_stats.append(
             ComparisonOptionStat(
                 id=oid if isinstance(oid, int) else None,
-                label=str(meta.get("label", f"Option {oid}") or f"Option {oid}"),
+                label=("Undecided" if oid is None else str(meta.get("label", f"Option {oid}") or f"Option {oid}")),
                 count=count,
                 percentage=pct,
                 percentage_label=f"{pct:.1f}%",
@@ -144,7 +146,12 @@ def _build_model_summary(
         )
         observed.append(count)
 
-    total = sum(option.count for option in option_stats)
+    option_stats.append(ComparisonOptionStat(id=None, label="Undecided", count=measurements.undecided,
+        percentage=100 * measurements.undecided / measurements.recorded if measurements.recorded else 0.0,
+        percentage_label=f"{100 * measurements.undecided / measurements.recorded:.1f}%" if measurements.recorded else "0.0%",
+        color=palette["danger"]))
+    observed.append(measurements.undecided)
+    total = measurements.recorded
     donut_data = [
         DonutSlice(label=o.label, value=o.count, color=o.color)
         for o in option_stats
@@ -226,11 +233,11 @@ def _build_delta_table(
     option_lookup: dict[int, dict[str, Any]],
 ) -> DeltaTable:
     """Build an option × model percentage matrix for the delta table."""
-    all_option_ids: list[int] = []
+    all_option_ids: list[int | None] = []
     seen = set()
     for m in models:
         for o in m.option_stats:
-            if o.id is not None and o.id not in seen:
+            if o.id not in seen:
                 all_option_ids.append(o.id)
                 seen.add(o.id)
 
@@ -250,7 +257,7 @@ def _build_delta_table(
         rows.append(
             DeltaRow(
                 option_id=oid,
-                label=str(meta.get("label", f"Option {oid}") or f"Option {oid}"),
+                label=("Undecided" if oid is None else str(meta.get("label", f"Option {oid}") or f"Option {oid}")),
                 values=values,
             )
         )

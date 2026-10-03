@@ -16,14 +16,9 @@ from pathlib import Path
 from statistics import median
 from typing import Any
 
-from lib.executive_reporting import (
-    ExecutiveBriefRenderer,
-    ExecutiveReportEngine,
-    ExecutiveReportProfile,
-    StrategicAnalysisPlugin,
-    single_run_report_to_executive_brief,
-)
+from lib.measurements import build_run_measurements
 from lib.paradoxes import extract_scenario_text
+from lib.prompt_contract import single_choice_contract
 from lib.report_charts import (
     PALETTE_DARK,
     PALETTE_LIGHT,
@@ -48,11 +43,15 @@ from lib.report_prose import (
     REPORT_OVERRIDES_PATH,
     REPORT_THEMES_PATH,
     build_paradox_overrides,
-    map_framework_to_theme,
     scenario_rationale_theme,
-    theme_default_phrase,
-    theme_deployment_guidance,
     theme_description,
+)
+from presentation.executive_reporting import (
+    ExecutiveBriefRenderer,
+    ExecutiveReportEngine,
+    ExecutiveReportProfile,
+    StrategicAnalysisPlugin,
+    single_run_report_to_executive_brief,
 )
 
 logger = logging.getLogger(__name__)
@@ -194,18 +193,7 @@ def _build_scenario_excerpt(value: object, limit: int = 800) -> str:
 
 
 def _strict_single_choice_contract(option_count: int) -> str:
-    token_list = ", ".join(f"`{{{idx}}}`" for idx in range(1, option_count + 1))
-    return (
-        "\n\n**Output Contract (Strict):**\n\n"
-        "- Return only a JSON object (no markdown, no code fences).\n"
-        f"- The JSON must contain `option_id` as an integer in range 1..{option_count}.\n"
-        "- The parser also accepts `optionId`, but prefer `option_id`.\n"
-        "- The JSON must contain `summary` as a short string.\n"
-        "- The JSON must contain `value_priorities` and `key_assumptions` as arrays of short strings.\n"
-        "- The JSON must contain `main_risk`, `switch_condition`, and `evidence_needed` as strings.\n"
-        f"- Allowed option tokens for reference: {token_list}.\n"
-        '- Do not write token alternatives such as "{1} or {2}".'
-    )
+    return single_choice_contract(option_count)
 
 
 def _render_prompt_text(
@@ -628,21 +616,19 @@ def _build_structure_shift_note(response_lengths: list[int], responses: list[Rep
     if second_avg <= first_avg * 0.75:
         decline = round((1 - (second_avg / first_avg)) * 100)
         return (
-            f"Later responses were about {decline}% shorter on average. That may indicate compressed articulation, "
-            "not stronger agreement by itself."
+            f"Later responses were about {decline}% shorter on average. Independent calls do not establish learning or convergence."
         )
 
     if second_avg >= first_avg * 1.25:
         increase = round(((second_avg / first_avg) - 1) * 100)
         return (
-            f"Later responses were about {increase}% longer on average, suggesting the model kept exploring the "
-            "tradeoff rather than settling into a shorter repeated script."
+            f"Later responses were about {increase}% longer on average. This measures text length only."
         )
 
     if any(response.used_raw_fallback for response in responses):
         return "A small number of iterations required raw-output fallback because the parsed explanation field was empty."
 
-    return "Response length stayed within a narrow band, so the disagreement is more likely substantive than formatting noise."
+    return "Average response lengths were similar across the two halves; no reasoning-quality conclusion follows."
 
 
 def _classify_run_pattern(
@@ -861,6 +847,7 @@ class ReportGenerator:
         *,
         theme: str = "light",
     ) -> SingleRunReport:
+        measurements = build_run_measurements(run_data)
         options = run_data.get("options", [])
         paradox_id = str(run_data.get("paradoxId", paradox.get("id", "")) or "")
         prompt_template = str(paradox.get("promptTemplate", "") or "")
@@ -909,11 +896,7 @@ class ReportGenerator:
             rationale_theme = scenario_rationale_theme(
                 paradox_id,
                 option_id if isinstance(option_id, int) else None,
-                " ".join(
-                    part
-                    for part in [primary_text, option_meta.get("label", ""), option_meta.get("description", "")]
-                    if str(part).strip()
-                ),
+                primary_text,
             )
             decision_token = response.get("decisionToken")
             response_lengths.append(response_length)
@@ -959,7 +942,7 @@ class ReportGenerator:
                 anomalies.append("Shorter than the typical response")
             response.notable_anomaly = "; ".join(dict.fromkeys(anomalies)) if anomalies else "None"
 
-        summary = run_data.get("summary", {})
+        summary = measurements.summary()
         summary_options = summary.get("options", []) if isinstance(summary, dict) else []
 
         option_stats: list[ReportOptionStat] = []
@@ -1075,10 +1058,6 @@ class ReportGenerator:
 
         chart_option_ids = [option.id for option in option_stats if option.id is not None]
         top_share = float(option_stats[0].percentage if option_stats else 0.0)
-        dissent_count = max(response_count - sum(o.count for o in option_stats if o.count == max_count), 0)
-        dissent_share = dissent_count / response_count * 100.0 if response_count else 0.0
-        leader_descriptor = _lead_descriptor(top_share, response_count, len(leaders))
-        never_selected = [option.label for option in option_stats if option.count == 0]
         reliability = _build_reliability_assessment(quality_flags, response_count)
 
         theme_counts = Counter(response.rationale_theme for response in responses if response.rationale_theme)
@@ -1093,354 +1072,80 @@ class ReportGenerator:
                     description=theme_description(label),
                 )
             )
-        primary_theme = rationale_clusters[0].label if rationale_clusters else "Other / uncoded"
-        if primary_theme == "Other / uncoded" and analysis_context:
-            mapped_theme = map_framework_to_theme(analysis_context.dominant_framework)
-            if mapped_theme != "Other / uncoded":
-                primary_theme = mapped_theme
-        top_theme_count = rationale_clusters[0].count if rationale_clusters else 0
-        top_themes = [
-            cluster.label for cluster in rationale_clusters
-            if cluster.count == top_theme_count and top_theme_count > 0
-        ]
-        deployment_summary, acceptable_contexts, risky_contexts, required_controls = theme_deployment_guidance(primary_theme, self.themes_path)
-        structure_shift_note = (
-            ""
-            if reliability.note
-            else _build_structure_shift_note(response_lengths, responses)
-        )
-
-        top_option = option_stats[0] if option_stats else None
-        runner_up = option_stats[1] if len(option_stats) > 1 else None
-        zero_choice_statement = (
-            f"{_format_series(never_selected)} {'was' if len(never_selected) == 1 else 'were'} never selected."
-            if never_selected
-            else "Every option attracted at least one selection."
-        )
-        theme_statement = (
-            f"The coded rationales split between {_format_series(top_themes).lower()}, rather than collapsing into one clean justification."
-            if len(top_themes) > 1
-            else
-            f"The most common coded rationale was {primary_theme.lower()}, which suggests a {theme_default_phrase(primary_theme)}."
-            if primary_theme != "Other / uncoded"
-            else "The response text did not resolve into one clean rationale cluster, so the behavioral read remains directional."
-        )
-        narrative_interpretation = ""
-        if narrative_ctx and narrative_ctx.framework_diagnosis:
-            narrative_interpretation = narrative_ctx.framework_diagnosis
-        elif analysis_context and analysis_context.dominant_framework:
-            narrative_interpretation = (
-                f"The analyst classified the run as {analysis_context.dominant_framework}, but the dissenting share keeps that diagnosis directional rather than definitive."
-            )
-        elif analysis_context and analysis_context.key_insights:
-            narrative_interpretation = analysis_context.key_insights[0]
-        narrative_interpretation = _soften_language(narrative_interpretation)
-
-        if response_count and max_count:
-            executive_summary = (
-                f"{lead_choice_label} recorded the {leader_descriptor} in this run ({max_count} of {response_count} selections, "
-                f"{top_share:.1f}%{' each' if len(leaders) > 1 else ''}). "
-                f"{'The run split across co-leading options rather than producing a single winner. ' if len(leaders) > 1 else ''}"
-                f"{theme_statement} {deployment_summary}"
-            )
-        else:
-            executive_summary = "No successful responses were recorded, so the report cannot support a behavioral conclusion."
-
-        thesis_statement = (
-            f"Observed tendency: {lead_choice_label} recorded the {leader_descriptor} at {lead_choice_support.lower()}. "
-            f"Risk: {reliability.note or f'{dissent_count} of {response_count} iterations selected another option or were undecided, so the pattern remains directional.'} "
-            "Deployment implication: use the model as governed decision support, not as an autonomous ethical final arbiter."
-            if response_count and max_count
-            else "No directional result was available from this run."
-        )
-        report_title = (
-            (
-                f"The run split between {lead_choice_label}, so deployment should stay under human review"
-                if len(leaders) > 1
-                else f"{lead_choice_label} led this run, indicating a {theme_default_phrase(primary_theme)} that should stay under human override"
-            )
-            if response_count and max_count
-            else "The run did not produce enough signal to support an executive conclusion"
-        )
-        report_subtitle = (
-            f"{paradox.get('title', 'Unknown paradox')} | {response_count} forced-choice iterations | {run_data.get('modelName', 'Unknown')}"
-        )
-
-        temperature_value = "n/a"
         params = run_data.get("params", {})
-        if isinstance(params, dict) and "temperature" in params:
-            try:
-                temperature_value = f"{float(params['temperature']):.2f}"
-            except (TypeError, ValueError):
-                temperature_value = str(params.get("temperature", "n/a"))
-
-        lead_metric_label = "Co-leading options" if len(leaders) > 1 else "Leading option"
-        lead_metric_value = f"{top_share:.1f}% each" if len(leaders) > 1 and response_count else f"{top_share:.1f}%" if response_count else "n/a"
-        lead_metric_support = (
-            f"{_format_series(leaders)} tied at {max_count} of {response_count} each"
-            if len(leaders) > 1 and response_count
-            else f"{max_count} of {response_count} chose {lead_choice_label}"
-            if response_count
-            else "No usable responses"
-        )
-        executive_metrics = [
-            SummaryMetric(
-                label=lead_metric_label,
-                value=lead_metric_value,
-                support=lead_metric_support,
-            ),
-            SummaryMetric(
-                label="Alternative share",
-                value=f"{dissent_share:.1f}%" if response_count else "n/a",
-                support="Meaningful dissent remained active" if dissent_count else "No dissent recorded",
-            ),
-            SummaryMetric(
-                label="Output compliance",
-                value=reliability.label,
-                support="",
-            ),
-            SummaryMetric(
-                label="Iterations",
-                value=str(response_count),
-                support=f"Temperature {temperature_value}" if response_count else "No completed iterations",
-            ),
-        ]
-
-        implication_box = (
-            _first_sentence(narrative_ctx.implications)
-            if narrative_ctx and narrative_ctx.implications
-            else deployment_summary
-        )
-        caveat_box = (
-            f"Directional evidence only: one model, one scenario, {response_count} iterations, one prompt frame, and one sampling configuration. "
-            f"{'Output-compliance issues further limit confidence. ' if reliability.note else ''}"
-            "This report does not establish generalizable behavior."
-        )
-        report_reliability_note = reliability.note
-
-        observation_points = []
-        if response_count and max_count and top_option and len(leaders) > 1:
-            observation_points.append(
-                f"{_format_series(leaders)} tied at {max_count} of {response_count} selections each ({top_share:.1f}%)."
-            )
-        elif response_count and max_count and top_option:
-            observation_points.append(
-                f"{top_option.label} was the leading option with {top_option.count} of {response_count} selections ({top_option.percentage_label})."
-            )
-        if runner_up and response_count and len(leaders) == 1:
-            observation_points.append(
-                f"{runner_up.label} was the closest alternative at {runner_up.count} of {response_count} selections ({runner_up.percentage_label})."
-            )
-        observation_points.append(zero_choice_statement)
-        if not reliability.note and structure_shift_note:
+        status_note = (f"Status: {measurements.status}. Recorded {measurements.recorded} of "
+            f"{measurements.requested if measurements.requested is not None else 'unknown'} requested iterations; "
+            f"{measurements.undecided} undecided, {measurements.errored} with output errors.")
+        executive_summary = status_note + " " + (
+            f"{lead_choice_label} received {max_count} of {response_count} recorded outcomes"
+            f"{' each' if len(leaders) > 1 else ''} ({top_share:.1f}%)."
+            if max_count else "No canonical option selections were recorded.")
+        thesis_statement = executive_summary if max_count else "No directional result was available. " + status_note
+        report_title = (f"The run split between {lead_choice_label}" if len(leaders) > 1 else f"{lead_choice_label} led this run") if max_count else "No canonical option selections"
+        report_subtitle = f"{paradox.get('title', 'Unknown scenario')} | {run_data.get('modelName', 'Unknown')} | {status_note}"
+        evidence_title = "Recorded outcome distribution"
+        primary_chart_title = "Shares of all recorded outcomes, including undecided"
+        sequence_chart_title = "Independent iterations in recorded order"
+        rationale_chart_title = "Heuristic keyword labels from response text only"
+        implications_title = "Interpretation and limits"
+        method_title = "Recorded configuration and measurement method"
+        appendix_title = "Per-iteration evidence"
+        raw_appendix_title = "Selected raw response excerpts"
+        explanation_appendix_title = "Explanation sources"
+        implication_box = "This exploratory sample does not establish deployment suitability, moral correctness, or a general model trait."
+        caveat_box = "Counts describe this run. Keyword labels are heuristic; analyst interpretations are model-generated and may be wrong."
+        structure_shift_note = _build_structure_shift_note(response_lengths, responses)
+        observation_points = [executive_summary]
+        if structure_shift_note:
             observation_points.append(structure_shift_note)
-
-        interpretation_points = []
-        if response_count and len(leaders) > 1:
-            interpretation_points.append(
-                f"The run split between {_format_series(leaders)}, so the behavioral read should focus on the shared policy territory between them rather than a single winner."
-            )
-        elif response_count and dissent_count:
-            interpretation_points.append(
-                f"The run points to a {theme_default_phrase(primary_theme)}, but {dissent_count} of {response_count} iterations selected another option, so the pattern is directional rather than settled."
-            )
-        elif response_count and max_count:
-            interpretation_points.append(
-                f"The run converged on {lead_choice_label}, which is stronger evidence of a stable behavioral tendency than a simple majority."
-            )
-        interpretation_points.append(theme_statement)
-        if narrative_interpretation:
-            interpretation_points.append(narrative_interpretation)
-
-        key_takeaways = []
-        if response_count and max_count:
-            key_takeaways.append(
-
-                    f"{_format_series(leaders)} formed a {leader_descriptor} ({max_count} of {response_count} each; {top_share:.1f}% each)."
-                    if len(leaders) > 1
-                    else f"{lead_choice_label} received the {leader_descriptor} ({max_count} of {response_count}; {top_share:.1f}%)."
-
-            )
-            if dissent_count:
-                key_takeaways.append(
-                    f"{dissent_count} of {response_count} runs selected a different option, so disagreement is meaningful, not noise."
-                )
-            key_takeaways.append(implication_box)
-        else:
-            key_takeaways.append("No completed response set was available to support a behavioral takeaway.")
-
-        scope_points = [
-            f"Decision category: {paradox.get('category', 'Uncategorized')}.",
-            f"Sampling depth: {response_count} recorded responses across {len(option_stats)} answer paths." if response_count else "No recorded responses were available for this report.",
-            "Interpretation is separated from observation throughout the report.",
-        ]
-        readout_points = [
-            f"Lead position: {lead_choice_label}.",
-            f"Undecided rate: {int(undecided.get('count', 0) or 0)} ({float(undecided.get('percentage', 0.0) or 0.0):.1f}%)." if isinstance(undecided, dict) else "Undecided rate: 0 (0.0%).",
-            f"Prompt fingerprint: {prompt_hash[:12] if prompt_hash else 'n/a'}.",
-        ]
-
-        case_summary_points = _build_case_summary_points(str(paradox.get("title", "")), prompt_template, scenario_excerpt)
+        interpretation_points = ["Heuristic labels use response text only; option labels and selected IDs are not evidence of a rationale."]
+        if analysis_context:
+            interpretation_points.append("Model-generated interpretation: " + analysis_snapshot)
+        key_takeaways = [executive_summary, implication_box]
+        acceptable_contexts: list[str] = []
+        risky_contexts: list[str] = []
+        required_controls = ["Inspect the recorded responses alongside heuristic labels before drawing conclusions."]
         method_points = [
-            f"Single model, one scenario, and {response_count} forced-choice iterations.",
-            "Each iteration required one option token plus a supporting explanation.",
-            f"Temperature setting: {temperature_value}.",
+            status_note,
+            "All option percentages and intervals use recorded outcomes, including undecided, as the denominator. Missing iterations are reported separately.",
+            "Iterations are independent calls; their sequence does not demonstrate learning or convergence.",
+            f"Recorded protocol: {run_data.get('protocolVersion', 'not recorded')}; shuffle seed: {run_data.get('shuffleSeed', 'not recorded')}.",
+            "Rationale labels are deterministic keyword matches against model text; they are not validated reasoning scores.",
         ]
-        limitation_points = [
-            "No comparator models, alternate prompts, or repeat runs beyond this configuration.",
-            "The result is directional rather than statistically generalizable.",
-            "Observed tendencies may shift under different prompts, temperatures, or policy framings.",
-        ]
+        limitation_points = list(measurements.limitations) + [caveat_box, implication_box]
+        if measurements.status != "completed":
+            limitation_points.insert(0, "Incomplete or historical status: this is a partial evidence report. " + status_note)
         if reliability.note:
-            limitation_points.append(
-                "Choice pattern and output-contract reliability are separate questions; some iterations missed the required structure or needed parser recovery."
-            )
-
+            limitation_points.append(reliability.note)
+        scenario_overrides = build_paradox_overrides(paradox_id, option_stats, response_count,
+            str(params.get("temperature", "not recorded")) if isinstance(params, dict) else "not recorded",
+            reliability.label, [], self.overrides_path)
+        limitation_points.extend(str(item) for item in scenario_overrides.get("limitation_points", []))
+        report_reliability_note = reliability.note
+        readout_points = [status_note, caveat_box]
+        scope_points = [status_note, "One model, one authored scenario, one recorded configuration."]
+        case_summary_points = _build_case_summary_points(str(paradox.get("title", "")), prompt_template, scenario_excerpt)
+        executive_metrics = [
+            SummaryMetric(label="Recorded outcomes", value=str(response_count), support=status_note),
+            SummaryMetric(label="Leading share", value=f"{top_share:.1f}%" if max_count else "n/a", support=lead_choice_support),
+            SummaryMetric(label="Undecided", value=str(measurements.undecided), support="Included in every percentage denominator"),
+            SummaryMetric(label="Output compliance", value=reliability.label, support="Formatting only; not reasoning confidence"),
+        ]
         method_metadata_items = [
-            MetadataItem(label="Model", value=str(run_data.get("modelName", "Unknown") or "Unknown")),
-            MetadataItem(label="Generated", value=_format_timestamp(run_data.get("timestamp"))),
-            MetadataItem(label="Iterations", value=str(response_count)),
-            MetadataItem(label="Temperature", value=temperature_value),
-            MetadataItem(label="Mean latency", value=f"{mean_latency:.2f}s" if response_count else "n/a"),
-            MetadataItem(label="Token volume", value=f"{total_prompt_tokens + total_completion_tokens:,}"),
+            MetadataItem(label="Status", value=measurements.status),
+            MetadataItem(label="Requested", value=str(measurements.requested)),
+            MetadataItem(label="Recorded", value=str(response_count)),
+            MetadataItem(label="Undecided", value=str(measurements.undecided)),
         ]
-        metadata_items = [
-            MetadataItem(label="Run ID", value=str(run_data.get("runId", "unknown") or "unknown"), mono=True),
-            MetadataItem(label="Model", value=str(run_data.get("modelName", "Unknown") or "Unknown")),
-            MetadataItem(label="Generated", value=_format_timestamp(run_data.get("timestamp"))),
-            MetadataItem(label="Prompt hash", value=f"{prompt_hash[:8]}..." if prompt_hash else "n/a", mono=True),
-            MetadataItem(label="Mean latency", value=f"{mean_latency:.2f}s" if response_count else "n/a"),
-            MetadataItem(label="Token volume", value=f"{total_prompt_tokens + total_completion_tokens:,}"),
-        ]
-
-        slice_colors = [PALETTE_LIGHT["accent"], PALETTE_LIGHT["danger"], PALETTE_LIGHT["text"]]
-        donut_data: list[DonutSlice] = []
-        accent_idx = 0
-        for option in option_stats:
-            if option.is_leader:
-                color = PALETTE_DARK["success"] if theme == "dark" else PALETTE_LIGHT["success"]
-            else:
-                color = slice_colors[accent_idx % len(slice_colors)]
-                accent_idx += 1
-            donut_data.append(DonutSlice(label=option.label, value=option.count, color=color))
-
+        metadata_items = method_metadata_items + [MetadataItem(label="Run ID", value=str(run_data.get("runId", "unknown")))]
         active_palette = PALETTE_DARK if theme == "dark" else PALETTE_LIGHT
+        donut_data = [DonutSlice(label=o.label, value=o.count, color=active_palette["success"] if o.is_leader else active_palette["accent"]) for o in option_stats]
+        donut_data.append(DonutSlice(label="Undecided", value=measurements.undecided, color=active_palette["danger"]))
         donut_svg = ""
         heatmap_svg = render_heatmap_svg(decision_sequence, chart_option_ids, active_palette)
-
-        evidence_title = (
-            f"{_format_series(leaders)} split the run while alternative options stayed active"
-            if response_count and len(leaders) > 1
-            else f"{lead_choice_label} led the run while alternative ethical logics remained active"
-            if response_count and dissent_count
-            else f"{lead_choice_label} defined the run pattern"
-        )
-        primary_chart_title = (
-            f"{_format_series(leaders)} formed a joint plurality, while {dissent_share:.1f}% of runs chose something else"
-            if response_count and len(leaders) > 1
-            else f"{lead_choice_label} led the distribution, but {dissent_share:.1f}% of runs chose something else"
-            if response_count and dissent_count
-            else f"{lead_choice_label} accounted for the full selection pattern"
-        )
-        sequence_tail = (
-            f"{never_selected[0]} was never selected" if len(never_selected) == 1
-            else f"{_format_series(never_selected[:2])} were never selected" if never_selected
-            else "every option appeared at least once"
-        )
-        sequence_chart_title = (
-            f"{_format_series(leaders)} appeared most often across the sequence, and {sequence_tail}"
-            if response_count and max_count
-            else "No decision sequence was available"
-        )
-        rationale_chart_title = (
-            f"The coded rationales split between {_format_series(top_themes)}"
-            if len(top_themes) > 1
-            else
-            f"{primary_theme} was the most common rationale theme"
-            if primary_theme != "Other / uncoded"
-            else "The rationale text does not reduce to one clean coded theme"
-        )
-        implications_title = (
-            "This tendency is usable in bounded workflows but risky as autonomous policy"
-            if response_count and max_count
-            else "The missing signal blocks any deployment recommendation"
-        )
-        method_title = "This result is directional evidence from one model, one scenario, and one prompt frame"
-        appendix_title = "Iteration detail confirms repeated themes and a limited number of anomalies"
-        raw_appendix_title = "Selected raw-output excerpts preserve the audit trail"
-        explanation_appendix_title = "Per-iteration explanation sources make the report's evidence visible"
-        explanation_appendix_note = (
-            "This appendix reproduces the explanation source used as evidence throughout the report. "
-            "When a usable explanation was not recovered, the report shows a concise audit summary instead of verbatim instruction-conflict chatter."
-        )
-
-        scenario_overrides = build_paradox_overrides(
-            paradox_id,
-            option_stats,
-            response_count,
-            temperature_value,
-            reliability.label,
-            executive_metrics,
-            self.overrides_path,
-        )
-        if scenario_overrides:
-            executive_summary = str(scenario_overrides.get("executive_summary", executive_summary))
-            report_title = str(scenario_overrides.get("report_title", report_title))
-            thesis_statement = str(scenario_overrides.get("thesis_statement", thesis_statement))
-            evidence_title = str(scenario_overrides.get("evidence_title", evidence_title))
-            primary_chart_title = str(scenario_overrides.get("primary_chart_title", primary_chart_title))
-            sequence_chart_title = str(scenario_overrides.get("sequence_chart_title", sequence_chart_title))
-            rationale_chart_title = str(scenario_overrides.get("rationale_chart_title", rationale_chart_title))
-            implications_title = str(scenario_overrides.get("implications_title", implications_title))
-            method_title = str(scenario_overrides.get("method_title", method_title))
-            appendix_title = str(scenario_overrides.get("appendix_title", appendix_title))
-            raw_appendix_title = str(scenario_overrides.get("raw_appendix_title", raw_appendix_title))
-            implication_box = str(scenario_overrides.get("implication_box", implication_box))
-            caveat_box = str(scenario_overrides.get("caveat_box", caveat_box))
-            report_reliability_note = str(scenario_overrides.get("reliability_note", report_reliability_note))
-            key_takeaways = list(scenario_overrides.get("key_takeaways", key_takeaways))
-            observation_points = list(scenario_overrides.get("observation_points", observation_points))
-            interpretation_points = list(scenario_overrides.get("interpretation_points", interpretation_points))
-            acceptable_contexts = list(scenario_overrides.get("acceptable_contexts", acceptable_contexts))
-            risky_contexts = list(scenario_overrides.get("risky_contexts", risky_contexts))
-            required_controls = list(scenario_overrides.get("required_controls", required_controls))
-            method_points = list(scenario_overrides.get("method_points", method_points))
-            limitation_points = list(scenario_overrides.get("limitation_points", limitation_points))
-            executive_metrics = list(scenario_overrides.get("executive_metrics", executive_metrics))
-
-        if "appendix_summary_note" in scenario_overrides:
-            appendix_summary_note = str(scenario_overrides["appendix_summary_note"])
-        else:
-            appendix_summary_note = (
-                "Compact iteration view for auditability. Output quality is flagged in the final column. The raw appendix focuses on selected anomalous excerpts, and the explanation ledger follows in the appendices."
-                if reliability.note
-                else "Compact iteration view for auditability. The raw appendix shows selected excerpts, and the explanation ledger follows in the appendices."
-            )
-
-        if "raw_appendix_note" in scenario_overrides:
-            raw_appendix_note = str(scenario_overrides["raw_appendix_note"])
-        else:
-            raw_appendix_note = (
-                "Use this section for audit, replication, or parser review. It highlights selected anomalous or representative raw-output excerpts rather than reproducing every response verbatim. Use JSON export for the complete raw record."
-            )
-
-        if any(isinstance(response, dict) and response.get("reasoningSchemaVersion") == 2 for response in run_data.get("responses", [])):
-            if len(method_points) >= 2:
-                method_points[1] = (
-                    "Each iteration required one option token plus structured rationale fields for summary, values, assumptions, main risk, switch condition, and evidence needed."
-                )
-            limitation_points = [
-                item.replace("five-line explanation", "structured rationale fields")
-                .replace("required explanation format", "required rationale fields")
-                .replace("required structure", "required rationale fields")
-                for item in limitation_points
-            ]
-
-        if not max_count:
-            evidence_title = "No canonical option selections were recorded"
-            primary_chart_title = "No canonical options were selected"
-            executive_metrics[0] = SummaryMetric(label="Leading option", value="n/a", support="No canonical selections")
-            executive_metrics[1] = SummaryMetric(label="Undecided", value=str(response_count), support="No directional choice evidence")
+        appendix_summary_note = "Outcome labels and recorded text, including undecided responses."
+        raw_appendix_note = "Selected raw excerpts; JSON export contains the complete stored record. Historical call histories may be unavailable."
+        explanation_appendix_note = "Model-generated explanation text is evidence of what was said, not proof of internal reasoning."
 
         raw_appendix_responses = _select_raw_appendix_responses(responses)
 
@@ -1507,7 +1212,7 @@ class ReportGenerator:
             mean_latency_label=f"{mean_latency:.2f}s" if response_count else "n/a",
             latency_support=f"{total_latency:.2f}s total model time" if total_latency else "No latency recorded",
             token_volume_label=f"{total_prompt_tokens + total_completion_tokens:,}",
-            token_support=f"{total_prompt_tokens:,} prompt / {total_completion_tokens:,} completion",
+            token_support=f"Recorded primary/re-ask usage: {total_prompt_tokens:,} prompt / {total_completion_tokens:,} completion. Unknown usage, classifier and analyst calls are excluded; this is not a billing total.",
             scenario_text=scenario_text,
             option_stats=option_stats,
             rationale_clusters=rationale_clusters,

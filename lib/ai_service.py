@@ -55,8 +55,10 @@ class AIService:
         base_url: str,
         referer: str,
         app_name: str,
-        max_retries: int = 5,
+        max_retries: int = 2,
         retry_delay: int = 2,
+        concurrency_limit: int = 2,
+        request_timeout: float = 120.0,
     ) -> None:
         if not api_key:
             raise ValueError("API key is required")
@@ -65,12 +67,18 @@ class AIService:
         if retry_delay < 0:
             raise ValueError("retry_delay must be >= 0")
 
+        if concurrency_limit < 1 or request_timeout <= 0:
+            raise ValueError("Concurrency and request timeout must be positive")
+        self.semaphore = asyncio.Semaphore(concurrency_limit)
+        self.request_timeout = request_timeout
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         self.structured_output_support: dict[str, bool] = {}
 
         self.client = AsyncOpenAI(
             api_key=api_key,
+            max_retries=0,
+            timeout=request_timeout,
             base_url=base_url,
             default_headers={
                 "HTTP-Referer": referer,
@@ -201,7 +209,7 @@ class AIService:
         retry_count: int = 0,
         *,
         response_schema: StructuredOutputSchema | None = None,
-    ) -> tuple[str, dict[str, int]]:
+    ) -> tuple[str, dict[str, Any]]:
         """
         Get model response with automatic retry logic
 
@@ -215,6 +223,20 @@ class AIService:
         Returns:
             Tuple of (Model response text, Usage dictionary)
         """
+        try:
+            async with asyncio.timeout(self.request_timeout):
+                async with self.semaphore:
+                    return await self._request_with_retries(model_name, prompt, system_prompt, params,
+                        retry_count, response_schema=response_schema)
+        except TimeoutError as exc:
+            raise QueryTimeoutError("Provider call exceeded the total request deadline") from exc
+
+    async def _request_with_retries(
+        self, model_name: str, prompt: str, system_prompt: str = "",
+        params: dict[str, Any] | None = None, retry_count: int = 0, *,
+        response_schema: StructuredOutputSchema | None = None,
+    ) -> tuple[str, dict[str, Any]]:
+        # Any is confined to the provider SDK/JSON boundary and its optional metadata.
         if params is None:
             params = {}
 
@@ -279,8 +301,13 @@ class AIService:
             if response_text:
                 usage = getattr(response, "usage", None)
                 usage_dict = {
-                    "prompt_tokens": getattr(usage, "prompt_tokens", 0) if usage else 0,
-                    "completion_tokens": getattr(usage, "completion_tokens", 0) if usage else 0,
+                    "prompt_tokens": (getattr(usage, "prompt_tokens", 0) or 0) if usage else 0,
+                    "completion_tokens": (getattr(usage, "completion_tokens", 0) or 0) if usage else 0,
+                    "usage_known": usage is not None,
+                    "provider_response_id": getattr(response, "id", None),
+                    "provider_model": getattr(response, "model", None),
+                    "finish_reason": getattr(response.choices[0], "finish_reason", None),
+                    "transport_retries": retry_count,
                 }
                 return response_text, usage_dict
 
@@ -306,7 +333,7 @@ class AIService:
         params: dict[str, Any],
         retry_count: int,
         response_schema: StructuredOutputSchema | None = None,
-    ) -> tuple[str, dict[str, int]]:
+    ) -> tuple[str, dict[str, Any]]:
         """Handle errors with retry logic"""
         # Already classified as unusable model output; no transport retry applies.
         if isinstance(error, InvalidModelOutputError):
@@ -335,7 +362,7 @@ class AIService:
                     self.max_retries,
                 )
                 await asyncio.sleep(delay)
-                return await self.get_model_response(
+                return await self._request_with_retries(
                     model_name,
                     prompt,
                     system_prompt,
@@ -377,7 +404,7 @@ class AIService:
                     self.max_retries,
                 )
                 await asyncio.sleep(delay)
-                return await self.get_model_response(
+                return await self._request_with_retries(
                     model_name,
                     prompt,
                     system_prompt,
@@ -405,7 +432,7 @@ class AIService:
                     self.max_retries,
                 )
                 await asyncio.sleep(delay)
-                return await self.get_model_response(
+                return await self._request_with_retries(
                     model_name,
                     prompt,
                     system_prompt,

@@ -5,15 +5,18 @@ Copy-paste ready: Just provide results_root path
 """
 
 import asyncio
+import inspect
 import json
 import logging
 import os
 import re
 import tempfile
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from lib.measurements import RunRecord
 
 STRICT_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+-\d{3,}$")
 LEGACY_RUN_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,120}$")
@@ -345,7 +348,7 @@ class RunStorage:
                             "paradoxId": data.get("paradoxId", "Unknown"),
                             "experimentId": data.get("experimentId"),
                             "iterationCount": data.get("iterationCount", 0),
-                            "status": data.get("status", "completed"),
+                            "status": data.get("status", "unknown"),
                             "filePath": f"results/{entry_name}",
                         }
 
@@ -418,8 +421,13 @@ class RunStorage:
                 if run_data.get("status") != "running":
                     continue
 
-                iteration_count = int(run_data.get("iterationCount", 0) or 0)
-                completed_iterations = int(run_data.get("completedIterations", 0) or 0)
+                try:
+                    record = RunRecord.model_validate(run_data)
+                except ValueError as exc:
+                    logger.error("Invalid stored run %s: %s", run_id, exc)
+                    continue
+                iteration_count = record.iterationCount or 0
+                completed_iterations = len(record.responses)
                 if iteration_count > 0 and completed_iterations < iteration_count:
                     resumable.append(run_data)
 
@@ -469,7 +477,12 @@ class RunStorage:
                     
             raise FileNotFoundError(f"Run {run_id} not found")
 
-        return await loop.run_in_executor(None, _read)
+        data = await loop.run_in_executor(None, _read)
+        try:
+            RunRecord.model_validate(data)
+        except ValueError as exc:
+            raise ValueError(f"Invalid stored record {run_id}; original file preserved. {exc}") from exc
+        return data
 
 class ExperimentStorage:
     """Storage manager for defined experiments"""
@@ -482,9 +495,20 @@ class ExperimentStorage:
         """Claim a pending manifest once in the supported single process."""
         async with self._claim_lock:
             data = await self.get_experiment(exp_id)
-            if data.get("status") != "pending":
-                raise ValueError("Experiment must be pending to execute")
+            if data.get("status") not in {"pending", "interrupted", "failed", "partial"}:
+                raise ValueError("Experiment is already running or completed")
             data["status"] = "running"
+            data["executionActive"] = True
+            await self.save_experiment(exp_id, data)
+            return data
+
+    async def update_experiment(self, exp_id: str, mutate: Callable[[dict[str, Any]], Awaitable[None] | None]) -> dict[str, Any]:
+        """Serialize manifest edits in the supported single-process deployment."""
+        async with self._claim_lock:
+            data = await self.get_experiment(exp_id)
+            result = mutate(data)
+            if inspect.isawaitable(result):
+                await result
             await self.save_experiment(exp_id, data)
             return data
 

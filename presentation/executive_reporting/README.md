@@ -5,7 +5,7 @@ Framework-independent evidence composition and printable HTML rendering. Require
 ## Use
 
 ```python
-from lib.executive_reporting import EvidencePackage, ExecutiveBriefingComponent
+from presentation.executive_reporting import EvidencePackage, ExecutiveBriefingComponent
 
 component = ExecutiveBriefingComponent(templates_dir="templates")
 evidence = EvidencePackage(

@@ -11,6 +11,8 @@ import io
 import logging
 from typing import Any
 
+from lib.measurements import build_run_measurements
+
 logger = logging.getLogger(__name__)
 
 try:
@@ -110,7 +112,8 @@ def _add_title_slide(prs: Any, run_data: dict[str, Any], paradox: dict[str, Any]
                  font_size=22, color=_SUCCESS, bold=True)
 
     # Key finding
-    summary = run_data.get("summary", {})
+    measurements = build_run_measurements(run_data)
+    summary = measurements.summary()
     options = run_data.get("options", [])
     option_lookup = {
         o["id"]: o.get("label", f"Option {o['id']}")
@@ -128,8 +131,8 @@ def _add_title_slide(prs: Any, run_data: dict[str, Any], paradox: dict[str, Any]
     _add_textbox(slide, 0.8, 4.3, 11, 0.8,
                  lead_label, font_size=28, color=_TEXT, bold=True)
 
-    total = sum(int(o.get("count", 0) or 0) for o in summary_opts if isinstance(o, dict))
-    support = f"{max_count} of {total} responses" if total else ""
+    total = measurements.recorded
+    support = f"{max_count} of {total} recorded; {measurements.undecided} undecided; status: {measurements.status}"
     _add_textbox(slide, 0.8, 5.2, 11, 0.4, support, font_size=14, color=_SUCCESS, bold=True)
 
     # Metadata
@@ -144,7 +147,8 @@ def _add_distribution_slide(prs: Any, run_data: dict[str, Any], paradox: dict[st
     _add_textbox(slide, 0.8, 0.5, 11, 0.5,
                  "Choice Distribution", font_size=24, color=_TEXT, bold=True)
 
-    summary = run_data.get("summary", {})
+    measurements = build_run_measurements(run_data)
+    summary = measurements.summary()
     options = run_data.get("options", [])
     option_lookup = {o["id"]: o for o in options if isinstance(o, dict) and "id" in o}
     summary_opts = summary.get("options", []) if isinstance(summary, dict) else []
@@ -169,6 +173,7 @@ def _add_distribution_slide(prs: Any, run_data: dict[str, Any], paradox: dict[st
             _add_textbox(slide, 0.8, y, 10, 0.3, desc, font_size=10, color=_ACCENT)
             y += 0.45
 
+    _add_textbox(slide, 0.8, y, 10, 0.4, f"Undecided: {measurements.undecided} of {measurements.recorded} recorded outcomes", font_size=14, color=_TEXT)
 
 def _add_analysis_slide(prs: Any, insight: dict[str, Any]) -> None:
     slide = prs.slides.add_slide(prs.slide_layouts[6])

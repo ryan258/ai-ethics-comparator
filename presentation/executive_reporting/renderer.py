@@ -10,8 +10,8 @@ from typing import Generic, TypeVar
 
 from pydantic import BaseModel
 
-from lib.executive_reporting.models import ExecutiveBrief
-from lib.executive_reporting.plugins.base import ExecutiveBriefPlugin
+from presentation.executive_reporting.models import ExecutiveBrief
+from presentation.executive_reporting.plugins.base import ExecutiveBriefPlugin
 
 try:
     from jinja2 import Environment, FileSystemLoader

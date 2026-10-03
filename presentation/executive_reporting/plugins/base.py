@@ -9,7 +9,7 @@ from typing import Generic, TypeVar
 
 from pydantic import BaseModel
 
-from lib.executive_reporting.models import ExecutiveBrief
+from presentation.executive_reporting.models import ExecutiveBrief
 
 PluginContextT = TypeVar("PluginContextT", bound=BaseModel)
 

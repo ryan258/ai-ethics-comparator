@@ -6,8 +6,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from lib.executive_reporting.composer import ExecutiveBriefComposer
-from lib.executive_reporting.models import (
+from presentation.executive_reporting.composer import ExecutiveBriefComposer
+from presentation.executive_reporting.models import (
     BriefFinding,
     BriefMetadataItem,
     EvidenceMetric,

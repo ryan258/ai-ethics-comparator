@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from lib.executive_reporting.models import EvidencePackage, ExecutiveBrief
+from presentation.executive_reporting.models import EvidencePackage, ExecutiveBrief
 
 
 class ExecutiveBriefComposer(ABC):

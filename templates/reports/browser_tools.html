@@ -6,17 +6,17 @@
   .report-tools button:focus-visible { outline: 3px solid #98C379; outline-offset: 3px; }
   .browser-note { font: 13px/1.6 system-ui, sans-serif; color: #A6ACCD; background: #121212; padding: 12px 24px; }
   .config-meta { display: grid; grid-template-columns: minmax(100px, 1fr) 2fr; gap: 8px 16px; margin: 16px 0; font-size: 13px; overflow-wrap: anywhere; }
-  .config-meta dt { opacity: .75; }
+  .config-meta dt { opacity: 1; }
   .config-meta dd { margin: 0; }
   @media screen {
     html { background: #121212; }
-    body { max-width: 1120px; margin: 24px auto; box-shadow: 0 20px 80px rgba(18,18,18,.4); }
+    body { max-width: 1120px; margin: 24px auto; box-shadow: 0 20px 80px #121212; }
     body > section { padding: clamp(24px, 5vw, 64px); }
     body > .cover { min-height: auto; padding-top: 64px; padding-bottom: 64px; }
     .cover h1 { max-width: 920px; font-size: clamp(30px, 4.2vw, 54px); letter-spacing: -.035em; }
     .cover .meta { margin-top: 32px; }
     .eyebrow { color: #121212; }
-    .page-break, .page { break-before: auto; page-break-after: auto; border-top: 1px solid rgba(166,172,205,.3); }
+    .page-break, .page { break-before: auto; page-break-after: auto; border-top: 1px solid #A6ACCD; }
     .metric-grid { margin: 28px 0; }
     .metric-value { font-size: 32px; }
     .model-grid { flex-wrap: wrap; gap: 16px; }
@@ -40,7 +40,7 @@
   @media print {
     .report-tools, .browser-note { display: none !important; }
     html, body { background: #EBD2BE !important; color: #121212 !important; margin: 0; max-width: none; box-shadow: none; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    html { --bg: #EBD2BE; --text: #121212; --text-dim: #121212; --bg-raised: rgba(166,172,205,.12); --rule: #A6ACCD; }
+    html { --bg: #EBD2BE; --text: #121212; --text-dim: #121212; --bg-raised: #A6ACCD; --rule: #A6ACCD; }
     .cover { min-height: auto; padding-top: 1in; padding-bottom: .5in; }
     .cover h1 { max-width: none; }
     h1, h2, h3 { break-after: avoid; }

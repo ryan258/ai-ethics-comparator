@@ -11,12 +11,12 @@
     }
 
     :root {
-      --ink: #121212;
-      --ink-soft: rgba(18, 18, 18, 0.72);
+      --ink: {{ "#EBD2BE" if report.theme == "dark" else "#121212" }};
+      --ink-soft: var(--ink);
       --accent: #A6ACCD;
-      --line: rgba(18, 18, 18, 0.16);
-      --paper: #EBD2BE;
-      --panel: rgba(166, 172, 205, 0.12);
+      --line: #A6ACCD;
+      --paper: {{ "#121212" if report.theme == "dark" else "#EBD2BE" }};
+      --panel: var(--paper);
     }
 
     body {

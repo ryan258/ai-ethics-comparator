@@ -75,10 +75,24 @@ def evidence_hash(run: dict[str, Any]) -> str:
 
 
 def valid_insight(run: dict[str, Any], insight: dict[str, Any]) -> bool:
-    return (insight.get("analysisVersion") == ANALYSIS_VERSION
-            and insight.get("evidenceHash") == evidence_hash(run)
-            and isinstance(insight.get("content"), dict)
-            and "legacy_text" not in insight["content"])
+    if insight.get("analysisVersion") != ANALYSIS_VERSION or insight.get("evidenceHash") != evidence_hash(run):
+        return False
+    content = insight.get("content")
+    if not isinstance(content, dict) or "legacy_text" in content:
+        return False
+    try:
+        primary = {key: value for key, value in content.items() if key != "reasoning_quality"}
+        validated = AnalystOutput.model_validate(primary)
+        labels = [item.label for item in validated.moral_complexes]
+        if set(labels) != set(ETHICAL_DIMENSIONS) or len(labels) != len(set(labels)):
+            return False
+        if any(item.count > len(run.get("responses", [])) for item in validated.moral_complexes):
+            return False
+        if "reasoning_quality" in content:
+            ReasoningQuality.model_validate(content["reasoning_quality"])
+    except ValueError:
+        return False
+    return True
 
 
 def selected_insight(run: dict[str, Any]) -> dict[str, Any] | None:
@@ -88,18 +102,20 @@ def selected_insight(run: dict[str, Any]) -> dict[str, Any] | None:
     return next((i for i in reversed(insights) if isinstance(i, dict) and valid_insight(run, i)), None)
 
 
+def comparison_identity(run: dict[str, Any]) -> str:
+    """Hash only recorded stimulus and option meanings, never current library text."""
+    pdx = resolve_paradox(run, [])
+    if not pdx["promptTemplate"].strip():
+        raise ValueError("Comparison requires stored stimulus evidence")
+    identity = {"id": pdx["id"], "stimulus": pdx["promptTemplate"], "options": run.get("options", pdx["options"])}
+    return hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
+
+
 def validate_comparison(runs: list[dict[str, Any]]) -> None:
     """Require identical stored scenario and canonical option meanings."""
     ids = [r.get("runId") for r in runs]
     if len(runs) < 2 or len(ids) != len(set(ids)):
         raise ValueError("Comparison requires distinct runs")
-    identities = []
-    for run in runs:
-        pdx = resolve_paradox(run, [])
-        if not pdx["promptTemplate"].strip():
-            raise ValueError("Comparison requires stored stimulus evidence")
-        identity = {"id": pdx["id"], "stimulus": pdx["promptTemplate"],
-                    "options": run.get("options", pdx["options"])}
-        identities.append(json.dumps(identity, sort_keys=True))
+    identities = [comparison_identity(run) for run in runs]
     if len(set(identities)) != 1:
         raise ValueError("Runs must have the same stored scenario revision and option meanings")

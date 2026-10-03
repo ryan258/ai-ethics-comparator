@@ -1,0 +1,55 @@
+    <!-- Active/Past Experiments -->
+    <div class="card" id="experiment-progress" hx-get="/fragments/experiments" hx-trigger="every 3s, refresh" hx-swap="outerHTML" aria-live="polite">
+        <h2>Existing Experiments</h2>
+        {% if experiments %}
+            {% for exp in experiments %}
+            <div style="border: 1px solid var(--border-color); border-radius: 6px; padding: 1rem; margin-bottom: 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                    <h3 style="margin: 0; font-size: 1.1rem;">{{ exp.title }}</h3>
+                    <span class="status-badge" style="
+                        background: {% if exp.status == 'completed' %}var(--accent-success){% elif exp.status == 'running' %}var(--accent-primary){% elif exp.status == 'failed' %}var(--accent-danger){% else %}var(--border-color){% endif %};
+                        color: var(--bg-color);
+                    ">{{ exp.status | upper }}</span>
+                </div>
+                <p style="font-size: 0.85rem; opacity: 1; margin: 0 0 0.5rem 0;">ID: <code>{{ exp.id }}</code> | Created: {{ exp.createdAt }}</p>
+                
+                <div style="font-size: 0.9rem; margin-bottom: 1rem;">
+                    <strong>Paradoxes:</strong> {{ exp.paradoxIds | join(', ') }}<br>
+                    <strong>Models:</strong> {% for cond in exp.conditions %}{{ cond.modelName }}{% if not loop.last %}, {% endif %}{% endfor %}
+                </div>
+
+                {% if exp.status in ['pending', 'failed', 'interrupted', 'partial'] %}
+                <button hx-post="/api/experiments/{{ exp.id }}/execute" 
+                        class="btn btn-secondary" 
+                        style="padding: 0.4rem 0.8rem; font-size: 0.85rem;"
+                        hx-swap="none" hx-on::after-request="if(event.detail.successful) htmx.trigger(document.getElementById('experiment-progress'), 'refresh')">
+                    {{ "Execute Experiment" if exp.status == "pending" else "Continue unfinished conditions" }}
+                </button>
+                {% endif %}
+
+                {% if exp.runIds %}
+                <div style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
+                    <strong>Runs ({{ exp.runIds | length }}):</strong>
+                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
+                    {% for run_id in exp.runIds %}
+                        <a href="/?runId={{ run_id }}" style="font-size: 0.8rem; padding: 0.2rem 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; text-decoration: none; color: var(--text-color);">{{ run_id }}</a>
+                    {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
+                
+                {% if exp.errors %}
+                <div style="margin-top: 1rem; padding: 0.5rem; border-left: 3px solid var(--accent-danger); font-size: 0.85rem;">
+                    <strong>Errors:</strong><br>
+                    {% for err in exp.errors %}
+                    - {{ err }}<br>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        {% else %}
+            <p style="font-size: 0.9rem; opacity: 1;">No experiments found. Create a manifest above.</p>
+        {% endif %}
+    </div>
+

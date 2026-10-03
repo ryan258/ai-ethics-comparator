@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeVar
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
@@ -31,7 +32,9 @@ from lib.config import AppConfig
 from lib.counterfactual import CounterfactualEngine
 from lib.evidence import evidence_hash, selected_insight, validate_comparison
 from lib.experiment_runner import ExperimentRunner
+from lib.experiment_state import reconcile_experiment
 from lib.fingerprint import compute_model_fingerprint
+from lib.measurements import build_run_measurements
 from lib.paradoxes import (
     extract_scenario_text,
     get_paradox_by_id,
@@ -46,7 +49,6 @@ from lib.query_errors import (
     safe_error_message,
 )
 from lib.query_processor import QueryProcessor, RunConfig
-from lib.reporting import ReportGenerator
 from lib.run_executor import execute_persisted_run
 from lib.storage import STRICT_RUN_ID_PATTERN, ExperimentStorage, RunStorage
 from lib.validation import (
@@ -55,7 +57,12 @@ from lib.validation import (
     InsightRequest,
     QueryRequest,
 )
-from lib.view_models import RunViewModel, fetch_recent_run_view_models, safe_markdown
+from presentation.reporting import ReportGenerator
+from presentation.view_models import (
+    RunViewModel,
+    fetch_recent_run_view_models,
+    safe_markdown,
+)
 
 # Load environment before startup config resolution.
 load_dotenv()
@@ -134,6 +141,7 @@ def _build_run_config_from_request(
         systemPrompt=query_request.system_prompt or "",
         params=query_request.params.model_dump() if query_request.params else {},
         shuffle_options=query_request.shuffle_options,
+        shuffle_seed=query_request.shuffle_seed,
     )
 
 
@@ -168,7 +176,11 @@ async def _execute_persisted_run(
     run_config: RunConfig,
     run_data: dict[str, Any],
 ) -> dict[str, Any]:
-    return await execute_persisted_run(services.query_processor, services.storage, run_config, run_data)
+    try:
+        return await execute_persisted_run(services.query_processor, services.storage, run_config, run_data)
+    finally:
+        if run_data.get("experimentId"):
+            await reconcile_experiment(services.storage, services.experiment_storage, run_data["experimentId"])
 
 
 def _track_run_task(
@@ -232,6 +244,10 @@ async def _resume_run_by_id(app: FastAPI, services: AppServices, run_id: str) ->
     # resumable, because the run carries its own prompt and options.
     paradox = resolve_paradox(run_data, paradoxes)
 
+    if run_data.get("experimentId"):
+        active_manifest = getattr(app.state, "active_run_tasks", {}).get(run_data["experimentId"])
+        if active_manifest is not None and not active_manifest.done():
+            raise ValueError("This experiment is still active; wait for it to stop before resuming a condition")
     run_config = _build_run_config_from_saved_run(run_data, paradox, services.config.MAX_ITERATIONS)
     def claim(latest: dict[str, Any]) -> None:
         if latest.get("status") not in ("interrupted", "failed", "cancelled"):
@@ -246,6 +262,14 @@ async def _resume_run_by_id(app: FastAPI, services: AppServices, run_id: str) ->
         _execute_persisted_run(services, run_config, run_data),
     )
     return run_data
+
+
+def _append_unique_insight(run: dict[str, Any], insight: dict[str, Any]) -> None:
+    if insight.get("evidenceHash") != evidence_hash(run):
+        raise ValueError("Run evidence changed while analysis was generated; original analysis preserved in response only")
+    insights = run.setdefault("insights", [])
+    if not any(item.get("timestamp") == insight.get("timestamp") and item.get("evidenceHash") == insight.get("evidenceHash") for item in insights if isinstance(item, dict)):
+        insights.append(insight)
 
 
 RenderResult = TypeVar("RenderResult", str, bytes)
@@ -263,10 +287,10 @@ def create_app(config_override: AppConfig | None = None) -> FastAPI:
                 await task  # Keep the slot until the rendering thread really stops.
                 raise
 
-    templates_dir = "templates"
+    templates_dir = str(Path(__file__).resolve().parent / "templates")
     templates = _build_templates(templates_dir)
     paradoxes_path = Path(__file__).parent / "paradoxes.json"
-    analysis_prompt_path = Path(__file__).parent / templates_dir / "analysis_prompt.txt"
+    analysis_prompt_path = Path(templates_dir) / "analysis_prompt.txt"
 
     if config_override is not None:
         app_title = config_override.APP_NAME
@@ -295,6 +319,8 @@ def create_app(config_override: AppConfig | None = None) -> FastAPI:
             app_name=config.APP_NAME,
             max_retries=config.AI_MAX_RETRIES,
             retry_delay=config.AI_RETRY_DELAY,
+            concurrency_limit=config.AI_CONCURRENCY_LIMIT,
+            request_timeout=config.AI_REQUEST_TIMEOUT,
         )
 
         storage = RunStorage(str(config.results_path))
@@ -344,12 +370,16 @@ def create_app(config_override: AppConfig | None = None) -> FastAPI:
         app_instance.title = config.APP_NAME
         app_instance.version = config.VERSION
         logger.info("Starting %s v%s", config.APP_NAME, config.VERSION)
+        templates.env.globals["available_models"] = config.AVAILABLE_MODELS
         services = app_instance.state.services
         services.experiment_runner.task_tracker = lambda run_id, coro: _track_run_task(app_instance, run_id, coro)
         await _mark_interrupted_runs(app_instance, services)
         run_metadata = await services.storage.list_runs()
         for meta in await services.experiment_storage.list_experiments():
             exp = await services.experiment_storage.get_experiment(meta["id"])
+            if exp.get("executionActive"):
+                exp["executionActive"] = False
+                await services.experiment_storage.save_experiment(exp["id"], exp)
             if exp.get("status") == "running":
                 exp["status"] = "interrupted"
                 for run_meta in run_metadata:
@@ -362,6 +392,7 @@ def create_app(config_override: AppConfig | None = None) -> FastAPI:
                         saved = {"status": "missing"}
                     exp.setdefault("conditionStates", {})[rid] = saved.get("status", "interrupted")
                 await services.experiment_storage.save_experiment(exp["id"], exp)
+            await reconcile_experiment(services.storage, services.experiment_storage, exp["id"])
         try:
             yield
         finally:
@@ -374,11 +405,12 @@ def create_app(config_override: AppConfig | None = None) -> FastAPI:
                 task.cancel()
             if active_tasks:
                 await asyncio.gather(*active_tasks.values(), return_exceptions=True)
+            await analysis_engine.close()
             await ai_service.close()
             app_instance.state.services = None
 
     app = FastAPI(title=app_title, version=app_version, lifespan=lifespan)
-    app.mount("/static", StaticFiles(directory="static"), name="static")
+    app.mount("/static", StaticFiles(directory=str(Path(__file__).resolve().parent / "static")), name="static")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
@@ -395,6 +427,30 @@ def create_app(config_override: AppConfig | None = None) -> FastAPI:
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
+        services = getattr(request.app.state, "services", None)
+        configured_url = services.config.APP_BASE_URL if services else (allowed_origins[0] if allowed_origins else None)
+        configured = urlsplit(configured_url or "")
+        trusted_hosts = {"localhost", "127.0.0.1", "::1"}
+        if configured.hostname:
+            trusted_hosts.add(configured.hostname)
+        if request.url.hostname not in trusted_hosts:
+            return JSONResponse({"detail": "Untrusted Host header"}, status_code=400)
+        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+            # Origin validation is the browser CSRF boundary; headerless local CLI clients remain supported.
+            origin = request.headers.get("origin")
+            referer = request.headers.get("referer")
+            own_origin = f"{request.url.scheme}://{request.url.netloc}"
+            trusted_origins = {own_origin}
+            if configured.scheme and configured.netloc:
+                trusted_origins.add(f"{configured.scheme}://{configured.netloc}")
+            referer_origin = None
+            if referer:
+                parsed = urlsplit(referer)
+                referer_origin = f"{parsed.scheme}://{parsed.netloc}"
+            if (request.headers.get("sec-fetch-site") == "cross-site"
+                    or (origin is not None and origin not in trusted_origins)
+                    or (origin is None and referer_origin is not None and referer_origin not in trusted_origins)):
+                return JSONResponse({"detail": "Cross-origin changes are not allowed"}, status_code=403)
         response: Response = await call_next(request)
         services: AppServices | None = getattr(request.app.state, "services", None)
         if services is not None:
@@ -402,7 +458,7 @@ def create_app(config_override: AppConfig | None = None) -> FastAPI:
         return response
 
     @app.get("/", response_class=HTMLResponse)
-    async def index(request: Request, runId: str | None = None) -> HTMLResponse:
+    async def index(request: Request, runId: str | None = None, page: int = 1, search: str = "") -> HTMLResponse:
         services = _get_services(request)
         config = services.config
         try:
@@ -418,6 +474,7 @@ def create_app(config_override: AppConfig | None = None) -> FastAPI:
             services.storage,
             paradoxes,
             config.ANALYST_MODEL,
+            page=max(1, page), search=search,
         )
 
         # If a specific run was requested via query param, ensure it is visible.
@@ -448,12 +505,19 @@ def create_app(config_override: AppConfig | None = None) -> FastAPI:
                 "models": config.AVAILABLE_MODELS,
                 "default_model": config.DEFAULT_MODEL,
                 "recent_run_contexts": recent_run_contexts,
+                "page": max(1, page), "search": search,
                 "initial_paradox": initial_paradox,
                 "initial_scenario_text": initial_scenario_text,
                 "max_iterations": config.MAX_ITERATIONS,
                 "current_page": "single_run",
             },
         )
+
+    @app.get("/fragments/experiments", response_class=HTMLResponse)
+    async def experiment_progress(request: Request) -> HTMLResponse:
+        services = _get_services(request)
+        return services.templates.TemplateResponse(request, "partials/experiment_progress.html",
+            {"experiments": await services.experiment_storage.list_experiments()})
 
     @app.get("/experiments")
     async def experiments_ui(request: Request) -> HTMLResponse:
@@ -509,6 +573,7 @@ def create_app(config_override: AppConfig | None = None) -> FastAPI:
                     "model_id": model_id,
                     "fingerprint": fp_data.get("fingerprint", []),
                     "cohort": fp_data.get("cohort", []),
+                "excluded": fp_data.get("excluded", []),
                     "total_insights": fp_data.get("totalRunsWithInsights", 0),
                 },
             )
@@ -641,6 +706,8 @@ def create_app(config_override: AppConfig | None = None) -> FastAPI:
             await services.storage.save_run(run_id, run_data)
         except Exception as exc:
             logger.error("Failed to persist cancellation for %s: %s", run_id, exc)
+        if run_data.get("experimentId"):
+            await reconcile_experiment(services.storage, services.experiment_storage, run_data["experimentId"])
         return {"runId": run_id, "status": "cancelled"}
 
     @app.post("/api/runs/{run_id}/counterfactual")
@@ -830,7 +897,7 @@ def create_app(config_override: AppConfig | None = None) -> FastAPI:
                 run_id = insight_request.runData["runId"]
                 if RUN_ID_PATTERN.fullmatch(run_id):
                     try:
-                        await services.storage.update_run(run_id, lambda latest: latest.setdefault("insights", []).append(insight_data))
+                        await services.storage.update_run(run_id, lambda latest: _append_unique_insight(latest, insight_data))
                     except Exception as save_error:
                         logger.error("Error saving insight: %s", save_error)
 
@@ -878,7 +945,7 @@ def create_app(config_override: AppConfig | None = None) -> FastAPI:
             cfg = AnalysisConfig(run_data=run_data, analyst_model=model_to_use)
             insight_data = await services.analysis_engine.generate_insight(cfg)
 
-            run_data = await services.storage.update_run(run_id, lambda latest: latest.setdefault("insights", []).append(insight_data))
+            run_data = await services.storage.update_run(run_id, lambda latest: _append_unique_insight(latest, insight_data))
 
             return services.templates.TemplateResponse(
                 request,
@@ -908,6 +975,24 @@ def create_app(config_override: AppConfig | None = None) -> FastAPI:
                 },
                 status_code=error_status,
             )
+
+    @app.get("/reports/counterfactuals/{run_id}", response_class=HTMLResponse)
+    async def counterfactual_report(request: Request, run_id: str) -> HTMLResponse:
+        _validate_run_id(run_id)
+        services = _get_services(request)
+        try:
+            child = await services.storage.get_run(run_id)
+            parent_id = child.get("originalRunId")
+            if not child.get("isCounterfactual") or not isinstance(parent_id, str):
+                raise ValueError("Run has no recorded counterfactual parent")
+            _validate_run_id(parent_id)
+            parent = await services.storage.get_run(parent_id)
+            return services.templates.TemplateResponse(request, "reports/counterfactual.html",
+                {"child": child, "pairs": [(parent, build_run_measurements(parent)), (child, build_run_measurements(child))]})
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Linked run was not found") from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/reports/runs/{run_id}", response_class=HTMLResponse)
     async def view_run_report(request: Request, run_id: str, theme: str | None = None, view: str = "brief") -> HTMLResponse:

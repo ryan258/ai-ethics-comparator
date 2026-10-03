@@ -5,10 +5,11 @@ Strategic-analysis presentation plugin.
 from __future__ import annotations
 
 import json
+from typing import Literal
 
 from pydantic import Field
 
-from lib.executive_reporting.models import (
+from presentation.executive_reporting.models import (
     BriefFinding,
     BriefingModel,
     BriefRecommendation,
@@ -17,7 +18,7 @@ from lib.executive_reporting.models import (
     EvidenceTable,
     ExecutiveBrief,
 )
-from lib.executive_reporting.plugins.base import ExecutiveBriefPlugin
+from presentation.executive_reporting.plugins.base import ExecutiveBriefPlugin
 
 
 class StrategicFindingSection(BriefingModel):
@@ -46,6 +47,7 @@ class StrategicExcerptBlock(BriefingModel):
 
 
 class StrategicAnalysisContext(BriefingModel):
+    theme: Literal["light", "dark"] = "light"
     brief_id: str = ""
     header_label: str
     organization: str
@@ -97,6 +99,7 @@ class StrategicAnalysisPlugin(ExecutiveBriefPlugin[StrategicAnalysisContext]):
 
         return StrategicAnalysisContext(
             brief_id=brief.brief_id,
+            theme=brief.theme,
             header_label=brief.kicker or self.header_label,
             organization=brief.organization or self.organization,
             publication_label=brief.publication_label or self.publication_label,

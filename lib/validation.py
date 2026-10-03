@@ -15,6 +15,12 @@ MAX_EXPERIMENT_CONDITIONS = 10
 MAX_EXPERIMENT_RUNS = 50
 
 
+def validate_model_identifier(value: str) -> str:
+    if not re.fullmatch(r"[a-zA-Z0-9_/:.\-]{1,200}", value):
+        raise ValueError("Invalid model name format")
+    return value
+
+
 class GenerationParams(BaseModel):
     """Generation parameters for reproducibility"""
     temperature: float = Field(default=1.0, ge=0, le=2)
@@ -63,15 +69,14 @@ class QueryRequest(BaseModel):
     # Defaults ON: LLMs favour first- and last-listed options, so an unshuffled
     # run carries uncontrolled position bias. Unbiased must be the default path.
     shuffle_options: bool = Field(default=True, alias="shuffleOptions")
+    shuffle_seed: int | None = Field(default=None, ge=0, alias="shuffleSeed")
 
     model_config = ConfigDict(populate_by_name=True)
 
     @field_validator('model_name')
     @classmethod
     def validate_model_name(cls, v: str) -> str:
-        if not re.match(r'^[a-z0-9\-_/:.]+$', v, re.IGNORECASE):
-            raise ValueError('Invalid model name format')
-        return v
+        return validate_model_identifier(v)
 
     @field_validator('paradox_id')
     @classmethod
@@ -122,6 +127,11 @@ class InsightRequest(BaseModel):
     runData: dict[str, Any]
     analystModel: str | None = Field(default=None, min_length=1, max_length=200)
 
+    @field_validator("analystModel")
+    @classmethod
+    def validate_analyst_model(cls, value: str | None) -> str | None:
+        return validate_model_identifier(value) if value is not None else None
+
     @field_validator('runData')
     @classmethod
     def validate_run_data(cls, v: dict[str, Any]) -> dict[str, Any]:
@@ -144,6 +154,7 @@ class ConditionConfig(BaseModel):
     params: GenerationParams = Field(default_factory=GenerationParams)
     iterations: int | None = Field(default=None, ge=1, le=1000)
     shuffle_options: bool = Field(default=True, alias="shuffleOptions")
+    shuffle_seed: int | None = Field(default=None, ge=0, alias="shuffleSeed")
 
     @field_validator('params', mode='before')
     @classmethod
@@ -153,9 +164,7 @@ class ConditionConfig(BaseModel):
     @field_validator('modelName')
     @classmethod
     def validate_model_name(cls, v: str) -> str:
-        if not re.match(r'^[a-z0-9\-_/:.]+$', v, re.IGNORECASE):
-            raise ValueError('Invalid model name format')
-        return v
+        return validate_model_identifier(v)
 
 
 class ExperimentCreateRequest(BaseModel):

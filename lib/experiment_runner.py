@@ -10,6 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from lib.experiment_state import reconcile_experiment
 from lib.paradoxes import Paradox, get_paradox_by_id
 from lib.query_errors import safe_error_message
 from lib.query_processor import QueryProcessor, RunConfig
@@ -47,6 +48,7 @@ def condition_to_run_config(
         params=condition.params.model_dump(),
         iterations=iters,
         shuffle_options=condition.shuffle_options,
+        shuffle_seed=condition.shuffle_seed,
     )
 
 
@@ -88,140 +90,85 @@ class ExperimentRunner:
         self, exp_id: str, exp_data: dict[str, Any], paradoxes: list[Paradox],
     ) -> ExperimentRecord:
         try:
-            return await self._execute_experiment(exp_id, exp_data, paradoxes)
-        except asyncio.CancelledError:
-            exp_data["status"] = "interrupted"
-            await self.experiment_storage.save_experiment(exp_id, exp_data)
-            raise
+            await self._execute_experiment(exp_id, exp_data, paradoxes)
+        finally:
+            await self.experiment_storage.update_experiment(exp_id, lambda latest: latest.update(executionActive=False))
+            await reconcile_experiment(self.run_storage, self.experiment_storage, exp_id)
+        return ExperimentRecord(**await self.experiment_storage.get_experiment(exp_id))
 
     async def _execute_experiment(
-        self,
-        exp_id: str,
-        exp_data: dict[str, Any],
-        paradoxes: list[Paradox],
+        self, exp_id: str, exp_data: dict[str, Any], paradoxes: list[Paradox],
     ) -> ExperimentRecord:
-        """
-        Executes an experiment condition matrix, enforcing boundaries and limits.
-        """
-        # 1. Validate paradox IDs up front
-        paradox_ids = exp_data.get("paradoxIds", [])
-        valid_paradoxes = []
-        for p_id in paradox_ids:
-            pdx = get_paradox_by_id(paradoxes, p_id)
-            if not pdx:
-                exp_data["status"] = "failed"
-                exp_data["errors"] = exp_data.get("errors", []) + [f"Paradox ID not found: {p_id}"]
-                await self.experiment_storage.save_experiment(exp_id, exp_data)
-                return ExperimentRecord(**exp_data)
-            valid_paradoxes.append(pdx)
+        existing: dict[str, dict[str, Any]] = {}
+        for rid in exp_data.get("runIds", []):
+            run = await self.run_storage.get_run(rid)
+            key = run.get("experimentConditionKey")
+            if not key:
+                matches = [i for i, c in enumerate(exp_data.get("conditions", []))
+                           if c == run.get("experimentCondition")]
+                if len(matches) != 1:
+                    raise ValueError("Legacy condition identity is ambiguous; resume its individual run instead")
+                key = f"{run.get('paradoxId')}:{matches[0]}"
+            existing[key] = run
+        jobs: list[tuple[Paradox, dict[str, Any], str]] = []
+        for pid in exp_data.get("paradoxIds", []):
+            pdx = get_paradox_by_id(paradoxes, pid)
+            if pdx is None:
+                raise ValueError(f"Scenario no longer exists: {pid}; individual saved runs remain resumable")
+            for index, condition in enumerate(exp_data.get("conditions", [])):
+                jobs.append((pdx, condition, f"{pid}:{index}"))
 
-        manifest_lock = asyncio.Lock()
-
-        async def checkpoint(run_id: str, state: str) -> None:
-            async with manifest_lock:
-                exp_data.setdefault("conditionStates", {})[run_id] = state
-                await self.experiment_storage.save_experiment(exp_id, exp_data)
-
-        async def run_condition(pdx: Paradox, condition: dict[str, Any]) -> ConditionResult:
-            run_id: str | None = None
-            try:
-                cond_cfg = ConditionConfig(**condition)
-                run_cfg = condition_to_run_config(cond_cfg, pdx, self.max_iterations)
-
-                # Reserve the run file up front and stream progress into it, so a
-                # crash mid-matrix leaves resumable runs instead of losing the work.
-                initial_run = self.query_processor.initialize_run_data(run_cfg)
-                # Serialize reservation + manifest attachment; shield the transaction
-                # so cancellation cannot leave an unlisted reserved file.
-                async def reserve() -> str:
-                    async with manifest_lock:
-                        initial_run["experimentId"] = exp_id
-                        initial_run["experimentCondition"] = condition
-                        reserved = await self.run_storage.create_run(cond_cfg.modelName, initial_run)
-                        exp_data.setdefault("runIds", []).append(reserved)
-                        exp_data.setdefault("conditionStates", {})[reserved] = "running"
-                        await self.experiment_storage.save_experiment(exp_id, exp_data)
-                        return reserved
+        async def run_condition(pdx: Paradox, condition: dict[str, Any], key: str) -> None:
+            initial = existing.get(key)
+            if initial and initial.get("status") == "completed":
+                return  # Includes terminal undecided outcomes; never rewrite evidence.
+            cond = ConditionConfig(**condition)
+            config = condition_to_run_config(cond, pdx, self.max_iterations)
+            if initial:
+                config = RunConfig(modelName=initial["modelName"], paradox=initial.get("paradox") or pdx,
+                    iterations=initial["iterationCount"], params=initial.get("params", {}),
+                    systemPrompt=initial.get("systemPrompt", ""),
+                    shuffle_options=bool(initial.get("shufflePerIteration") or initial.get("shuffleMapping")))
+                if config.iterations > self.max_iterations:
+                    raise ValueError("Saved condition exceeds the current iteration limit")
+                initial = await self.run_storage.update_run(initial["runId"], lambda latest: latest.update(status="running", lastError=None))
+            else:
+                initial = self.query_processor.initialize_run_data(config)
+                initial.update(experimentId=exp_id, experimentCondition=condition, experimentConditionKey=key)
+                async def reserve() -> None:
+                    rid = await self.run_storage.create_run(cond.modelName, initial)
+                    def attach(latest: dict[str, Any]) -> None:
+                        latest.setdefault("runIds", []).append(rid)
+                        latest.setdefault("conditionStates", {})[rid] = "running"
+                    await self.experiment_storage.update_experiment(exp_id, attach)
                 reservation = asyncio.create_task(reserve())
                 try:
-                    run_id = await asyncio.shield(reservation)
+                    await asyncio.shield(reservation)
                 except asyncio.CancelledError:
-                    run_id = await reservation
-                    await checkpoint(run_id, "interrupted")
+                    await reservation
+                    await self.run_storage.update_run(initial["runId"], lambda latest: latest.update(status="interrupted"))
                     raise
-                execution = execute_persisted_run(self.query_processor, self.run_storage, run_cfg, initial_run)
-                if self.task_tracker is not None:
-                    task = self.task_tracker(run_id, execution)
-                    run_data_res = await task
+            run_id = initial["runId"]
+            execution = execute_persisted_run(self.query_processor, self.run_storage, config, initial)
+            try:
+                if self.task_tracker:
+                    await self.task_tracker(run_id, execution)
                 else:
-                    run_data_res = await execution
+                    await execution
+            except Exception as exc:
+                message = safe_error_message(exc)
+                def record_error(latest: dict[str, Any]) -> None:
+                    latest.setdefault("errors", []).append(f"{run_id}: {message}")
+                await self.experiment_storage.update_experiment(exp_id, record_error)
+            finally:
+                await reconcile_experiment(self.run_storage, self.experiment_storage, exp_id)
 
-                # Iterations that exhausted their re-ask budget are recorded as errors.
-                errors = [r.get("error") for r in run_data_res.get("responses", []) if r.get("error")]
-                if errors:
-                    run_data_res["partial_failure"] = True
-                    run_data_res["errors"] = errors
-
-                run_data_res["runId"] = run_id
-                run_data_res["status"] = "completed"
-                await self.run_storage.save_run(str(run_id), run_data_res)
-                await checkpoint(run_id, "partial" if errors else "completed")
-                return ConditionResult(run_id=run_id, error=None, partial=bool(errors))
-            except asyncio.CancelledError:
-                if run_id is not None:
-                    await checkpoint(run_id, "interrupted")
-                raise
-            except Exception as e:
-                logger.error("Condition failed: %s", e)
-                if run_id is not None:
-                    await self._mark_run_failed(run_id, safe_error_message(e))
-                    await checkpoint(run_id, "failed")
-                # Report the reserved run_id even on failure: the file exists and
-                # is resumable, and dropping it here orphans it from the experiment.
-                return ConditionResult(run_id=run_id, error=safe_error_message(e), partial=False)
-        
-        jobs: list[tuple[Paradox, dict[str, Any]]] = []
-        for pdx in valid_paradoxes:
-            for cond in exp_data.get("conditions", []):
-                jobs.append((pdx, cond))
-
-        results: list[ConditionResult | Exception] = []
-        for batch_start in range(0, len(jobs), self.max_concurrent_conditions):
-            batch = jobs[batch_start : batch_start + self.max_concurrent_conditions]
-            batch_results = await asyncio.gather(
-                *(run_condition(pdx, cond) for pdx, cond in batch),
+        for start in range(0, len(jobs), self.max_concurrent_conditions):
+            outcomes = await asyncio.gather(
+                *(run_condition(*job) for job in jobs[start:start + self.max_concurrent_conditions]),
                 return_exceptions=True,
             )
-            results.extend(batch_results)
-        
-        has_errors = False
-        has_partial = False
-        succeeded = 0
-        exp_data.setdefault("runIds", [])
-
-        for res in results:
-            if isinstance(res, BaseException):
-                has_errors = True
-                exp_data.setdefault("errors", []).append(safe_error_message(res))
-            elif isinstance(res, ConditionResult):
-                if res.run_id and res.run_id not in exp_data["runIds"]:
-                    exp_data["runIds"].append(res.run_id)
-                if res.error:
-                    has_errors = True
-                    exp_data.setdefault("errors", []).append(res.error)
-                else:
-                    succeeded += 1
-                if res.partial:
-                    has_partial = True
-
-        # Status keys off whether a condition actually succeeded; runIds now also
-        # contains the reserved files of failed conditions.
-        if has_errors:
-            exp_data["status"] = "partial" if succeeded else "failed"
-        elif has_partial:
-            exp_data["status"] = "partial"
-        else:
-            exp_data["status"] = "completed"
-            
-        await self.experiment_storage.save_experiment(exp_id, exp_data)
-        return ExperimentRecord(**exp_data)
+            for outcome in outcomes:
+                if isinstance(outcome, BaseException):
+                    raise outcome
+        return ExperimentRecord(**await reconcile_experiment(self.run_storage, self.experiment_storage, exp_id))

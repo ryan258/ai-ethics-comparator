@@ -1,3 +1,5 @@
+# Experimental standalone adapter. The application does not call this module.
+# Generated prose is untrusted interpretation and must not replace measured outcomes.
 """
 Report Writer Agent - Arsenal Module
 Dedicated AI agent that translates run findings and analysis into

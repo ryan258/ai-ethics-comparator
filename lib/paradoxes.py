@@ -30,6 +30,11 @@ class Paradox(ParadoxBase, total=False):
     category: str
     dimensions: list[str]
     rubric: list[str]
+    revision: str
+    annotationStatus: str
+    rubricStatus: str
+    framingStatus: str
+    pack: str
 
 
 # Closed vocabulary for `dimensions` -- the ethical tension a scenario puts
@@ -74,6 +79,11 @@ def _normalize_paradox(item: object) -> Paradox | None:
     if not isinstance(id_val, str) or not isinstance(title_val, str) or not isinstance(prompt_val, str):
         return None
 
+    if not all(value.strip() for value in (id_val, title_val, prompt_val)):
+        return None
+    if item.get("type", "trolley") != "trolley":
+        return None
+
     validated_options: list[OptionDict] = []
 
     # Check for N-way schema (new format with options[] array)
@@ -95,6 +105,8 @@ def _normalize_paradox(item: object) -> Paradox | None:
             if type(opt_id) is not int or not isinstance(opt_label, str) or not isinstance(opt_desc, str):
                 return None
 
+            if not opt_label.strip() or not opt_desc.strip():
+                return None
             if opt_id < 1 or opt_id > 4:
                 return None
 
@@ -128,7 +140,7 @@ def _normalize_paradox(item: object) -> Paradox | None:
     }
 
     # Optional fields
-    type_value = item.get("type")
+    type_value = item.get("type", "trolley")
     if isinstance(type_value, str):
         result["type"] = type_value
 
@@ -157,6 +169,9 @@ def _normalize_paradox(item: object) -> Paradox | None:
     if isinstance(rubric_value, list):
         result["rubric"] = [str(r) for r in rubric_value]
 
+    for key in ("revision", "annotationStatus", "rubricStatus", "framingStatus", "pack"):
+        if isinstance(item.get(key), str):
+            result[key] = item[key]
     return result
 
 

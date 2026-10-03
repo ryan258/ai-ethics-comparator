@@ -96,9 +96,6 @@ def scenario_rationale_theme(
     option_id: int | None,
     text: object,
 ) -> str:
-    scenario_map = SCENARIO_THEME_MAP.get(paradox_id, {})
-    if option_id is not None and option_id in scenario_map:
-        return scenario_map[option_id]
     return dominant_rationale_theme(text)
 
 
@@ -323,26 +320,6 @@ def build_paradox_overrides(
             continue
         if key in {"limitation_points", "caveat_box", "reliability_note"}:
             resolved[key] = _format_override(value, context, option_stats)
-
-    metric_specs = None  # Outcome metrics are always derived by the report builder.
-    if isinstance(metric_specs, list):
-        metrics: list[SummaryMetric] = []
-        for metric_spec in metric_specs:
-            if not isinstance(metric_spec, dict):
-                continue
-            if "keep" in metric_spec:
-                index = _as_int(metric_spec["keep"])
-                if index is not None and 0 <= index < len(generic_metrics):
-                    metrics.append(generic_metrics[index])
-                continue
-            metrics.append(
-                SummaryMetric(
-                    label=str(_format_override(metric_spec.get("label", ""), context, option_stats)),
-                    value=str(_format_override(metric_spec.get("value", ""), context, option_stats)),
-                    support=str(_format_override(metric_spec.get("support", ""), context, option_stats)),
-                )
-            )
-        resolved["executive_metrics"] = metrics
 
     if not response_count:
         resolved["report_title"] = EMPTY_RUN_TITLE

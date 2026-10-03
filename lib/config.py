@@ -114,15 +114,16 @@ def _env_choice(name: str, default: str, allowed: set[str]) -> str:
 
 class AppConfig(BaseModel):
     # App Identity
-    APP_NAME: str = "AI Ethics Comparator"
+    APP_NAME: str = Field(default_factory=lambda: os.getenv("APP_NAME", "AI Ethics Comparator"))
     VERSION: str = "6.1.0"
 
     # AI Service Config
     AI_CONCURRENCY_LIMIT: int = Field(default_factory=lambda: _env_int("AI_CONCURRENCY_LIMIT", 2, minimum=1))
-    AI_MAX_RETRIES: int = Field(default_factory=lambda: _env_int("AI_MAX_RETRIES", 5))
+    AI_MAX_RETRIES: int = Field(default_factory=lambda: _env_int("AI_MAX_RETRIES", 2))
+    AI_REQUEST_TIMEOUT: int = Field(default_factory=lambda: _env_int("AI_REQUEST_TIMEOUT", 120, minimum=1))
     AI_RETRY_DELAY: int = Field(default_factory=lambda: _env_int("AI_RETRY_DELAY", 2))
     AI_CHOICE_INFERENCE_ENABLED: bool = Field(
-        default_factory=lambda: _env_bool("AI_CHOICE_INFERENCE_ENABLED", True)
+        default_factory=lambda: _env_bool("AI_CHOICE_INFERENCE_ENABLED", False)
     )
     REPORT_THEME: Literal["dark", "light"] = Field(
         default_factory=lambda: _env_choice("REPORT_THEME", "dark", {"dark", "light"})

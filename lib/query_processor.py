@@ -18,12 +18,18 @@ from typing import Any
 
 from lib.ai_service import AIService, StructuredOutputSchema
 from lib.json_extract import extract_json_object
+from lib.measurements import RunRecord
+from lib.prompt_contract import PROTOCOL_VERSION, single_choice_contract
 from lib.query_errors import (
+    AuthenticationError,
     InvalidChoiceError,
     InvalidModelOutputError,
     MissingExplanationError,
+    ModelNotFoundError,
     ParseAmbiguityError,
+    QuotaError,
     RetryableQueryError,
+    safe_error_message,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,21 +50,7 @@ def _decision_tokens(option_count: int) -> list[str]:
 
 
 def _strict_single_choice_contract(option_count: int) -> str:
-    """Build a strict output contract to enforce one decision token."""
-    tokens = _decision_tokens(option_count)
-    token_list = ", ".join(f"`{token}`" for token in tokens)
-    return (
-        "\n\n**Output Contract (Strict):**\n\n"
-        "- Return only a JSON object (no markdown, no code fences).\n"
-        f"- The JSON must contain `option_id` as an integer in range 1..{option_count}.\n"
-        "- The parser also accepts `optionId`, but prefer `option_id`.\n"
-        "- The JSON must contain `summary` as a short string.\n"
-        "- The JSON must contain `value_priorities` as an array of short strings.\n"
-        "- The JSON must contain `key_assumptions` as an array of short strings.\n"
-        "- The JSON must contain `main_risk`, `switch_condition`, and `evidence_needed` as strings.\n"
-        f"- Allowed option tokens for reference: {token_list}.\n"
-        "- Do not write token alternatives such as \"{1} or {2}\"."
-    )
+    return single_choice_contract(option_count)
 
 
 def _choice_response_schema(option_count: int) -> StructuredOutputSchema:
@@ -272,69 +264,24 @@ def _extract_reasoning_payload(payload: dict[str, Any], fallback_text: str = "")
 
 
 def _extract_choice_from_classifier_output(classifier_output: str, option_count: int) -> int | None:
-    """Extract a single option ID from classifier output; 0 means undecided.
-
-    Scans all numeric and brace-token matches left-to-right, returning the
-    first value in range 1..option_count.  This handles noisy classifier
-    outputs like ``confidence 10/10; answer 2`` where the first number is
-    out of range.
-    """
-    if option_count < 1:
+    """Accept only one whole integer/token; commentary or alternatives are undecided."""
+    match = re.fullmatch(r"(?:([0-9]+)|\{([0-9]+)\})", classifier_output.strip())
+    if match is None:
         return None
-
-    # Scan all bare numbers left-to-right, return first in-range hit.
-    for m in re.finditer(r"\b(\d+)\b", classifier_output):
-        value = int(m.group(1))
-        if value == 0:
-            return None  # explicit undecided signal
-        if 1 <= value <= option_count:
-            return value
-
-    # Fallback: brace tokens {N}
-    for m in re.finditer(r"\{(\d+)\}", classifier_output):
-        value = int(m.group(1))
-        if 1 <= value <= option_count:
-            return value
-
-    return None
+    value = int(match.group(1) or match.group(2))
+    return value if 1 <= value <= option_count else None
 
 
 def _infer_option_from_text(response_text: str, option_count: int) -> int | None:
-    """
-    Infer a final option choice from natural-language commitment phrases.
-    Returns None when no clear single commitment is present.
-    """
-    if not response_text or option_count < 1:
+    """Conservative whole-response commitment; never extract hypothetical clauses."""
+    match = re.fullmatch(
+        r"(?:I choose|I select|My choice is) (?:option )?\{?([0-9]+)\}?[.!]?",
+        response_text.strip(), re.IGNORECASE,
+    )
+    if match is None:
         return None
-
-    explicit_patterns = [
-        (
-            r"(?i)\b(?:i|we)\s+(?:choose|chose|select|selected|recommend|recommended|pick|picked|prefer|support)\b"
-            r"[^0-9{}]{0,40}(?:option|policy|choice)?\s*\{?([1-" + str(option_count) + r"])\}?"
-        ),
-        (
-            r"(?i)\b(?:i(?:'d| would)\s+(?:choose|select|recommend|pick|go with)|i\s+will\s+(?:choose|select|recommend|pick))\b"
-            r"[^0-9{}]{0,40}(?:option|policy|choice)?\s*\{?([1-" + str(option_count) + r"])\}?"
-        ),
-        (
-            r"(?i)\b(?:my|the)\s+(?:choice|recommendation)\s+(?:is|:)\s*(?:option|policy|choice)?\s*\{?([1-"
-            + str(option_count)
-            + r"])\}?"
-        ),
-    ]
-
-    inferred: list[int] = []
-    for pattern in explicit_patterns:
-        inferred.extend(int(m) for m in re.findall(pattern, response_text))
-
-    if not inferred:
-        return None
-
-    unique_ids = set(inferred)
-    if len(unique_ids) == 1:
-        return inferred[-1]
-
-    return None
+    value = int(match.group(1))
+    return value if 1 <= value <= option_count else None
 
 
 def _build_choice_inference_prompt(response_text: str, option_count: int) -> str:
@@ -493,6 +440,7 @@ def template_supports_option_rendering(prompt_template: object) -> bool:
 
 def permute_options(
     options: list[dict[str, Any]],
+    rng: random.Random | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
     """Shuffle options into display order, renumbering IDs to 1..N.
 
@@ -501,7 +449,7 @@ def permute_options(
     model's answer back to a canonical option ID.
     """
     displayed = copy.deepcopy(options)
-    random.shuffle(displayed)
+    (rng.shuffle if rng is not None else random.shuffle)(displayed)
     mapping: dict[str, int] = {}
     for index, option in enumerate(displayed):
         new_id = index + 1
@@ -644,6 +592,7 @@ class RunConfig:
     systemPrompt: str = ""
     params: dict[str, Any] = field(default_factory=dict)
     shuffle_options: bool = False
+    shuffle_seed: int | None = None
 
 
 
@@ -660,7 +609,7 @@ class QueryProcessor:
         concurrency_limit: int = 2,
         choice_inference_model: str | None = None,
         max_reasks_per_iteration: int = 2,
-        max_provider_retries_per_iteration: int = 3,
+        max_provider_retries_per_iteration: int = 0,
     ) -> None:
         if concurrency_limit < 1:
             raise ValueError("concurrency_limit must be at least 1")
@@ -672,7 +621,10 @@ class QueryProcessor:
         self.semaphore = asyncio.Semaphore(concurrency_limit)
         self.choice_inference_model = choice_inference_model
         self.max_reasks_per_iteration = max_reasks_per_iteration
-        self.max_provider_retries_per_iteration = max_provider_retries_per_iteration
+        # Retained for callers using the old constructor; transport retries now
+        # belong exclusively to AIService so this value cannot multiply calls.
+        if max_provider_retries_per_iteration:
+            logger.warning("max_provider_retries_per_iteration is ignored; configure AIService.max_retries instead")
 
     @staticmethod
     def _sanitize_params(
@@ -706,13 +658,15 @@ class QueryProcessor:
                 continue
             iteration = response.get("iteration")
             option_id = response.get("optionId")
-            explanation = response.get("explanation")
-            if not isinstance(iteration, int) or iteration < 1 or iteration > iterations:
-                continue
-            if not isinstance(option_id, int):
-                continue
-            if not isinstance(explanation, str) or not explanation.strip():
-                continue
+            explanation = response.get("explanation", "")
+            if type(iteration) is not int or iteration < 1 or iteration > iterations:
+                raise ValueError("Cannot resume an outcome without a valid original iteration ID")
+            if iteration in completed:
+                raise ValueError("Cannot resume duplicate iteration IDs")
+            if option_id is not None and (type(option_id) is not int or not 1 <= option_id <= 4):
+                raise ValueError("Stored outcome has an invalid option ID")
+            if not isinstance(explanation, str):
+                raise ValueError("Stored explanation must be text")
             completed[iteration] = copy.deepcopy(response)
 
         return [completed[idx] for idx in sorted(completed)]
@@ -768,6 +722,8 @@ class QueryProcessor:
         config: RunConfig,
         existing_run: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        if existing_run:
+            RunRecord.model_validate(existing_run)
         if existing_run and isinstance(existing_run.get("paradox"), dict):
             config = replace(config, paradox=copy.deepcopy(existing_run["paradox"]))
         prompt, original_options, option_count, shuffle_mapping = self._prepare_prompt(
@@ -786,6 +742,9 @@ class QueryProcessor:
         created_at = str(base_run.get("timestamp") or datetime.now(UTC).isoformat())
         run_data: dict[str, Any] = {
             **base_run,
+            "schemaVersion": base_run.get("schemaVersion", 2) if not existing_run else base_run.get("schemaVersion"),
+            "protocolVersion": base_run.get("protocolVersion", PROTOCOL_VERSION) if not existing_run else base_run.get("protocolVersion", "legacy"),
+            "shuffleSeed": base_run.get("shuffleSeed", config.shuffle_seed if config.shuffle_seed is not None else random.SystemRandom().randrange(2**63)),
             "timestamp": created_at,
             "updatedAt": datetime.now(UTC).isoformat(),
             "modelName": config.modelName,
@@ -837,6 +796,7 @@ class QueryProcessor:
         self,
         response_text: str,
         option_count: int,
+        attempts: list[dict[str, Any]] | None = None,
     ) -> tuple[int | None, str | None]:
         """
         Infer an option ID when strict token parsing fails.
@@ -849,16 +809,30 @@ class QueryProcessor:
         if heuristic_option is not None:
             return heuristic_option, "heuristic"
 
+        # Refusals, conditionals and token ambiguity are evidence, not classifier tasks.
+        if re.search(r"\b(if|unless|would|decline|refuse|cannot|can.t|either)\b", response_text, re.IGNORECASE):
+            return None, None
+        if len(set(re.findall(r"\{(\d+)\}", response_text))) > 1:
+            return None, None
         if not self.choice_inference_model:
             return None, None
 
         classifier_prompt = _build_choice_inference_prompt(response_text, option_count)
-        classifier_output, _ = await self.ai_service.get_model_response(
-            self.choice_inference_model,
-            classifier_prompt,
-            "",
-            {"temperature": 0, "top_p": 1, "max_tokens": 4},
-        )
+        try:
+            classifier_output, classifier_usage = await self.ai_service.get_model_response(
+                self.choice_inference_model,
+                classifier_prompt,
+                "",
+                {"temperature": 0, "top_p": 1, "max_tokens": 4},
+            )
+        except (Exception, asyncio.CancelledError) as error:
+            if attempts is not None:
+                attempts.append({"kind": "classifier", "model": self.choice_inference_model,
+                    "prompt": classifier_prompt, "error": safe_error_message(error), "usage_known": False})
+            raise
+        if attempts is not None:
+            attempts.append({"kind": "classifier", "model": self.choice_inference_model,
+                "prompt": classifier_prompt, "raw": classifier_output, "usage": classifier_usage})
         inferred_option = _extract_choice_from_classifier_output(classifier_output, option_count)
         if inferred_option is None:
             return None, None
@@ -915,6 +889,7 @@ class QueryProcessor:
             if isinstance(response, dict) and isinstance(response.get("iteration"), int)
         }
         state_lock = asyncio.Lock()
+        terminal_failure: BaseException | None = None
 
         if len(completed) >= config.iterations:
             current_run["status"] = "completed"
@@ -936,14 +911,23 @@ class QueryProcessor:
                 # Snapshot under the lock so concurrent iterations cannot persist
                 # a state that never existed.
                 snapshot = copy.deepcopy(current_run)
-            if progress_callback is not None:
-                await progress_callback(snapshot)
+                if progress_callback is not None:
+                    await progress_callback(snapshot)
+
+        async def record_attempt_failure(number: int, attempts: list[dict[str, Any]]) -> None:
+            async with state_lock:
+                current_run.setdefault("interruptedAttempts", {}).setdefault(str(number), []).extend(copy.deepcopy(attempts))
+                if progress_callback is not None:
+                    await progress_callback(copy.deepcopy(current_run))
 
         async def run_iteration(iteration_number: int) -> dict[str, Any]:
+            nonlocal terminal_failure
             async with self.semaphore:
+                if terminal_failure is not None:
+                    raise terminal_failure
+                attempts: list[dict[str, Any]] = []
                 response = ""
                 reask_count = 0
-                provider_retry_count = 0
                 next_reask_issue = "invalid_choice"
                 total_latency = 0.0
                 total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
@@ -953,7 +937,7 @@ class QueryProcessor:
                 iteration_mapping = shuffle_mapping if isinstance(shuffle_mapping, dict) else None
                 iteration_base_prompt = prompt
                 if per_iteration_shuffle and canonical_options:
-                    displayed, iteration_mapping = permute_options(canonical_options)
+                    displayed, iteration_mapping = permute_options(canonical_options, random.Random(f"{current_run['shuffleSeed']}:{iteration_number}"))  # noqa: S311 - reproducible option ordering, not a security primitive
                     iteration_base_prompt, _ = render_options_template(
                         {**config.paradox, "options": displayed}, None
                     )
@@ -996,29 +980,29 @@ class QueryProcessor:
                         )
                         response, usage = "", {}
                         unusable_error = output_error
-                    except RetryableQueryError as retry_error:
-                        provider_retry_count += 1
-                        if provider_retry_count > self.max_provider_retries_per_iteration:
-                            logger.error(
-                                "Iteration %s exceeded provider retry cap (%s); aborting",
-                                iteration_number,
-                                self.max_provider_retries_per_iteration,
-                            )
-                            raise
-                        logger.warning(
-                            "Retrying iteration %s after provider error (%s/%s): %s",
-                            iteration_number,
-                            provider_retry_count,
-                            self.max_provider_retries_per_iteration,
-                            retry_error,
-                        )
-                        continue
+                    except (AuthenticationError, QuotaError, ModelNotFoundError) as error:
+                        terminal_failure = error
+                        attempts.append({"kind": "primary", "prompt": iteration_prompt, "error": safe_error_message(error), "usage_known": False})
+                        await record_attempt_failure(iteration_number, attempts)
+                        raise
+                    except RetryableQueryError as error:
+                        # AIService owns transport retry and total deadline policy.
+                        attempts.append({"kind": "primary", "prompt": iteration_prompt, "error": safe_error_message(error), "usage_known": False})
+                        await record_attempt_failure(iteration_number, attempts)
+                        raise
+                    except asyncio.CancelledError:
+                        attempts.append({"kind": "primary", "prompt": iteration_prompt, "error": "Cancelled while awaiting provider; completion and usage unknown"})
+                        await record_attempt_failure(iteration_number, attempts)
+                        raise
 
                     latency = time.monotonic() - start_t
                     total_latency += latency
                     total_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
                     total_usage["completion_tokens"] += usage.get("completion_tokens", 0)
 
+                    attempts.append({"kind": "primary", "model": config.modelName, "prompt": iteration_prompt,
+                        "raw": response, "usage": usage, "latency": latency,
+                        "optionOrder": iteration_mapping, "error": str(unusable_error) if unusable_error else None})
                     parsed = parse_trolley_response(response, option_count)
 
                     if iteration_mapping and parsed["optionId"] is not None:
@@ -1033,10 +1017,17 @@ class QueryProcessor:
                     inferred = False
                     inference_method: str | None = None
                     if parsed["optionId"] is None:
-                        inferred_option, inference_method = await self._infer_option_id_with_fallback(
-                            response,
-                            option_count,
-                        )
+                        try:
+                            inferred_option, inference_method = await self._infer_option_id_with_fallback(
+                                response,
+                                option_count,
+                                attempts,
+                            )
+                        except (Exception, asyncio.CancelledError) as error:
+                            if isinstance(error, (AuthenticationError, QuotaError, ModelNotFoundError)):
+                                terminal_failure = error
+                            await record_attempt_failure(iteration_number, attempts)
+                            raise
                         if inferred_option is not None:
                             if iteration_mapping:
                                 original_id = iteration_mapping.get(str(inferred_option))
@@ -1053,6 +1044,7 @@ class QueryProcessor:
                             "optionId": parsed["optionId"],
                             "explanation": parsed["explanation"],
                             "raw": response,
+                            "attempts": attempts,
                             "timestamp": datetime.now(UTC).isoformat(),
                         }
                         for key in [
@@ -1108,6 +1100,7 @@ class QueryProcessor:
                             "explanation": parsed.get("explanation", "") or "",
                             "error": str(retry_error),
                             "raw": response,
+                            "attempts": attempts,
                             "latency": total_latency,
                             "tokenUsage": total_usage,
                             "reaskCount": reask_count,

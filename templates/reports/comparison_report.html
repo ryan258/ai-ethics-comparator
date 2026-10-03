@@ -8,16 +8,16 @@
       @page { size: A4; margin: 18mm 20mm 20mm 20mm; }
 
       :root {
-        --bg: #121212; --bg-raised: rgba(166,172,205,0.08);
+        --bg: #121212; --bg-raised: #A6ACCD;
         --text: #EBD2BE; --text-dim: rgba(235,210,190,0.72);
         --accent: #A6ACCD; --success: #98C379; --danger: #E06C75;
-        --rule: rgba(166,172,205,0.22); --rule-mid: rgba(166,172,205,0.40);
+        --rule: #A6ACCD; --rule-mid: #A6ACCD;
       }
       :root.theme-light, html.theme-light {
-        --bg: #EBD2BE; --bg-raised: rgba(18,18,18,0.06);
-        --text: #121212; --text-dim: rgba(18,18,18,0.70);
+        --bg: #EBD2BE; --bg-raised: #121212;
+        --text: #121212; --text-dim: #121212;
         --accent: #A6ACCD; --success: #98C379; --danger: #E06C75;
-        --rule: rgba(18,18,18,0.18); --rule-mid: rgba(18,18,18,0.35);
+        --rule: #121212; --rule-mid: #121212;
       }
 
       * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -146,7 +146,7 @@
     <section class="page">
       <div class="kicker" style="margin-bottom: 3mm;">Statistics</div>
       <div class="section-title">Statistical Significance</div>
-      <div class="section-sub">Chi-square tests and effect sizes for pairwise comparisons.</div>
+      <div class="section-sub">Exploratory, unadjusted pairwise comparisons. All recorded outcomes, including undecided, form the denominator. Degrees of freedom above two use a Wilson–Hilferty p-value approximation.</div>
       <div class="rule-mid"></div>
 
       {% for comp in report.comparisons %}
@@ -157,9 +157,11 @@
         {% if comp.chi_square %}
         <div style="font-size: 8pt; margin-bottom: 1.5mm;">
           &chi;&sup2; = {{ comp.chi_square.chiSquare }}
-          &nbsp; p = {{ comp.chi_square.pValue }}
+          &nbsp; p = {{ "%.3g"|format(comp.chi_square.pValue) }}
           &nbsp;
-          {% if comp.chi_square.significant %}
+          {% if comp.chi_square.warning %}
+          <span class="stat-badge ns">ASSUMPTIONS UNMET</span>
+          {% elif comp.chi_square.significant %}
           <span class="stat-badge sig">SIGNIFICANT</span>
           {% else %}
           <span class="stat-badge ns">NOT SIGNIFICANT</span>

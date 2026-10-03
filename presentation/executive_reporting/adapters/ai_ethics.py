@@ -6,7 +6,8 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from lib.executive_reporting.models import (
+from lib.report_models import SingleRunReport, SummaryMetric
+from presentation.executive_reporting.models import (
     BriefFinding,
     BriefRecommendation,
     EvidenceMetric,
@@ -16,7 +17,6 @@ from lib.executive_reporting.models import (
     EvidenceTableRow,
     ExecutiveBrief,
 )
-from lib.report_models import SingleRunReport, SummaryMetric
 
 
 def single_run_report_to_executive_brief(report: SingleRunReport) -> ExecutiveBrief:
@@ -30,6 +30,7 @@ def single_run_report_to_executive_brief(report: SingleRunReport) -> ExecutiveBr
 
     return ExecutiveBrief(
         brief_id=report.run_id,
+        theme=report.theme,
         title=_brief_title(report),
         subtitle=report.report_subtitle,
         kicker="Strategic Analysis",
@@ -138,9 +139,9 @@ def _build_recommendations(report: SingleRunReport) -> list[BriefRecommendation]
         recommendations.append(
             BriefRecommendation(
                 action=control,
-                owner="Human governance",
-                timeline="Before deployment",
-                expected_impact="Keeps the model in governed decision-support workflows.",
+                owner="Run reviewer",
+                timeline="Before interpreting this run",
+                expected_impact="Keeps conclusions traceable to recorded evidence.",
                 key_risk=report.caveat_box if index == 1 else "",
             )
         )
@@ -212,11 +213,7 @@ def _build_reference_excerpts(report: SingleRunReport) -> list[EvidenceQuote]:
 
 
 def _confidence_label(report: SingleRunReport) -> str:
-    if report.reliability_note:
-        return "directional"
-    if report.lead_choice_label.lower().startswith("no dominant"):
-        return "low"
-    return "medium"
+    return "directional"
 
 
 def _second_implication(report: SingleRunReport) -> str:
@@ -244,34 +241,11 @@ def _limit_items(items: list[str], limit: int) -> list[str]:
 
 
 def _brief_title(report: SingleRunReport) -> str:
-    leader_labels = _leader_labels(report)
-    if len(leader_labels) > 1:
-        return (
-            f"The run split between {_format_series(leader_labels)}, so deployment should stay under human review"
-        )
-    if len(leader_labels) == 1:
-        return report.report_title
-    return report.paradox_title
+    return report.report_title
 
 
 def _governing_insight(report: SingleRunReport) -> str:
-    leader_labels = _leader_labels(report)
-    if len(leader_labels) > 1:
-        shared_support = next(
-            (
-                stat.percentage_label
-                for stat in report.option_stats
-                if stat.is_leader and stat.percentage_label.strip()
-            ),
-            report.lead_choice_support,
-        )
-        return (
-            f"The run produced a tie between {_format_series(leader_labels)} at {shared_support} each, "
-            "so the result is directional and should be used only with human review."
-        )
-    if len(leader_labels) == 1:
-        return _normalize_brief_sentence(report.thesis_statement)
-    return ""
+    return report.thesis_statement
 
 
 def _leader_labels(report: SingleRunReport) -> list[str]:

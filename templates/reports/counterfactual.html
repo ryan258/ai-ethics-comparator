@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Counterfactual evidence comparison</h2>
+<p>This is a descriptive comparison of linked runs with different prompts. It is not a same-stimulus significance test or proof that the injected evidence caused a change.</p>
+<p><strong>Hypothetical intervention:</strong> {{ child.appliedEvidence }}</p>
+<p><strong>Protocol:</strong> {{ child.comparisonProtocol }}</p>
+{% for record, measurement in pairs %}
+<section class="card"><h3>{{ 'Parent' if loop.first else 'Counterfactual' }} · {{ record.runId }}</h3>
+<p>{{ measurement.status }} · {{ measurement.recorded }} / {{ measurement.requested if measurement.requested is not none else 'unknown' }} outcomes · {{ record.modelName }}</p>
+<p>Persona: {{ record.systemPrompt or 'none recorded' }} · Parameters: {{ record.params }} · Ordering: {{ 'per iteration' if record.shufflePerIteration else 'fixed or not recorded' }}</p>
+<ul>{% for option in measurement.options %}<li>{{ option.label }}: {{ option.count }} ({{ '%.1f'|format(option.percentage) }}%)</li>{% endfor %}
+<li>Undecided: {{ measurement.undecided }}</li></ul>
+<details><summary>Exact recorded prompt</summary><pre style="white-space: pre-wrap">{{ record.prompt }}</pre></details>
+<a href="/reports/runs/{{ record.runId }}">Open evidence report</a></section>
+{% endfor %}
+{% endblock %}

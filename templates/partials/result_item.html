@@ -1,19 +1,21 @@
 <div class="result-item" id="run-{{ ctx.run_id }}"
-     {% if ctx.status == 'running' %}hx-get="/fragments/runs/{{ ctx.run_id }}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+     hx-get="/fragments/runs/{{ ctx.run_id }}" hx-trigger="refresh{% if ctx.status == 'running' %}, every 2s{% endif %}" hx-swap="outerHTML">
   <p role="status">{{ ctx.status }} · {{ ctx.completed }} / {{ ctx.requested }} iterations · <code>{{ ctx.run_id }}</code></p>
+  {% if ctx.last_error %}<p role="alert" class="error">{{ ctx.last_error }}</p>{% endif %}
+  {% for limitation in ctx.evidence_limitations %}<p>{{ limitation }}</p>{% endfor %}
   {% if ctx.analysis_stale %}<p>Stored analysis requires revalidation against the current evidence contract. Generate analysis again.</p>{% endif %}
   {% if ctx.status == 'running' %}
   <button hx-post="/api/runs/{{ ctx.run_id }}/cancel" hx-swap="none" hx-on::after-request="htmx.trigger(this.closest('.result-item'), 'refresh')">Cancel run</button>
   {% elif ctx.status in ['interrupted', 'failed', 'cancelled'] %}
-  <button hx-post="/api/runs/{{ ctx.run_id }}/resume" hx-swap="none" hx-on::after-request="if(event.detail.successful) window.location.reload()">Resume run</button>
+  <button hx-post="/api/runs/{{ ctx.run_id }}/resume" hx-swap="none" hx-on::after-request="if(event.detail.successful) htmx.trigger(this.closest('.result-item'), 'refresh')">Resume run</button>
   {% endif %}
 
   <div class="result-header">
     <h3>{{ ctx.model_name }}</h3>
     <span class="result-subtitle">{{ ctx.paradox_title }}</span>
     {% if ctx.system_prompt %}
-    <div style="font-size: 0.8rem; color: var(--accent-primary); margin-top: 0.25rem; font-style: italic; opacity: 0.9;">
-        <span style="font-weight: bold; opacity: 0.7;">System Persona:</span> "{{ ctx.system_prompt }}"
+    <div style="font-size: 0.8rem; color: var(--accent-primary); margin-top: 0.25rem; font-style: italic; opacity: 1;">
+        <span style="font-weight: bold; opacity: 1;">System Persona:</span> "{{ ctx.system_prompt }}"
     </div>
     {% endif %}
   </div>
@@ -22,14 +24,14 @@
     {% if ctx.is_counterfactual %}
     <div style="border-left: 3px solid var(--accent-success); padding: 0.5rem; margin-bottom: 1rem; font-size: 0.85rem;">
         <strong>Counterfactual Run</strong> (from <a href="/?runId={{ ctx.original_run_id }}" style="color: var(--accent-primary);">{{ ctx.original_run_id }}</a>)<br>
-        <em>Applied Evidence Test:</em> "{{ ctx.applied_evidence }}"
+        <a href="/reports/counterfactuals/{{ ctx.run_id }}">Compare with parent</a><br><em>Hypothetical evidence intervention:</em> "{{ ctx.applied_evidence }}"
     </div>
     {% endif %}
 
     <div class="result-meta" style="font-size: 0.75rem; color: var(--accent-primary); margin-bottom: 1rem; display: flex; gap: 1rem;">
         <span title="Prompt Hash">Hash {{ ctx.prompt_hash[:8] }}...</span>
         <span title="Total Latency">Time {{ "%.2f"|format(ctx.total_latency) }}s</span>
-        <span title="Token Usage">Tokens {{ ctx.total_prompt_tokens }} in / {{ ctx.total_completion_tokens }} out</span>
+        <span title="Recorded primary/re-ask usage only. Unknown usage and classifier/analyst calls are excluded; not a billing total.">Recorded tokens {{ ctx.total_prompt_tokens }} in / {{ ctx.total_completion_tokens }} out</span>
     </div>
 
     <div class="scenario-box">
@@ -99,12 +101,12 @@
               {% if response.explanation %}
               <div style="margin-top: 0.35rem; white-space: pre-wrap;">{{ response.explanation }}</div>
               {% else %}
-              <div style="margin-top: 0.35rem; opacity: 0.8;">No explanation returned by the model.</div>
+              <div style="margin-top: 0.35rem; opacity: 1;">No explanation returned by the model.</div>
               {% endif %}
             </div>
           </div>
           {% if response.meta_label %}
-          <div style="margin-top: 0.4rem; font-size: 0.75rem; color: var(--accent-primary); opacity: 0.9;">
+          <div style="margin-top: 0.4rem; font-size: 0.75rem; color: var(--accent-primary); opacity: 1;">
             {{ response.meta_label }}
           </div>
           {% endif %}
@@ -131,6 +133,7 @@
     <button
       class="btn btn-primary btn-sm"
       onclick="document.getElementById('analysis-{{ ctx.run_id }}').showModal()"
+      {% if not ctx.can_analyze %}disabled title="Wait for recorded outcomes from a stopped run"{% endif %}
     >
       View Analysis
     </button>
@@ -164,9 +167,9 @@
     {% endif %}
   </div>
 
-  <dialog id="analysis-{{ ctx.run_id }}" class="analysis-modal">
+  <dialog id="analysis-{{ ctx.run_id }}" class="analysis-modal" aria-labelledby="analysis-title-{{ ctx.run_id }}">
     <div class="modal-header">
-      <h2>Ethical Analysis</h2>
+      <h2 id="analysis-title-{{ ctx.run_id }}">Ethical Analysis</h2>
       <button
         class="btn btn-sm"
         onclick="document.getElementById('analysis-{{ ctx.run_id }}').close()"
@@ -182,7 +185,7 @@
         <p class="empty-state-text">Analysis is cached.</p>
         <button
           class="btn btn-primary"
-          hx-post="/api/runs/{{ ctx.run_id }}/analyze"
+          hx-post="/api/runs/{{ ctx.run_id }}/analyze" hx-disabled-elt="this" hx-sync="closest .analysis-modal:drop"
           hx-target="#analysis-content-{{ ctx.run_id }}"
           hx-swap="innerHTML"
           hx-indicator="#loading-cached-{{ ctx.run_id }}"
@@ -201,14 +204,10 @@
             class="analysis-input-label"
             >Analyst Model</label
           >
-          <input
-            type="text"
-            name="analyst_model"
-            id="analystModel-{{ ctx.run_id }}"
-            value="{{ ctx.config_analyst_model }}"
-            placeholder="e.g. provider/model-name"
-            class="analysis-input-field"
-          />
+          <select name="analyst_model" id="analystModel-{{ ctx.run_id }}" class="analysis-input-field">
+            {% for model in available_models|default([]) %}<option value="{{ model.id }}" {% if model.id == ctx.config_analyst_model %}selected{% endif %}>{{ model.name or model.id }}</option>{% endfor %}
+            {% if ctx.config_analyst_model and ctx.config_analyst_model not in (available_models|default([])|map(attribute='id')|list) %}<option value="{{ ctx.config_analyst_model }}" selected>{{ ctx.config_analyst_model }}</option>{% endif %}
+          </select>
           <div class="analysis-input-help">
             Override the default analyst model if desired.
           </div>
@@ -216,7 +215,7 @@
 
         <button
           class="btn btn-primary"
-          hx-post="/api/runs/{{ ctx.run_id }}/analyze"
+          hx-post="/api/runs/{{ ctx.run_id }}/analyze" hx-disabled-elt="this" hx-sync="closest .analysis-modal:drop"
           hx-include="#analystModel-{{ ctx.run_id }}"
           hx-target="#analysis-content-{{ ctx.run_id }}"
           hx-swap="innerHTML"

@@ -33,6 +33,7 @@
       </div>
     </header>
 
+    <div id="request-error" class="container error" role="alert" tabindex="-1"></div>
     <main class="container">{% block content %}{% endblock %}</main>
 
     <footer
@@ -40,7 +41,7 @@
       style="
         text-align: center;
         margin-top: 4rem;
-        opacity: 0.5;
+        opacity: 1;
         font-size: 0.8rem;
       "
     >
@@ -49,6 +50,23 @@
 
     <!-- Global Interactions -->
     <script>
+      document.addEventListener("htmx:responseError", function (event) {
+        let message = "The request failed. Please try again.";
+        try { const body = JSON.parse(event.detail.xhr.responseText); message = typeof body.detail === "string" ? body.detail : "Please check the form values."; } catch {}
+        const error = document.getElementById("request-error"); error.textContent = message; error.focus();
+      });
+      document.addEventListener("htmx:beforeRequest", function (event) {
+        const element = event.detail.elt;
+        if (element.classList.contains("result-item") && (element.querySelector("dialog[open], details[open]") || element.contains(document.activeElement))) {
+          if (event.detail.requestConfig?.triggeringEvent?.type !== "refresh") event.preventDefault();
+        }
+      });
+      document.addEventListener("input", function (event) {
+        const target = event.target;
+        if (!target.dataset.filterList) return;
+        const group = document.getElementById(target.dataset.filterList);
+        for (const label of group.querySelectorAll(".choice-list label")) label.hidden = !label.textContent.toLowerCase().includes(target.value.toLowerCase());
+      });
       document.addEventListener("click", function (e) {
         // Accordion Handler (Delegated for HTMX content)
         if (e.target.closest(".accordion-header")) {

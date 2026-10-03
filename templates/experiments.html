@@ -5,115 +5,57 @@
     <!-- Create Experiment Card -->
     <div class="card">
         <h2>Launch Laboratory Experiment</h2>
-        <p style="margin-bottom: 1rem; font-size: 0.9rem; opacity: 0.8;">Define an experiment manifest to fan out across multiple models and paradoxes simultaneously.</p>
-        
+        <p style="margin-bottom: 1rem; font-size: 0.9rem; opacity: 1;">Define an experiment manifest to fan out across multiple models and paradoxes simultaneously.</p>
+
         <form id="experiment-form"
-              hx-post="/api/experiments" 
-              hx-trigger="submit" 
+              hx-post="/api/experiments"
+              hx-trigger="submit" hx-swap="none" hx-disabled-elt="find button[type=submit]"
               hx-ext="json-enc"
-              hx-on::after-request="if(event.detail.successful) { window.location.reload(); } else { alert('Failed to create experiment'); }">
-            
+              hx-on::after-request="if(event.detail.successful) htmx.trigger(document.getElementById('experiment-progress'), 'refresh')">
+
             <div class="form-group">
                 <label for="title">Experiment Title</label>
-                <input type="text" name="title" id="title" required placeholder="e.g. Claude 3 vs GPT-4 on Trolley Problems" style="width: 100%; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px;">
+                <input type="text" name="title" id="title" required placeholder="e.g. Saved model comparison" style="width: 100%; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px;">
             </div>
 
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="selection-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                 <div class="form-group">
-                    <label for="paradoxSelect">Target Paradoxes (Hold Cmd/Ctrl to select multiple)</label>
-                    <select id="paradoxSelect" name="paradoxIds" multiple required style="height: 120px; width: 100%; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px;">
-                        {% for paradox in paradoxes %}
-                        <option value="{{ paradox.id }}">{{ paradox.title }}</option>
-                        {% endfor %}
-                    </select>
+                    <fieldset id="paradoxSelect"><legend>Target scenarios</legend>
+                    <label for="scenarioFilter">Find a scenario</label><input id="scenarioFilter" type="search" data-filter-list="paradoxSelect">
+                    <button type="button" id="selectGovernancePack">Select governance starter pack</button>
+                    <p>Authored hypothetical scenarios; annotations and rubrics are unvalidated.</p>
+                    <div class="choice-list">{% for paradox in paradoxes %}
+                    <label><input type="checkbox" name="paradoxIds" value="{{ paradox.id }}" data-pack="{{ paradox.pack }}"> {{ paradox.title }} — {{ paradox.category }}</label>
+                    {% endfor %}</div></fieldset>
                 </div>
 
                 <div class="form-group">
-                    <label for="modelSelect">Target Models (One per selected line)</label>
-                    <select id="modelSelect" name="modelIds" multiple required style="height: 120px; width: 100%; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px;">
-                        {% for model in models %}
-                        <option value="{{ model.id }}">
-                            {{ model.id }}{% if model.name and model.name != model.id %} - {{ model.name }}{% endif %}
-                        </option>
-                        {% endfor %}
-                        {% if not models and default_model %}
-                        <option value="{{ default_model }}">{{ default_model }}</option>
-                        {% endif %}
-                    </select>
+                    <fieldset id="modelSelect"><legend>Target models</legend><div class="choice-list">
+                    {% for model in models %}<label><input type="checkbox" name="modelIds" value="{{ model.id }}"> {{ model.name or model.id }}</label>{% endfor %}
+                    {% if not models and default_model %}<label><input type="checkbox" name="modelIds" value="{{ default_model }}"> {{ default_model }}</label>{% endif %}
+                    </div></fieldset>
                 </div>
             </div>
             <label for="experimentIterations">Iterations per run</label>
             <input id="experimentIterations" type="number" min="1" max="{{ max_iterations }}" value="{{ [10, max_iterations]|min }}" required>
             <label for="experimentShuffle"><input id="experimentShuffle" type="checkbox" checked>Shuffle options per iteration</label>
             <p id="experimentPlan" role="status">Select models and scenarios to see the planned work.</p>
+            <button type="button" id="saveExperimentPreset">Save setup on this device</button> <button type="button" id="loadExperimentPreset">Restore saved setup</button>
             <button type="submit" class="btn btn-primary">Create Manifest</button>
         </form>
     </div>
 
-    <!-- Active/Past Experiments -->
-    <div class="card">
-        <h2>Existing Experiments</h2>
-        {% if experiments %}
-            {% for exp in experiments %}
-            <div style="border: 1px solid var(--border-color); border-radius: 6px; padding: 1rem; margin-bottom: 1rem;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                    <h3 style="margin: 0; font-size: 1.1rem;">{{ exp.title }}</h3>
-                    <span class="status-badge" style="
-                        background: {% if exp.status == 'completed' %}var(--accent-success){% elif exp.status == 'running' %}var(--accent-primary){% elif exp.status == 'failed' %}var(--accent-danger){% else %}var(--border-color){% endif %};
-                        color: var(--bg-color);
-                    ">{{ exp.status | upper }}</span>
-                </div>
-                <p style="font-size: 0.85rem; opacity: 0.8; margin: 0 0 0.5rem 0;">ID: <code>{{ exp.id }}</code> | Created: {{ exp.createdAt }}</p>
-                
-                <div style="font-size: 0.9rem; margin-bottom: 1rem;">
-                    <strong>Paradoxes:</strong> {{ exp.paradoxIds | join(', ') }}<br>
-                    <strong>Models:</strong> {% for cond in exp.conditions %}{{ cond.modelName }}{% if not loop.last %}, {% endif %}{% endfor %}
-                </div>
-
-                {% if exp.status == 'pending' %}
-                <button hx-post="/api/experiments/{{ exp.id }}/execute" 
-                        class="btn btn-secondary" 
-                        style="padding: 0.4rem 0.8rem; font-size: 0.85rem;"
-                        hx-on::after-request="window.location.reload()">
-                    Execute Experiment
-                </button>
-                {% endif %}
-
-                {% if exp.runIds %}
-                <div style="margin-top: 1rem; border-top: 1px solid var(--border-color); padding-top: 1rem;">
-                    <strong>Runs ({{ exp.runIds | length }}):</strong>
-                    <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem;">
-                    {% for run_id in exp.runIds %}
-                        <a href="/?runId={{ run_id }}" style="font-size: 0.8rem; padding: 0.2rem 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); border-radius: 4px; text-decoration: none; color: var(--text-color);">{{ run_id }}</a>
-                    {% endfor %}
-                    </div>
-                </div>
-                {% endif %}
-                
-                {% if exp.errors %}
-                <div style="margin-top: 1rem; padding: 0.5rem; border-left: 3px solid var(--accent-danger); font-size: 0.85rem;">
-                    <strong>Errors:</strong><br>
-                    {% for err in exp.errors %}
-                    - {{ err }}<br>
-                    {% endfor %}
-                </div>
-                {% endif %}
-            </div>
-            {% endfor %}
-        {% else %}
-            <p style="font-size: 0.9rem; opacity: 0.7;">No experiments found. Create a manifest above.</p>
-        {% endif %}
-    </div>
+    {% include "partials/experiment_progress.html" %}
 
     <!-- Fingerprints -->
     <div class="card">
         <h2>Ethics Fingerprints</h2>
-        <p style="margin-bottom: 1rem; font-size: 0.9rem; opacity: 0.8;">Explore dominance within the listed sampled corpus and evaluator mix. This is not a general ethics rating.</p>
+        <p style="margin-bottom: 1rem; font-size: 0.9rem; opacity: 1;">Explore dominance within the listed sampled corpus and evaluator mix. This is not a general ethics rating.</p>
         <div class="form-group">
             <label for="fingerprintModelSelect">Select Model to Analyze</label>
-            <select name="model_id" id="fingerprintModelSelect" 
-                    hx-get="/fragments/fingerprint" 
-                    hx-target="#fingerprint-container" 
+            <select name="model_id" id="fingerprintModelSelect"
+                    hx-get="/fragments/fingerprint"
+                    hx-target="#fingerprint-container"
                     hx-trigger="change"
                     style="width: 100%; padding: 0.5rem; background: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-color); border-radius: 4px;">
                 <option value="" disabled selected>-- Select an evaluated model --</option>
@@ -123,26 +65,23 @@
             </select>
         </div>
         <div id="fingerprint-container" style="margin-top: 1rem;">
-            <div style="opacity:0.6; font-size: 0.9rem;">Select a model to view its computed radar/chart statistics.</div>
+            <div style="opacity: 1; font-size: 0.9rem;">Select a model to view its computed radar/chart statistics.</div>
         </div>
     </div>
 </div>
 
 <script>
-{% if experiments|selectattr('status', 'equalto', 'running')|list %}
-setTimeout(() => window.location.reload(), 3000);
-{% endif %}
 const experimentForm = document.getElementById("experiment-form");
 const modelSelect = document.getElementById("modelSelect");
-const paradoxSelect = experimentForm ? experimentForm.querySelector('select[name="paradoxIds"]') : null;
+const paradoxSelect = experimentForm ? document.getElementById("paradoxSelect") : null;
 const MAX_EXPERIMENT_RUNS = 50;
-const MAX_ITERATIONS_LIMIT = {{ max_iterations }};
+
 
 function selectedValues(selectEl) {
     if (!selectEl) {
         return [];
     }
-    return Array.from(selectEl.selectedOptions).map((opt) => opt.value);
+    return Array.from(selectEl.querySelectorAll("input[type=checkbox]:checked")).map((opt) => opt.value);
 }
 
 function buildConditionsPayload() {
@@ -196,5 +135,33 @@ if (experimentForm) {
         delete evt.detail.parameters.modelIds;
     });
 }
+document.getElementById("selectGovernancePack").addEventListener("click", () => {
+    for (const box of paradoxSelect.querySelectorAll("input[type=checkbox]")) box.checked = box.dataset.pack === "governance-starter";
+    document.getElementById("scenarioFilter").value = "";
+    document.getElementById("scenarioFilter").dispatchEvent(new Event("input", {bubbles: true}));
+    experimentForm.dispatchEvent(new Event("input"));
+});
+document.getElementById("saveExperimentPreset").addEventListener("click", () => {
+    try {
+        localStorage.setItem("ethics.experimentPreset", JSON.stringify({title: document.getElementById("title").value,
+            models: selectedValues(modelSelect), scenarios: selectedValues(paradoxSelect),
+            iterations: document.getElementById("experimentIterations").value,
+            shuffle: document.getElementById("experimentShuffle").checked}));
+        document.getElementById("experimentPlan").textContent = "Setup saved on this device.";
+    } catch { document.getElementById("experimentPlan").textContent = "Device storage is unavailable."; }
+});
+document.getElementById("loadExperimentPreset").addEventListener("click", () => {
+    try {
+        const preset = JSON.parse(localStorage.getItem("ethics.experimentPreset") || "null");
+        if (!preset) return;
+        for (const [group, values] of [[modelSelect, preset.models], [paradoxSelect, preset.scenarios]]) {
+            for (const box of group.querySelectorAll("input[type=checkbox]")) box.checked = Array.isArray(values) && values.includes(box.value);
+        }
+        document.getElementById("title").value = typeof preset.title === "string" ? preset.title : "";
+        document.getElementById("experimentIterations").value = Math.min({{ max_iterations }}, Math.max(1, Number(preset.iterations) || 10));
+        document.getElementById("experimentShuffle").checked = preset.shuffle !== false;
+        experimentForm.dispatchEvent(new Event("input"));
+    } catch { document.getElementById("experimentPlan").textContent = "Saved setup could not be read."; }
+});
 </script>
 {% endblock %}
