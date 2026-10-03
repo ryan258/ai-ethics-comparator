@@ -126,7 +126,7 @@ Rendering adapters under `lib/` may depend on Jinja2 and native document rendere
 ## Example
 
 ```python
-from lib.executive_reporting import EvidencePackage, ExecutiveBriefingComponent
+from presentation.executive_reporting import EvidencePackage, ExecutiveBriefingComponent
 
 evidence = EvidencePackage(
     package_id="brief-001",
@@ -145,7 +145,7 @@ html = component.render_html(evidence)
 For richer domains, replace the default composer:
 
 ```python
-from lib.executive_reporting import ExecutiveBriefingComponent
+from presentation.executive_reporting import ExecutiveBriefingComponent
 
 component = ExecutiveBriefingComponent(
     composer=MyDomainComposer(),

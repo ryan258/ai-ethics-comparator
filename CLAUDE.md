@@ -1,33 +1,50 @@
-# System Instruction: Code Review Agent
+# Project operating instructions
 
-You are a strict, context-aware Code Review Agent. When invoked to review staged changes, you must execute the following workflow in exact order before providing your final verdict.
+Follow `AGENTS.md` for the review format, stack, portability, typing, palette, and owner-controlled actions. Read `docs/architecture/` for current boundaries and state ownership.
 
-## 1. Context Loading
-Before reviewing any code, you MUST read all overarching architecture files by viewing the files in the `docs/architecture/` directory to understand the project's invariants, boundaries, and dependencies.
+Use graph impact before editing and confirm unresolved dynamic references from source. Do not rebuild the index or run test suites when Ryan asks to run those locally; provide the command instead. User instructions take precedence over generated GitNexus defaults. Never treat a passing historical test result as current verification.
 
-## 2. Dependency Mapping
-Map the "blast radius" of the staged changes with repository-native evidence.
-- Use `rg` to find imports, call sites, route bindings, templates, and tests for every modified symbol.
-- Identify all modules that consume the modified code.
-- If the changed code is consumed by other modules, verify that those downstream modules won't break and record the trace in the review.
+<!-- gitnexus:start -->
+# GitNexus — Code Intelligence
 
-## 3. Constraint Checking
-Analyze the staged code against the rules defined in the following files:
-- `docs/architecture/tech-stack.md`: Ensure no illegal imports, unauthorized dependencies, or forbidden technologies were introduced.
-- `docs/architecture/state.md`: Verify that no improper state mutations occurred and that state management patterns are strictly followed.
+This project is indexed by GitNexus as **ai-ethics-comparator** (2088 symbols, 4017 relationships, 166 execution flows).
 
-## 4. Boundary Verification
-Ensure the modified code respects the UI/API seams defined in `docs/architecture/boundaries.md`.
-- Reject any changes that leak domain logic into the presentation layer or bypass established data flow boundaries.
+> Index stale? Run `node .gitnexus/run.cjs analyze --index-only` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? Bootstrap with `npx`, `bunx`, or `pnpm dlx` — e.g. `bunx gitnexus@latest analyze` (npm 11 npx crash; #1939).
 
-## 5. Output Format
-Output your review using strictly the following sections. Do not use any other sections.
+## Always Do
 
-### 🚨 Critical Violations
-List any direct violations of the architectural constraints, boundary breaches, state mutation errors, or breaking changes to downstream dependencies. (If none, write "None")
+- **MUST run impact before editing.** Use `impact({target: "symbolName", direction: "upstream"})` or `node .gitnexus/run.cjs impact "symbolName" --direction upstream --repo .`; report callers, processes, and risk. Never substitute grep for graph analysis.
+- **MUST analyze graph changes before committing.** Use `detect_changes({scope: "all"})` (MCP) or `node .gitnexus/run.cjs detect-changes --scope all --repo .` (CLI fallback). `partial: true` or `truncated: true` is not a clean check — a zero means unseen, not unaffected; re-run it. For regression review: `detect_changes({scope: "compare", base_ref: "main"})` or `node .gitnexus/run.cjs detect-changes --scope compare --base-ref "main" --repo .`.
+- MUST warn on HIGH/CRITICAL `risk` pre-edit; never use `riskSharedAxes` to waive a HIGH/CRITICAL `risk` warning. Compare File/symbol: MCP File omits axes; Graph-RAG expands File.
+- **MUST treat `risk: UNKNOWN` as unresolved, not as low.** An empty caller set is not evidence the symbol is unused — it can also mean the callers are not resolvable by the index (plain-object property access, dynamic dispatch, cross-language calls). `impact` pairs `UNKNOWN` with a `riskNote` saying so. Confirm with a text search before treating the symbol as safe to change or delete; do not proceed on the strength of a zero.
+- **MUST use `query({search_query: "concept"})` for concepts/flows, `context({name: "symbolName"})` for a named symbol, or `impact` for blast radius, on read-only callers, dependencies, imports, or execution flow.** Graph first; text search only for empty/`UNKNOWN`/literals.
+- For security review, `explain({target: "fileOrSymbol"})` lists taint findings (source→sink flows; needs `analyze --pdg`).
 
-### ⚠️ Architectural Warnings
-List any code smells, suboptimal patterns, or deviations from the tech stack that aren't strict violations but should be addressed. (If none, write "None")
+## Never Do
 
-### ✅ Approved Changes
-List the modifications that are safe, align with the architecture, and are approved to merge.
+- NEVER edit a function, class, or method before MCP/CLI impact analysis.
+- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis, and never read `UNKNOWN` as an all-clear — it means the walk could not answer, which is the one verdict that requires confirming by other means.
+- NEVER rename symbols with find-and-replace — use `rename` which understands the call graph.
+- NEVER commit before MCP/CLI graph change analysis.
+
+## Resources
+
+| Resource | Use for |
+| --- | --- |
+| `gitnexus://repo/ai-ethics-comparator/context` | Codebase overview, check index freshness |
+| `gitnexus://repo/ai-ethics-comparator/clusters` | All functional areas |
+| `gitnexus://repo/ai-ethics-comparator/processes` | All execution flows |
+| `gitnexus://repo/ai-ethics-comparator/process/{name}` | Step-by-step execution trace |
+
+## CLI
+
+| Task | Read this skill file |
+| --- | --- |
+| Understand architecture / "How does X work?" | `.claude/skills/gitnexus-exploring/SKILL.md` |
+| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus-impact-analysis/SKILL.md` |
+| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus-debugging/SKILL.md` |
+| Rename / extract / split / refactor | `.claude/skills/gitnexus-refactoring/SKILL.md` |
+| Tools, resources, schema reference | `.claude/skills/gitnexus-guide/SKILL.md` |
+| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus-cli/SKILL.md` |
+
+<!-- gitnexus:end -->

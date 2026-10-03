@@ -1,262 +1,96 @@
-# AI Ethics Comparator Handbook
+# Operating handbook
 
-Last updated: 2026-09-14 (post-audit remediation)
+## Run locally
 
-This handbook explains how to use the current FastAPI + HTMX application for trolley-style ethical experiments.
-
-## 1. What This Tool Does
-
-AI Ethics Comparator lets you:
-
-- run repeated model responses on the same paradox scenario
-- capture decision tokens (`{1}`, `{2}`, `{3}`, `{4}`)
-- aggregate per-option decision rates
-- generate analyst summaries from stored run data
-- open printable HTML reports and use browser Save as PDF
-
-Current scope:
-
-- scenario type: `trolley` only
-- paradox options: 2-4
-- persistence: local JSON files under `results/`
-
-## 2. Installation
-
-### Prerequisites
-
-- Python 3.12+ (managed with `uv`)
-- OpenRouter API key
-
-### Setup
+Use Python 3.12 or newer and `uv sync --locked`. Copy `.example.env` to `.env` and configure the provider key, provider URL, and application base URL. Choose available models in `models.json`. Keep `.env` and result files private.
 
 ```bash
-uv sync
+uv run uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-Create `.env` with required values:
+Use one process. Application reload/restart interrupts background work; startup records interruption instead of automatically spending provider quota to resume it.
 
-```env
-OPENROUTER_API_KEY=sk-or-your-key-here
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-APP_BASE_URL=http://localhost:8000
-```
+## Configuration
 
-Optional:
+| Variable | Meaning |
+| --- | --- |
+| `OPENROUTER_API_KEY` | Required provider credential |
+| `OPENROUTER_BASE_URL` | Required provider API endpoint |
+| `APP_BASE_URL` | Required application URL and trusted browser origin |
+| `APP_HOST` | Host used by the Python entrypoint; uvicorn CLI uses its own `--host` flag |
+| `APP_NAME` | Environment-backed application title |
+| `DEFAULT_MODEL`, `ANALYST_MODEL` | Configured model IDs; default to the first configured model when unset |
+| `REPORT_THEME` | `dark` or `light` |
+| `MAX_ITERATIONS` | Maximum requested iterations per run; default 50 |
+| `AI_CONCURRENCY_LIMIT` | Shared provider-call limit, including analysis; default 2 |
+| `AI_MAX_RETRIES` | Transport retries after the first attempt; default 2 |
+| `AI_RETRY_DELAY` | Base backoff delay in seconds; default 2 |
+| `AI_REQUEST_TIMEOUT` | Whole provider-call deadline including waiting/backoff; default 120 seconds |
+| `AI_CHOICE_INFERENCE_ENABLED` | Enables additional model-based classification; default false |
 
-```env
-APP_NAME="AI Ethics Comparator"
-DEFAULT_MODEL=provider/model-name
-ANALYST_MODEL=provider/model-name
-MAX_ITERATIONS=50
-AI_CONCURRENCY_LIMIT=2
-AI_MAX_RETRIES=5
-AI_RETRY_DELAY=2
-AI_CHOICE_INFERENCE_ENABLED=true
-```
+A configured model may become unavailable. The app shows a safe failure reason rather than silently selecting a different model.
 
-Run the app:
+## Runs and recovery
+
+`POST /api/query` accepts JSON or the HTMX form's encoded JSON. Required fields are `modelName` and `paradoxId`; optional fields include `iterations`, `systemPrompt`, `params`, `shuffleOptions`, and `shuffleSeed`.
+
+A successful JSON request returns `202` and a reserved record. Provider failures happen in background execution and appear in the saved `status` / `lastError`; they are not retroactive HTTP 401/402 responses to the initial request.
 
 ```bash
-./run_server.sh
-# or
-uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000
+# Replace RUN_ID with the ID returned by creation, or use the run card controls.
+curl --fail-with-body http://localhost:8000/api/runs/RUN_ID
+curl --fail-with-body -X POST http://localhost:8000/api/runs/RUN_ID/resume
 ```
 
-Open [http://localhost:8000](http://localhost:8000).
+Resume is allowed for failed, interrupted, or cancelled runs. It preserves recorded outcomes, including undecided responses, and uses the saved scenario. Cancellation preserves checkpoints and records attempts whose completion/usage is unknown. Individual condition resume is blocked while its matrix is actively executing.
 
-## 3. UI Walkthrough
+Counts have distinct meanings: requested iterations; recorded terminal outcomes; decided choices; undecided outcomes; missing iterations; outcomes with output errors. Errors and undecided may overlap. Percentages use recorded outcomes as the denominator.
 
-The homepage has two main areas:
+## Analysis
 
-- `Configuration` panel (left)
-- `Results Stream` (bottom)
+Use the analyst selector in a stopped run's dialog. Empty and active runs are rejected. Analysis is optional and costs calls; rubric assessment may add a second call when a rubric is present. Draft rubrics are not validated scores. Regenerate preserves the selected analyst. Concurrent identical requests are coalesced and persisted once.
 
-### Configuration Inputs
+The fingerprint includes only completed, full-length, error-free runs with a current schema-valid analysis tied to the exact evidence hash. Missing legacy status or stale analysis remains an explicit exclusion. No automatic re-analysis is performed.
 
-- `Paradox Scenario`: choose a scenario from `paradoxes.json`
-- `AI Model (OpenRouter ID)`: select from dropdown options populated by `models.json`
-- `Persona (Prepended)`: optional text prepended to the prompt
-- `Iterations`: number of requests in a run (bounded by `MAX_ITERATIONS`)
-- `Option Order`: `Shuffle every iteration` (default) or `Fixed order`. Shuffling draws a
-  fresh option ordering for each iteration to neutralise position bias — models favour
-  first- and last-listed options. Choose `Fixed order` only when you are deliberately
-  measuring ordering effects.
+## Experiments
 
-### System Status
+Choose scenarios and models with checkboxes, set iterations, then create the manifest. Creation does not execute it. Execute launches bounded condition batches. Continue unfinished conditions skips completed runs and resumes saved incomplete conditions. A manifest derives its state from linked runs. Saved device presets do not include API credentials.
 
-- shows scenario details for current paradox
-- displays busy indicator while a run is executing
+## Reports and exports
 
-## 4. Running an Experiment
+| Route | Result |
+| --- | --- |
+| `/reports/runs/{run_id}` | Printable HTML brief |
+| `/reports/runs/{run_id}?theme=light` | Light brief; `dark` is also supported |
+| `/reports/runs/{run_id}?view=slides` | Square HTML insight slides |
+| `/reports/compare?run_ids=ID1,ID2` | Same-stimulus comparison of two to four distinct runs |
+| `/reports/counterfactuals/{run_id}` | Descriptive child/parent comparison |
+| `/api/runs/{run_id}/export?format=json` | Complete stored JSON record |
+| `/api/runs/{run_id}/export?format=pptx` | PowerPoint deck |
 
-1. Select a paradox.
-2. Choose a model from the dropdown.
-3. Optionally set a persona.
-4. Choose iteration count.
-5. Leave `Option Order` on `Shuffle every iteration` unless you are studying ordering effects.
-6. Click `Run Experiment`.
+Reports use saved evidence without model calls. Save an HTML response as `.html`; to obtain PDF, open it in the browser and use Print / Save as PDF. Check pagination, backgrounds, paper size, and clipping in the export preview. JSON includes recorded attempts; historical transport/accounting facts may be missing.
 
-The new run appears at the top of `Results Stream`.
+Small-sample statistical warnings suppress an unqualified significance conclusion. Pairwise p-values are exploratory and unadjusted for multiple comparisons. Keyword rationale labels and model-written analysis are not observed internal reasoning.
 
-## 5. Reading Results
+## Remaining API routes
 
-Each run card includes:
+- `GET /health`, `GET /api/paradoxes`, `GET /api/fragments/paradox-details`
+- `GET /api/runs`, `GET /api/runs/{run_id}`
+- `POST /api/runs/{run_id}/cancel`, `POST /api/runs/{run_id}/counterfactual`
+- `POST /api/runs/{run_id}/analyze`, `POST /api/insight`
+- `GET/POST /api/experiments`, `GET /api/experiments/{exp_id}`, `POST /api/experiments/{exp_id}/execute`
+- `GET /api/models/{model_id}/fingerprint`, `GET /fragments/fingerprint`
 
-- model name and paradox title
-- rendered scenario text
-- per-option counts and percentages
-- undecided count (if the model did not emit a valid token)
-- stacked distribution bar
-- generated `Run ID`
-
-Each card also has:
-
-- `View Analysis` modal action
-- `Open Report` action
-- expandable raw JSON dump
-
-## 6. Ethical Analysis Flow
-
-Inside a run modal:
-
-- If an analysis already exists, you can view cached output.
-- If none exists, enter analyst model (or keep default) and generate.
-- If generation fails, the app renders a safe error partial (escaped message, retry input).
-- `Regenerate` forces a fresh analysis.
-
-Insight outputs are stored in the run’s `insights[]` array.
-
-## 7. Run IDs and Migration
-
-Run IDs are strict and validated as:
-
-- pattern: `<base>-NNN`
-- regex: `^[A-Za-z0-9_-]+-\d{3,}$`
-
-Examples:
-
-- valid: `gpt-4o-001`
-- invalid: `gpt-4o`, `gpt-4o-01`, `bad.id-001`
-
-On startup, the app attempts to migrate legacy IDs into strict format and logs how many were migrated.
-
-## 8. Data Model Reference
-
-Every run record (`results/<run_id>.json`) includes:
-
-- `runId`, `timestamp`, `modelName`, `paradoxId`, `paradoxType`
-- `prompt`, optional `systemPrompt`
-- `iterationCount`, `params`
-- `options[]`
-- `paradox` (full scenario snapshot) and `paradoxTitle`
-- `shufflePerIteration` when option order was permuted
-- `responses[]` — each with the `optionOrder` mapping it was shown
-- `summary.options[]` and `summary.undecided`
-- optional `insights[]`
-
-## 9. API Endpoints
-
-Pages
-- `GET /` — main UI
-- `GET /experiments` — experiment laboratory
-
-Runs
-- `POST /api/query` — execute a new run
-- `GET /api/runs` — list run metadata
-- `GET /api/runs/{run_id}` — fetch complete run data
-- `POST /api/runs/{run_id}/resume` — resume an interrupted run
-- `POST /api/runs/{run_id}/cancel` — cancel an active run
-- `POST /api/runs/{run_id}/counterfactual` — generate a counterfactual run
-
-Analysis
-- `POST /api/insight` — generate insight; persists when a valid stored runId is supplied
-- `POST /api/runs/{run_id}/analyze` — generate/regenerate stored insights
-
-Paradoxes
-- `GET /api/paradoxes`
-- `GET /api/fragments/paradox-details?paradoxId=...`
-
-Experiments
-- `POST /api/experiments`, `GET /api/experiments`
-- `GET /api/experiments/{exp_id}`, `POST /api/experiments/{exp_id}/execute`
-
-Fingerprinting
-- `GET /api/models/{model_id}/fingerprint`
-- `GET /fragments/fingerprint?model_id=...`
-
-Export
-- `GET /reports/runs/{run_id}` — single-run printable HTML report
-- `GET /reports/compare?run_ids=a,b` — comparison HTML report (2-4 runs)
-- `GET /api/runs/{run_id}/export?format=json|pptx`
-
-System
-- `GET /health`
-
-## 10. Testing
-
-Run:
+## Invalid or historical files
 
 ```bash
-uv run pytest
+uv run python scripts/preview_legacy_runs.py
 ```
 
-192 tests passed in Ryan’s local `uv run pytest -q` run (2.60s; terminal output supplied 2026-09-14). CI (`.github/workflows/ci.yml`) additionally runs
-`uvx ruff check .` and `scripts/check_doc_claims.py`, which fails the
-build if this handbook or the README quotes a test or scenario count that is no longer true.
+This reads files and emits per-file issues and missing provenance without changing anything. Invalid records are rejected individually and preserved on disk. Back up originals before any deliberate manual repair. Missing historical status, scenario snapshots, or call histories cannot be reconstructed reliably from current library content.
 
-Coverage focus:
+## Verification and troubleshooting
 
-- startup, health, version header, strict run ID validation and migration
-- run execution budgets (re-ask / provider retry caps, progress persistence)
-- option permutation and un-shuffling (position bias)
-- immutable stored-evidence resolution across every consumer
-- fingerprint dominance weighting and cross-model separation
-- report rendering security (autoescape, blocked URL fetcher, DOM text swap)
+Run `bash scripts/verify_local.sh` and send its output. Tests block unmocked provider calls. This command performs no GitNexus indexing. The October remediation is pending this verification; older passing results do not validate it.
 
-## 11. Troubleshooting
-
-### App fails at startup
-
-- Confirm required env vars are set:
-  - `OPENROUTER_API_KEY`
-  - `OPENROUTER_BASE_URL`
-  - `APP_BASE_URL`
-
-### Query request fails with 401/402/429
-
-- `401`: invalid API key
-- `402`: insufficient credits/quota
-- `429`: rate-limited
-
-### Analysis fails
-
-- Try another analyst model in the modal retry field
-- Check provider availability/credits
-
-### `pytest` reports skips due missing imports
-
-Install runtime dependencies first:
-
-```bash
-uv sync
-```
-
-## 12. Research Practices
-
-Recommended baseline:
-
-- use at least 20 iterations for meaningful proportions
-- keep persona prompts concise and intentional
-- compare runs by changing one variable at a time
-- leave option shuffling on; a fixed order confounds the distribution with position bias
-- preserve run JSONs for reproducibility and audit — each response records the exact option
-  ordering the model was shown, so a result can be re-derived after the library moves on
-- fingerprints need analysed runs: dominance is computed from stored insights, so generate
-  analysis for a run before expecting it to show up in a model's profile
-
-## 13. Security Notes
-
-- `.env` is gitignored; keep real keys out of VCS.
-- User-visible markdown is escaped before rendering.
-- Links and images are stripped in markdown rendering.
-- Run lookup paths are guarded by strict run ID validation.
+If browser changes are rejected, open the configured local application URL and check `APP_BASE_URL`. Do not disable the origin/host guard. Headerless local CLI clients remain supported.

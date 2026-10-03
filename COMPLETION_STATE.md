@@ -1,23 +1,27 @@
-# Completion State
+# Completion state
 
-**Updated:** 2026-09-14
-**Scope:** September review remediation, local working tree; no release sign-off.
+## October 3, 2026 remediation
 
-This is an exploratory workbench for responses under particular prompt conditions. It is not a validated general measure of a model's ethics or deployment suitability.
+Implementation is bundled into local logically grouped commits. The assistant has not run tests or GitNexus indexing, at Ryan's request. Ruff lint and diff whitespace checks passed; neither establishes runtime correctness. Tests, focused typing, and the documentation gate remain owner-run. Run `bash scripts/verify_local.sh` and return the output before claiming correctness or readiness.
 
-## Implemented changes
+Ryan's first remediation verification reported **210 passed, 5 failed**. Focused typing passed for both core modules; the documentation gate passed with 215 collected cases, 197 scenarios, and version 6.1.0. The lint step did not execute because its `uvx` package syntax was invalid.
 
-- Analyst evidence substitution, stored scenario context, nested output validation and evidence provenance.
-- Historical scenario immutability; explicit counterfactual source and ordering protocol.
-- Shared checkpointed run executor, serialized updates, condition reservations and startup reconciliation.
-- Comparable scenario/option validation, empty-category statistics correction, sampled-cohort fingerprints.
-- Loopback launch defaults, browser-native HTML reports and insight slides, shared bounded report rendering, complete JSON evidence export.
-- Prompt run reservation responses, polling cards, resume/cancel, laboratory sizing and ordering controls.
+Follow-up corrections: the lint command now uses `uvx --from ruff==0.15.8 ruff`; the counterfactual fixture records its interrupted status and completed count consistently; the slides fixture includes a full schema-valid saved analysis. Production evidence validation remains strict. These corrections await Ryan's rerun.
 
-## Evidence and limitations
+The changes cover the review's execution, evidence, reporting, recovery, accessibility, content-contract, and documentation findings. Real historical results have not been rewritten or re-analyzed. No live provider requests, paid analysis, staging, commits, pushes, deployment, or publication were performed.
 
-Ryan ran `uv run pytest -q` locally after the review fixes, HTML reports, LinkedIn slides and shared rendering limit: **192 passed in 2.60s** (terminal output supplied on 2026-09-14). This is user-reported full-suite execution evidence for those changes; the assistant did not repeat the suite. Targeted verification is recorded in `docs/review-remediation.md`. Earlier live-PDF claims describe earlier revisions and do not verify the current browser export workflow.
+The read-only `scripts/preview_legacy_runs.py` reports missing facts and invalid individual records. Unknown historical state stays unknown. Template and browser adapters now live under `presentation/`; core imports remain independent of that layer. Internal import paths changed accordingly.
 
-Old analyses, fingerprints and narrative caches require revalidation; existing files are retained. No successful provider calls or paid re-analysis were performed. An older test attempted an unmocked provider call before a test guard was added. Browser desktop and narrow-screen previews were inspected; physical printing, saved PDF pagination and PPTX layout require separate verification. Local concurrency guarantees assume one application process.
+Curated starter-pack rubrics remain authored and unvalidated; existing fictional/adapted scenario content remains exploratory.
 
-Documentation checks cover selected count/version claims; they do not establish behavioral correctness or prevent future documentation drift.
+## Historical verification — does not apply to this working tree
+
+Historical: Ryan reported **192 passed in 2.60s** from `uv run pytest -q` on 2026-09-14. The October read-only review separately ran 47 focused checks before this implementation. Neither result verifies the current changes.
+
+## Acceptance boundaries
+
+- First full-suite result has failures; follow-up corrections await verification.
+- No live provider/model-availability verification.
+- No current saved-PDF or PPTX visual acceptance.
+- No screen-reader or real-device accessibility acceptance.
+- Single-process concurrency only; no multi-worker guarantees.

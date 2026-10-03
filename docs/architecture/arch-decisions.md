@@ -41,9 +41,9 @@
 ## D9: Scenario Prose as Data
 - **Why ETC**: per-paradox executive prose lives in `report_overrides.json`; theme guidance in
   `report_themes.json`. Adding a scenario touches no Python.
-- **Rule**: `lib/reporting.py` MUST NOT branch on a specific paradox ID
+- **Rule**: `presentation/reporting.py` MUST NOT branch on a specific paradox ID
 - **Where**: `lib/report_prose.py` owns the rationale-theme taxonomy and all override resolution;
-  `lib/reporting.py` composes report context and never reads the JSON itself
+  `presentation/reporting.py` composes report context and never reads the JSON itself
 - **Rule**: tests that assert on report prose MUST pass `ReportGenerator(overrides_path=...)` a
   fixture, never the shipped file — otherwise editing the paradox library breaks the test suite
 - **Trade-off**: prose templates use `str.format`, so literal braces must be doubled

@@ -1,94 +1,29 @@
-# Boundaries — Design by Contract
+# Architecture boundaries
 
-## Seam 1: HTTP Layer ↔ Business Logic
-- **Contract**: `main.py` routes are THIN — validate input, delegate to `lib/`, format response
-- Routes MUST call `_get_services(request)` to access initialized services — never import lib singletons
-- Pydantic models in `lib/validation.py` are the SOLE input gate for `POST` JSON bodies
-- `lib/validation.py` validates SHAPE ONLY — it MUST NOT import `lib/query_processor` or build
-  business objects. `ConditionConfig` → `RunConfig` conversion lives in
-  `experiment_runner.condition_to_run_config()`
-- Query-parameter endpoints (`/reports/compare`) validate inline in the route
-- `QueryRequest` → `RunConfig` conversion happens in the route, not in `lib/`
-- HTMX requests (`HX-Request` header) return template partials; JSON clients get raw dicts
-- Routes MUST NOT contain business logic, aggregation, or AI calls directly
+## Core and adapters
 
-## Seam 2: Business Logic ↔ External AI API
-- **Contract**: `AIService.get_model_response()` is the ONLY function that calls OpenRouter
-- Inputs: `(model_name: str, prompt: str, system_prompt: str, params: dict)`
-- Outputs: `Tuple[str, Dict[str, int]]` — `(response_text, usage_dict)` — always
-- AIService handles retries internally — callers MUST NOT implement retry logic
-- Error contract: raises a typed exception from `lib/query_errors`. Anything deriving from
-  `RetryableQueryError` may be retried by the caller; everything else is terminal.
-  Callers MUST branch on the exception type, never on the message text.
-- All `lib/` modules receive `AIService` via constructor injection — never instantiate it
+`lib/measurements.py` is a pure typed read/measurement boundary. Counts come from recorded responses, not cached summaries. `RunRecord` validates shape and semantic relationships; missing historical facts remain missing. Version 2 adds stricter completion and iteration requirements.
 
-## Seam 3: Business Logic ↔ Storage
-- **Contract**: `RunStorage` and `ExperimentStorage` are the ONLY filesystem writers
-- `RunStorage` path: `results/<run_id>.json` — strict pattern `^[A-Za-z0-9_-]+-\d{3,}$`
-- `ExperimentStorage` path: `experiments/<exp_id>.json` — pattern `^[A-Za-z0-9_-]+$`
-- All storage methods are `async` — blocking I/O wrapped in `run_in_executor`
-- `create_run()` prefers POSIX atomic `os.link`; if hard links are unavailable it falls back to `open('x')` reservation + replace
-- `get_run()` validates path traversal before reading — callers MUST NOT build paths
+`lib/query_processor.py`, analysis, and experiment orchestration consume injected provider/storage adapters. Core modules never import `main.py`, FastAPI, routers, or HTTP request objects. Jinja renderers, report composition, and Markdown view formatting live under `presentation/`; they receive paths/data and depend on the reusable core. Nothing in `lib/` imports this presentation layer. The internal renderer import paths changed from `lib.reporting`, `lib.view_models`, and `lib.executive_reporting` to their `presentation` equivalents; in-repository callers and tests are updated.
 
-## Seam 4: Query Processor ↔ Response Parsing
-- **Contract**: `parse_trolley_response(text, option_count)` returns `{decisionToken, optionId, explanation}`
-- `optionId` is `int | None` — never a string — callers MUST handle `None` (undecided)
-- Fallback chain: JSON parse → brace-token regex → heuristic NLP → AI classifier → `None`
-- Re-ask loop: hard-capped at `max_reasks_per_iteration` (enforced in `run_iteration()`, `query_processor.py`).
-  On exhaustion the iteration is recorded as undecided with an `error` key.
-- JSON recovery is shared: `lib/json_extract.extract_json_object()` is the single
-  implementation — do NOT add a per-module copy
-- `render_options_template()` always appends `_strict_single_choice_contract` to prompts
+`main.py` owns HTTP validation, task wiring, and template responses. Provider JSON and SDK adapter boundaries retain `Any` for variable external extensions; the shared measurement model is narrow and independently type-checked.
 
-## Seam 5: Analysis Engine ↔ Insight Schema
-- **Contract**: `generate_insight()` returns `{timestamp, analystModel, content}`
-- `content` is `dict` — either structured JSON or `{"legacy_text": raw_string}`
-- Required structured keys: `dominant_framework`, `moral_complexes`, `justifications`, `consistency`, `key_insights`
-- Missing keys → automatic fallback to `{"legacy_text": ...}` — templates handle both
+## Provider and persistence
 
-## Seam 5b: Report Context ↔ Scenario Prose
-- **Contract**: static scenario context lives in `report_overrides.json`, keyed by paradox ID; outcome claims and metrics are derived from measured results
-- Theme deployment guidance lives in `report_themes.json`, keyed by rationale-theme label
-- **Rule**: NEVER add `if paradox_id == "..."` branches to `lib/reporting.py` — adding a
-  scenario is a data change
-- Resolution lives in `lib/report_prose.py`, not `lib/reporting.py`. Both file paths are
-  parameters (`ReportGenerator(overrides_path=..., themes_path=...)`) so the module stays
-  portable — do NOT reach for repo layout from inside a resolver
-- Placeholders available to override templates: `response_count`, `temperature_value`,
-  `reliability_label`, `option_<1-4>_count`, `option_<1-4>_share`, `cluster_count`, `cluster_share`
+`AIService.get_model_response` returns text plus usage/provider metadata. Missing usage is marked explicitly. Retry and deadline policy lives in this adapter, including its shared semaphore. Callers may correct unusable output with a bounded new prompt; they must not restart transport retries.
 
-## Seam 5c: Stored Run ↔ Paradox Definition
-- **Contract**: a run record is self-describing. `paradoxTitle` and a full `paradox` deep copy
-  are written by `initialize_run_data()` and are the run's own property, not a live lookup
-- **Rule**: routes MUST resolve a paradox via `resolve_paradox(run_data, paradoxes)` — the
-  single stored-evidence implementation. Calling `get_paradox_by_id(...) or {}` at a call site is a
-  regression: it silently produces null-paradox exports and "Unknown Paradox" cards (see D11)
-- **Rule**: report builders receive a resolved paradox dict — they MUST NOT read
-  `paradoxes.json` themselves
+`RunStorage` and `ExperimentStorage` own writes. Paths are validated before access. Run reads validate the persisted contract without rewriting the source. `experiment_state.reconcile_experiment` updates condition state atomically and derives manifest status. These guarantees assume one process.
 
-## Seam 5c-2: Report Profile ↔ Engine
-- **Contract**: `AiEthicsExecutiveReportProfile.single_template_name` is deliberately EMPTY
-- **Why**: single-run printable HTML reports render through `ReportGenerator._render_single_report()` → the
-  strategic brief renderer, which takes an `ExecutiveBrief`. The engine's
-  `render_single_context()` would pass a `SingleRunReport` instead, so naming a real template
-  there lets brief markup render against the wrong context object
-- **Rule**: an empty name means "this profile has no direct single path"; that route raises
-  `single_unavailable_message`. Do NOT point it at `strategic_analysis_brief.html`
+## Evidence and interpretation
 
-## Seam 5d: Raw Run Data ↔ Browser
-- **Contract**: `GET /api/runs/{run_id}` with `HX-Request` returns the run record as an
-  UNESCAPED text body, including verbatim model output in `responses[].raw`
-- **Rule**: the HTMX trigger MUST use `hx-swap="textContent"`. HTMX ignores `Content-Type` and
-  swaps with `innerHTML` by default, so without it a model that emits
-  `<img src=x onerror=...>` executes script in the researcher's browser. A `<pre>` wrapper does
-  not prevent HTML parsing
-- **Rule**: this attribute is load-bearing security, not cosmetics
-  (`tests/test_run_json_dump_escaping.py` fails if it is removed)
+`prompt_contract.single_choice_contract` is the only current execution/presentation output contract. The library contains scenario text/options; legacy output boilerplate has been removed in a new revision. Existing saved prompts are immutable historical evidence.
 
-## Seam 6: View Models ↔ Templates
-- **Contract**: `RunViewModel.build(run_data, paradox)` → flat dict with pre-rendered HTML
-- Templates MUST NOT access raw run data — the view model is the only surface
-- `safe_markdown()` escapes HTML BEFORE rendering markdown — `|safe` is NEVER used on user input
-- Report HTML uses automatic escaping; model-authored text cannot become HTML, scripts or external resource tags.
+Analysis selection requires matching evidence hash, version, and a valid analyst schema. The fingerprint reports exclusions and cohort composition. Ordinary comparisons require identical recorded stimulus and option meanings. Linked counterfactuals use a separate descriptive view.
 
-- View models strip `<a>` and `<img>` tags post-render for XSS hardening
+Report outcome counts, percentages, requested/completed status, and undecided totals come from `build_run_measurements`. Keyword labels use response text only. Model interpretations are labeled and cannot establish deployment suitability. Scenario overrides may add limitations, not measured conclusions.
+
+## Browser output
+
+Both report renderers autoescape external text. `safe_markdown` escapes before rendering and removes links/images. The raw JSON HTMX control must retain `hx-swap="textContent"`; content type alone does not prevent HTMX from interpreting model output as markup.
+
+Run polling pauses while details/dialogs or focused controls are in use. Experiment progress swaps only its fragment. Errors are announced in an alert region, and controls have visible focus styling.

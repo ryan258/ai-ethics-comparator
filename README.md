@@ -1,269 +1,84 @@
 # AI Ethics Comparator
 
-A local-first research tool for measuring how LLMs respond to trolley-style ethical dilemmas across repeated iterations. Built with FastAPI + HTMX.
+A personal, local research workbench for exploring model responses to authored ethical dilemmas. FastAPI serves Jinja2 pages enhanced with vendored HTMX. Runs and experiment manifests are JSON files; no database or frontend build is required.
 
-## What It Does
+This measures responses under a particular prompt and configuration. It does not certify moral correctness, a model's internal reasoning, deployment suitability, or a general ethical trait.
 
-Run any OpenRouter model against ethical paradoxes (2-4 options each), repeat across many iterations, then analyze the patterns: which moral frameworks dominate, how consistent is the model, and what happens when you inject counterfactual evidence.
-
-## Stack
-
-- **Backend:** FastAPI (app-factory pattern)
-- **Templates:** Jinja2 + HTMX (no build step)
-- **AI provider:** OpenRouter via AsyncOpenAI
-- **Reports:** Self-contained printable HTML, browser Save as PDF, JSON and PowerPoint exports
-- **Storage:** flat JSON files (no database)
-- **Python:** >=3.12, managed with `uv`
-
-## Quick Start
+## Start
 
 ```bash
-uv sync
+uv sync --locked
+cp .example.env .env
 ```
 
-Create `.env` (or copy `.example.env`):
-
-```env
-OPENROUTER_API_KEY=sk-or-your-key-here
-OPENROUTER_BASE_URL=https://openrouter.ai/api/v1
-APP_BASE_URL=http://localhost:8000
-```
-
-Optional settings:
-
-```env
-# DEFAULT_MODEL and ANALYST_MODEL are derived from models.json when unset
-DEFAULT_MODEL=provider/model-name
-ANALYST_MODEL=provider/model-name
-REPORT_THEME=dark
-MAX_ITERATIONS=50
-AI_CONCURRENCY_LIMIT=2
-AI_MAX_RETRIES=5
-AI_RETRY_DELAY=2
-AI_CHOICE_INFERENCE_ENABLED=true
-```
-
-Run:
+Edit `.env` with your provider credentials and endpoints. Model identifiers come from `models.json`, then environment fallbacks. Their presence in configuration does not verify provider availability.
 
 ```bash
-uv run uvicorn main:app --reload --host 127.0.0.1 --port 8000
+uv run uvicorn main:app --host 127.0.0.1 --port 8000
 ```
 
-Open [http://localhost:8000](http://localhost:8000).
+Open [the local workbench](http://localhost:8000). Keep one application process: run tasks, analysis deduplication, and file locks are local to that process. Development reload interrupts active work; resume it deliberately after restart.
 
-## Features
+## Workflow
 
-### Runs
-Execute a model against a paradox for N iterations. Each iteration captures the model's decision token, explanation, and raw output. Results are stored as `results/<run_id>.json` with aggregate statistics.
+1. Choose a scenario, configured model, iteration count, and optional persona.
+2. Create the run. The JSON API returns `202` with a run ID; poll the saved record for completion. The page updates progress without restarting the form.
+3. Inspect recorded choices, undecided outcomes, raw responses, and failures. Resume executes only missing iterations and preserves terminal undecided outcomes.
+4. Optionally request analyst interpretation of a stopped run. This makes additional provider calls. Simultaneous identical requests share one analysis operation.
+5. Open a saved-evidence report or export JSON/PPTX. HTML reports support browser Print / Save as PDF. Report generation makes no model calls.
 
-**Option order is permuted per iteration by default.** Models favour first- and last-listed
-options, so a fixed order means the reported distribution carries uncontrolled position bias.
-Every response records the exact ordering it was shown under `optionOrder`, and answers are
-translated back to canonical option IDs before aggregation. Turn it off per run with
-`shuffleOptions: false` when you specifically want to measure ordering effects.
+History supports search and pagination. Comparison checkboxes constrain selection to matching stored scenario revisions and option meanings. Laboratory checkboxes avoid modifier-key multiselect, and Save setup / Restore saved setup retain one experiment preset on the current device.
 
-### Analysis
-LLM-powered insight generation identifies moral complexes, decision quality, paradox severity, and the model's ethical strategy. Results are cached in the run file. Analyst model is configurable per request.
+## Evidence contracts
 
-### Counterfactuals
-Take an existing run and inject evidence ("what would change your mind?") to produce a new run. Holds option order fixed so injected evidence is the only variable.
+- New scenarios use one JSON output contract from `lib/prompt_contract.py`. Historical saved prompts are preserved. The scenario library revision changed on 2026-10-03.
+- New runs record `schemaVersion`, `protocolVersion`, a scenario snapshot, `shuffleSeed`, and per-response option mappings. `shuffleSeed` controls option order; generation `params.seed` is a separate provider setting.
+- `responses` contains terminal outcomes. Undecided is an outcome, not an unexecuted iteration. Interrupted attempts are retained separately and never counted as completed responses.
+- `build_run_measurements()` computes percentages from all recorded outcomes, including undecided. Requested-but-missing iterations are reported separately.
+- Attempts retain prompts, raw output, available usage, provider metadata, and inference details. Failed transport usage and older call histories may be unavailable; JSON export is the complete **stored record**, not a guarantee of complete provider accounting.
+- Heuristic report labels use response text only. Analyst judgments are separately identified, schema-checked, versioned, and tied to an evidence hash.
+- Fingerprints list their included cohort and exclusions. They describe the sampled scenarios, personas, configurations, and evaluators, not a population-wide model rating.
 
-### Experiments
-Define a matrix of paradoxes and conditions (different models, parameters, system prompts), then execute them in parallel. Track status, errors, and per-condition results.
+## Features and limits
 
-### Fingerprinting
-Aggregate all runs for a given model to build an ethics profile. Each dimension reports
-**dominance** — the share of runs in which that moral complex led the model's reasoning,
-with a Wilson confidence interval — plus **intensity share**, its portion of all reasoning
-weight the analyst assigned. Dominance is measured, not merely detected: counting a complex
-as present saturates near 100% for every model and tells you nothing.
+**Experiments:** create a bounded matrix, execute it, cancel individual runs, and continue unfinished conditions. Completed outcomes are retained. Ambiguous legacy condition identities require individual run recovery.
 
-### Reporting
-- **HTML reports** — polished single-run briefs from saved evidence, with Print / Save as PDF and Download HTML controls
-- **Comparison report** — 2-4 runs side-by-side on the same paradox
-- **JSON export** — structured data (distribution, responses, metadata)
-- **PowerPoint** — slide deck with title, distribution, and analysis
+**Counterfactuals:** a linked child run injects hypothetical evidence drawn from a response. Its dedicated descriptive report shows both prompts and configurations. This is not verified new evidence or a causal test: stimulus and option-order conditions may differ. Ordinary comparisons still require identical stored stimuli.
 
-## API Surface
+**Reports:** single-run briefs, comparison reports, square insight slides, JSON, and PPTX. Partial/failed/unknown run status is visible. Light/dark choices propagate through the brief renderer. Browser PDF pagination and slide layout require inspection in the browser used to export.
 
-### Pages
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/` | Main UI (run history, paradox selector, model picker) |
-| GET | `/experiments` | Experiment laboratory |
+**Content:** the library contains 197 scenarios. `scenario_packs.json` identifies a bounded governance starter pack. Categories aid navigation; dimension tags and authored rubrics are explicitly unvalidated. Historical literary/adapted framings remain part of the exploratory library. See [the content codebook](docs/content-codebook.md).
 
-### Runs
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/query` | Execute a new run |
-| GET | `/api/runs` | List run metadata |
-| GET | `/api/runs/{run_id}` | Fetch complete run data |
-| POST | `/api/runs/{run_id}/resume` | Resume an interrupted or failed run |
-| POST | `/api/runs/{run_id}/cancel` | Cancel an active run |
-| POST | `/api/runs/{run_id}/counterfactual` | Generate counterfactual run |
+## Configuration
 
-### Analysis & Insights
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/runs/{run_id}/analyze` | Generate/regenerate ethical insights (optional analyst model override) |
-| POST | `/api/insight` | Generate insight; persists when a valid stored runId is supplied |
+Required: `OPENROUTER_API_KEY`, `OPENROUTER_BASE_URL`, `APP_BASE_URL`.
 
-### Paradoxes
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/paradoxes` | List all paradox definitions |
-| GET | `/api/fragments/paradox-details` | HTMX fragment for paradox detail |
+Optional: `APP_NAME`, `DEFAULT_MODEL`, `ANALYST_MODEL`, `REPORT_THEME`, `MAX_ITERATIONS`, `AI_CONCURRENCY_LIMIT`, `AI_MAX_RETRIES`, `AI_RETRY_DELAY`, `AI_REQUEST_TIMEOUT`, `AI_CHOICE_INFERENCE_ENABLED`.
 
-### Experiments
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/experiments` | Create experiment |
-| GET | `/api/experiments` | List experiments |
-| GET | `/api/experiments/{exp_id}` | Fetch experiment |
-| POST | `/api/experiments/{exp_id}/execute` | Execute experiment |
+Defaults: shared provider concurrency 2, transport retries 2, total provider-call deadline 120 seconds, choice classifier disabled. The SDK does not add retries. Query execution does not retry an exhausted transport operation. Output correction permits two reasks. Structured-format negotiation can add one fallback request. Analysis and classifier calls use the same provider limiter.
 
-### Fingerprinting
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/models/{model_id}/fingerprint` | Model ethics profile (JSON) |
-| GET | `/fragments/fingerprint` | Fingerprint HTMX fragment |
+## API and operation
 
-### Export
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/reports/runs/{run_id}` | Printable HTML report (single run) |
-| GET | `/reports/compare` | Comparison report (2-4 runs) |
-| GET | `/api/runs/{run_id}/export` | JSON or PPTX export (`?format=json\|pptx`) |
+See [HANDBOOK.md](HANDBOOK.md) for current routes, asynchronous examples, recovery, and configuration. Start with loopback binding. Browser mutation requests validate Host, Origin, Referer, and cross-site fetch context; local headerless CLI requests remain supported. This is a personal single-process tool, not an internet-facing authenticated service.
 
-### System
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Health check (version, status, timestamp) |
+## Verification
 
-## Test Suite
+The first owner-run verification reported 210 passed and 5 failed; focused typing and documentation checks passed. The failing fixtures and lint invocation have been corrected, with the follow-up run pending. Run the complete local command below and retain its output:
 
 ```bash
-uv run pytest
+bash scripts/verify_local.sh
 ```
 
-## Environment Management
+This runs pinned lint, focused static typing, pytest, and documentation contracts, with a guard against unmocked provider calls. It does not rebuild GitNexus or call live providers. A read-only historical-data preview is separate:
 
-- `pyproject.toml` defines the Python version and dependency manifests.
-- `uv.lock` is the committed lockfile for reproducible installs.
-- `uv sync` is the only supported install workflow.
-- `uv run ...` is the supported way to invoke project tools.
-- After dependency changes, run `uv lock`.
-
-192 tests passed in Ryan’s local `uv run pytest -q` run (2.60s; terminal output supplied 2026-09-14):
-
-| Module | Covers |
-|--------|--------|
-| `test_startup.py` | App initialization, health endpoint |
-| `test_query_processor.py` | Option rendering, strict single-choice contract |
-| `test_run_execution_limits.py` | Re-ask/provider budgets, progress persistence, failure surfacing |
-| `test_reporting.py` | HTML generation, brief rendering, measured report claims |
-| `test_report_rendering_security.py` | Report autoescape + blocked URL fetcher |
-| `test_executive_reporting.py` | HTML report engine wiring and escaping |
-| `test_executive_briefing.py` | Brief composition and rendering |
-| `test_executive_component.py` | Reusable brief component contract |
-| `test_experiment_runner.py` | Condition config, experiment execution |
-| `test_counterfactual.py` | Shuffle-aware option reconstruction |
-| `test_config.py` | Environment variable parsing and bounds |
-| `test_ai_service.py` | Model response handling, refusal detection |
-| `test_analysis_scoring.py` | Reasoning quality scoring |
-| `test_analysis_error_render.py` | Error HTML escaping |
-| `test_view_models.py` | View model building, markdown safety |
-| `test_model_fingerprint_routes.py` | Fingerprint endpoint validation |
-| `test_run_id_validation.py` | Run ID format enforcement |
-| `test_run_id_migration.py` | Legacy-to-strict ID migration |
-| `test_storage_guards.py` | Run ID write validation, metadata cache |
-| `test_stats.py` | Statistical functions (normal CDF, Wilson CI, Cohen's h, Chi-square) |
-| `test_json_extract.py` | JSON recovery from model output (direct, fenced, wrapped prose) |
-| `test_paradox_resolution.py` | D11 immutable stored-evidence resolution across every consumer |
-| `test_position_bias.py` | Per-iteration option permutation and un-shuffling |
-| `test_fingerprint.py` | Intensity-weighted dominance, cross-model separation |
-| `test_paradox_dimensions.py` | Closed dimension vocabulary, saturation guard |
-| `test_run_json_dump_escaping.py` | Model output never reaches the DOM as markup |
-
-## Repository Layout
-
-```
-main.py                  App factory, startup wiring, routes
-lib/
-  ai_service.py          OpenRouter client with retry/backoff
-  query_processor.py     Run execution, iteration loop, option parsing
-  analysis.py            LLM insight generation engine
-  storage.py             Filesystem persistence (runs + experiments)
-  validation.py          Pydantic request models
-  config.py              App configuration (env + models.json)
-  paradoxes.py           Paradox loader + validation
-  view_models.py         Template-safe view models
-  stats.py               Statistical functions (chi-square, Wilson CI, Cohen's h)
-  counterfactual.py      Evidence-based run reconstruction
-  experiment_runner.py   Parallel experiment execution
-  fingerprint.py         Model ethics profiling
-  reporting.py           Printable HTML report orchestration
-  report_prose.py        Rationale themes + scenario prose resolution
-  report_charts.py          Inline SVG charts for reports
-  comparison_report.py   Multi-run HTML layout
-  report_models.py       Typed report context schemas
-  report_writer.py       AI narrative generation
-  export_data.py         JSON export formatter
-  export_pptx.py         PowerPoint generation
-  json_extract.py        JSON recovery from model output
-  prompt_templates.py    Cached prompt-template reader
-  query_errors.py        Typed exception hierarchy + safe error messages
-  executive_reporting/   Reusable brief engine, renderer, and plugins
-templates/               Jinja2 views and partials
-static/                  Candlelight theme CSS
-tests/                   pytest suite (192 tests)
-tests/fixtures/          Frozen paradoxes + overrides for report-rendering tests
-paradoxes.json           Scenario library (197 paradoxes, each tagged with `dimensions`)
-models.json              Available model definitions
-report_overrides.json    Per-paradox executive report prose
-report_themes.json       Per-theme deployment guidance
-ROADMAP.md               Project roadmap and milestones
-scripts/                 Doc-claim checker, dimension backfill, report verification
-.github/workflows/ci.yml Lint + tests + doc-claim gate
-docs/architecture/       Boundary, state, and tech-stack contracts
-results/                 Persisted run output (gitignored)
-experiments/             Persisted experiments (gitignored)
+```bash
+uv run python scripts/preview_legacy_runs.py
 ```
 
-## Run Data Shape
+The preview does not rewrite files, fill in unknown facts, or generate paid analyses.
 
-Each run file (`results/<run_id>.json`) includes:
+## Architecture
 
-- **Identity:** `runId`, `timestamp`, `modelName`, `paradoxId`, `paradoxType`
-- **Scenario snapshot:** `paradoxTitle` + `paradox` (full definition, deep-copied at run
-  creation) so reports never depend on `paradoxes.json` staying unchanged — see D11
-- **Option order:** `shufflePerIteration` flag; each response carries the `optionOrder`
-  mapping it was shown
-- **Config:** `prompt`, optional `systemPrompt`, `iterationCount`, `params`
-- **Options:** `options[]` with id, description, and shuffle mapping
-- **Responses:** `responses[]` with decision token, explanation, raw output per iteration
-- **Stats:** `summary.options[]` (counts, percentages) + `summary.undecided`
-- **Analysis:** optional `insights[]` (cached from analyst model)
+`main.py` wires request handling and task lifecycles. `lib/query_processor.py` executes iterations; `lib/ai_service.py` owns provider limits and retries; `lib/run_executor.py` checkpoints runs; `lib/experiment_state.py` reconciles manifests. `lib/measurements.py` provides the typed read boundary and shared counts. Analysis and rendering consume saved evidence through explicit adapters.
 
-## Security Notes
-
-- Required secrets validated at startup — app crashes if missing
-- Strict run ID regex (`<base>-NNN`) blocks path traversal
-- Path resolution validated with `is_relative_to()` before filesystem access
-- Markdown rendering escapes HTML before render, strips `<a>`/`<img>` post-render
-- Input validation via Pydantic at all HTTP boundaries
-- Model names regex-validated: `^[a-z0-9\-_/:.]+$`
-
-## Report Resilience
-
-Editing or replacing `paradoxes.json` does not orphan stored runs. Paradoxes resolve in two
-tiers — the run's own snapshot, then reconstruction from the run's stored
-`prompt` and `options`. Every historical run stays exportable. See `docs/architecture/arch-decisions.md` D11.
-
-## Config Source Priority (models)
-
-1. `models.json` (file) → 2. `OPENROUTER_MODELS` (env) → 3. `AVAILABLE_MODELS_JSON` (env)
-
-### LinkedIn insight slides
-
-Choose **LinkedIn slides** on a run card or **LinkedIn insight slides** in its report. The square HTML deck summarizes saved results and current analyst insights without model calls. Choose **Save LinkedIn slideshow PDF**, then Save as PDF in the browser. Use no margins, 100% scale, background graphics, and no headers/footers; inspect the preview before saving. Browser support for custom square paper varies. Review the content before uploading the PDF to LinkedIn.
+Core logic does not import application routes or the presentation layer. Jinja rendering, report composition, and Markdown formatting live under `presentation/`; they consume the reusable core. The internal imports formerly under `lib.reporting`, `lib.view_models`, and `lib.executive_reporting` now use `presentation`. See [architecture boundaries](docs/architecture/boundaries.md).

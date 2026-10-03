@@ -13,7 +13,7 @@
 - `openai` — AsyncOpenAI client targeting OpenRouter (`lib/ai_service.py`)
 - Browser-native print and HTML download; no server PDF engine or native runtime dependencies.
 - `jinja2` + `markupsafe` — template rendering + XSS-safe markup
-- `markdown` — server-side markdown rendering in `safe_markdown` (`lib/view_models.py`)
+- `markdown` — server-side markdown rendering in `safe_markdown` (`presentation/view_models.py`)
 - `python-dotenv` — `.env` loading at import time (`main.py`)
 - `httpx` — explicit runtime dependency used by the OpenAI SDK and test client stack
 - `python-multipart` — form data parsing for HTMX POST endpoints
@@ -29,8 +29,8 @@
 - `paradoxes.json` — scenario definitions; each carries `dimensions` from the closed
   vocabulary `ETHICAL_DIMENSIONS` (`lib/paradoxes.py`), validated at load (see D13)
 - `models.json` — available model list (source of truth, see priority below)
-- `report_overrides.json` — per-paradox executive report prose
-- `report_themes.json` — per-theme deployment guidance
+- `report_overrides.json` — historical prose source; only additional limitations are consumed
+- `report_themes.json` — historical theme source, not evidence of deployment suitability
 
 ## Storage
 - Flat JSON files in `results/` — one file per run (`<run_id>.json`)
@@ -47,7 +47,7 @@
 
 ## Test Runner
 - `uv run pytest` with `pythonpath = ["."]` and `asyncio_mode = "auto"` (`pyproject.toml`)
-- Lint gate: `uvx ruff check .` must be clean. The rule set lives in `[tool.ruff.lint]` in
+- Lint gate: `uvx --from ruff==0.15.8 ruff check .` must be clean. The rule set lives in `[tool.ruff.lint]` in
   `pyproject.toml` — `F,E9,ASYNC,S,UP,I` — so CI and a local run cannot disagree. `ASYNC` is
   in the gate because `F,E9` missed blocking disk I/O on the event loop in three modules;
   `S` is there for the same reason, and every remaining `S` finding carries a `# noqa` that
