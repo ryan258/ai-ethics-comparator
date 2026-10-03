@@ -3,8 +3,9 @@
 import pytest
 
 from lib.counterfactual import CounterfactualEngine
+from lib.measurements import RunRecord
 from lib.query_errors import AuthenticationError
-from lib.query_processor import QueryProcessor, RunConfig
+from lib.query_processor import QueryProcessor, RunConfig, aggregate_trolley_stats
 from lib.storage import RunStorage
 
 PDX = {"id": "p", "title": "Stored OLD", "type": "trolley", "promptTemplate": "OLD scenario\n{{OPTIONS}}\n**Instructions**\nChoose.", "options": [
@@ -25,11 +26,14 @@ class AI:
         return GOOD, {"prompt_tokens": 1, "completion_tokens": 1}
 
 
-async def original(storage, processor, mapping=None):
+async def original(storage: RunStorage, processor: QueryProcessor, mapping: dict[str, int] | None = None) -> str:
     run = processor.initialize_run_data(RunConfig(modelName="model", paradox=PDX, iterations=2))
     run["responses"] = [{"iteration": 1, "optionId": 1, "explanation": "old", "evidenceNeeded": "More proof {{OPTIONS}} **Instructions**"}]
     if mapping:
         run["responses"][0]["optionOrder"] = mapping
+    run.update(status="interrupted", completedIterations=len(run["responses"]),
+               summary=aggregate_trolley_stats(run["responses"], len(PDX["options"])))
+    RunRecord.model_validate(run)
     return await storage.create_run("model", run)
 
 

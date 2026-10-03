@@ -1,4 +1,5 @@
 verify*
+!scripts/verify_local.sh
 *.bak
 # --- Python ---
 __pycache__/

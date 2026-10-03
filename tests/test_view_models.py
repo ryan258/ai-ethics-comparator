@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lib.view_models import RunViewModel
+from presentation.view_models import RunViewModel
 
 
 def test_run_view_model_builds_response_details() -> None:

@@ -4,7 +4,8 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock
 
-from lib.evidence import ANALYSIS_VERSION, evidence_hash
+from lib.evidence import ANALYSIS_VERSION, evidence_hash, valid_insight
+from lib.paradoxes import ETHICAL_DIMENSIONS
 
 
 def test_query_returns_identity_and_exposes_cancel_resume(client, monkeypatch):
@@ -28,7 +29,7 @@ def test_query_returns_identity_and_exposes_cancel_resume(client, monkeypatch):
 def test_json_export_retains_audit_fields_and_selected_insight(client):
     run = {'modelName': 'test/model', 'paradoxId': 'p', 'prompt': 'stimulus', 'params': {'temperature': 0.3},
            'options': [], 'responses': [{'iteration': 1, 'raw': 'raw output', 'optionOrder': {'1': 2, '2': 1}}]}
-    run['insights'] = [{'analysisVersion': ANALYSIS_VERSION, 'evidenceHash': evidence_hash(run), 'analystModel': 'analyst', 'content': {'dominant_framework': 'Duty'}}]
+    run['insights'] = [{'analysisVersion': ANALYSIS_VERSION, 'evidenceHash': evidence_hash(run), 'analystModel': 'analyst', 'content': {'dominant_framework': 'Duty', 'moral_complexes': [{'label': label, 'count': 0, 'justification': 'fixture'} for label in ('Duty', 'Consequence', 'Purity', 'Authority', 'Compassion', 'Risk-aversion', 'Legalism')], 'justifications': [], 'consistency': [], 'key_insights': []}}]
     rid = client.portal.call(client.app.state.services.storage.create_run, 'model', run)
     exported = client.get(f'/api/runs/{rid}/export').json()
     assert exported['export_kind'] == 'reproducibility'
@@ -76,7 +77,7 @@ def test_lab_launch_claims_once_and_returns_promptly(client, monkeypatch):
 
 
 def test_actual_html_reports_are_printable_and_make_no_model_calls(client, monkeypatch):
-    from lib.reporting import ReportGenerator
+    from presentation.reporting import ReportGenerator
     services = client.app.state.services
     services.report_generator = ReportGenerator('templates')
     provider = AsyncMock(side_effect=AssertionError('Report views must not call models'))
@@ -100,7 +101,7 @@ def test_actual_html_reports_are_printable_and_make_no_model_calls(client, monke
 
 
 def test_insight_slides_use_saved_evidence_escape_text_and_split_long_insights(client, monkeypatch):
-    from lib.reporting import ReportGenerator
+    from presentation.reporting import ReportGenerator
     services = client.app.state.services
     services.report_generator = ReportGenerator('templates')
     provider = AsyncMock(side_effect=AssertionError('Slides must not call models'))
@@ -108,9 +109,15 @@ def test_insight_slides_use_saved_evidence_escape_text_and_split_long_insights(c
     pdx = {'id': 'p', 'title': '<script>unsafe</script>', 'promptTemplate': 'Saved question',
            'options': [{'id': 1, 'label': 'A', 'description': 'First option'}]}
     run = {'modelName': 'test/model', 'paradoxId': 'p', 'paradox': pdx, 'options': pdx['options'],
-           'status': 'completed', 'responses': [], 'summary': {}}
+           'schemaVersion': 2, 'status': 'completed', 'iterationCount': 1, 'completedIterations': 1,
+           'responses': [{'iteration': 1, 'optionId': 1, 'explanation': 'Saved response.'}], 'summary': {}}
     run['insights'] = [{'analysisVersion': ANALYSIS_VERSION, 'evidenceHash': evidence_hash(run),
-                        'analystModel': 'analyst', 'content': {'key_insights': ['Saved insight. ' * 90]}}]
+                        'analystModel': 'analyst', 'content': {
+                            'dominant_framework': 'Duty',
+                            'moral_complexes': [{'label': label, 'count': 0, 'justification': 'Not coded in this fixture.'}
+                                               for label in ETHICAL_DIMENSIONS],
+                            'justifications': [], 'consistency': [], 'key_insights': ['Saved insight. ' * 90]}}]
+    assert valid_insight(run, run['insights'][0])
     rid = client.portal.call(services.storage.create_run, 'model', run)
     response = client.get(f'/reports/runs/{rid}?view=slides')
     assert response.status_code == 200
@@ -130,7 +137,7 @@ def test_insight_slides_use_saved_evidence_escape_text_and_split_long_insights(c
 
 
 def test_report_formats_share_render_limit_and_keep_health_responsive(client, monkeypatch):
-    from lib.reporting import ReportGenerator
+    from presentation.reporting import ReportGenerator
 
     services = client.app.state.services
     services.report_generator = ReportGenerator('templates')

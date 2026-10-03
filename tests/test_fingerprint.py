@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from lib.evidence import ANALYSIS_VERSION, evidence_hash
 from lib.fingerprint import compute_model_fingerprint
+from lib.paradoxes import ETHICAL_DIMENSIONS
 
 
 class FakeStorage:
@@ -48,6 +49,10 @@ def _run(run_id: str, model: str, complexes: list[tuple[str, int]]) -> dict:
         ],
     }
 
+    content = run["insights"][0]["content"]
+    known = {entry["label"] for entry in content["moral_complexes"]}
+    content["moral_complexes"].extend({"label": label, "count": 0, "justification": "not observed"} for label in ETHICAL_DIMENSIONS if label not in known)
+    content.update(dominant_framework="fixture", justifications=[], consistency=[], key_insights=[])
     run["insights"][0].update(analysisVersion=ANALYSIS_VERSION, evidenceHash=evidence_hash(run))
     return run
 

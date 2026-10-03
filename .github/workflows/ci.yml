@@ -18,7 +18,10 @@ jobs:
           enable-cache: true
 
       - name: Lint
-        run: uvx ruff check .  # rule set lives in pyproject.toml
+        run: uvx --from ruff==0.15.8 ruff check .  # rule set lives in pyproject.toml
+
+      - name: Core measurement typing
+        run: uvx --with pydantic --from mypy==1.18.2 mypy lib/measurements.py lib/prompt_contract.py --follow-imports=silent
 
       - name: Tests
         run: uv run pytest -q

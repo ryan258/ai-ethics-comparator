@@ -119,7 +119,8 @@ def test_infer_option_from_text_detects_explicit_commitment() -> None:
         "After weighing tradeoffs, I think a balanced policy is best. "
         "So I'd choose {2}."
     )
-    assert _infer_option_from_text(response, option_count=3) == 2
+    assert _infer_option_from_text(response, option_count=3) is None
+    assert _infer_option_from_text("I choose option 2.", option_count=3) == 2
 
 
 def test_extract_choice_from_classifier_output() -> None:
@@ -129,10 +130,10 @@ def test_extract_choice_from_classifier_output() -> None:
 
 
 def test_extract_choice_skips_out_of_range_numbers() -> None:
-    """Noisy classifier output with leading out-of-range number should still find the valid answer."""
-    assert _extract_choice_from_classifier_output("confidence 10/10; answer 2", option_count=3) == 2
-    assert _extract_choice_from_classifier_output("after 10 retries, final answer is 2", option_count=4) == 2
-    assert _extract_choice_from_classifier_output("score 99 pick {1}", option_count=3) == 1
+    """Noisy classifier output cannot establish a single final answer."""
+    assert _extract_choice_from_classifier_output("confidence 10/10; answer 2", option_count=3) is None
+    assert _extract_choice_from_classifier_output("after 10 retries, final answer is 2", option_count=4) is None
+    assert _extract_choice_from_classifier_output("score 99 pick {1}", option_count=3) is None
     # All numbers out of range → None
     assert _extract_choice_from_classifier_output("scores 10 20 30", option_count=4) is None
 
@@ -456,21 +457,9 @@ def test_query_processor_retries_transient_provider_errors_until_success() -> No
         ],
     }
 
-    run_data = asyncio.run(
-        qp.execute_run(
-            RunConfig(
-                modelName="generator/model",
-                paradox=paradox,
-                iterations=1,
-                params={"max_tokens": 200},
-            )
-        )
-    )
-
-    response = run_data["responses"][0]
-    assert response["decisionToken"] == "{1}"
-    assert response["optionId"] == 1
-    assert dummy_ai.call_count == 2
+    with pytest.raises(ProviderTransientError):
+        asyncio.run(qp.execute_run(RunConfig(modelName="generator/model", paradox=paradox, iterations=1)))
+    assert dummy_ai.call_count == 1  # Provider adapter owns the retry budget.
 
 
 def test_query_processor_resumes_from_existing_run() -> None:

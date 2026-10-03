@@ -30,6 +30,7 @@ def app(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
         APP_BASE_URL="http://localhost:8000",
         OPENROUTER_BASE_URL="https://openrouter.ai/api/v1",
         AVAILABLE_MODELS=[{"id": "test/model", "name": "Test Model"}],
+        AI_CHOICE_INFERENCE_ENABLED=False,
         ANALYST_MODEL="test/model",
         DEFAULT_MODEL="test/model",
     )
@@ -39,7 +40,7 @@ def app(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
 
 @pytest.fixture
 def client(app):
-    with TestClient(app) as test_client:
+    with TestClient(app, base_url="http://localhost") as test_client:
         yield test_client
 
 

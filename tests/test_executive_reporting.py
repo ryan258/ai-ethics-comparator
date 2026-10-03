@@ -3,7 +3,10 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel
 
-from lib.executive_reporting import ExecutiveReportEngine, ExecutiveReportProfile
+from presentation.executive_reporting import (
+    ExecutiveReportEngine,
+    ExecutiveReportProfile,
+)
 
 
 class _StubSingleReport(BaseModel):

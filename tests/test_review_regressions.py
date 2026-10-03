@@ -16,10 +16,10 @@ from lib.paradoxes import (
     load_paradoxes,
 )
 from lib.query_processor import aggregate_trolley_stats
-from lib.reporting import ReportGenerator
 from lib.stats import chi_square_test, wilson_confidence_interval
 from lib.storage import ExperimentStorage, RunStorage
 from lib.validation import InsightRequest
+from presentation.reporting import ReportGenerator
 
 ROOT = Path(__file__).resolve().parents[1]
 PDX = {"id": "p", "title": "OLD", "type": "trolley", "promptTemplate": "OLD stimulus\n{{OPTIONS}}", "options": [

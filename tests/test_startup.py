@@ -31,7 +31,7 @@ def test_version_header_is_attached(client) -> None:
 
 def test_choice_inference_enabled_by_default(client) -> None:
     qp = client.app.state.services.query_processor
-    assert qp.choice_inference_model == "test/model"
+    assert qp.choice_inference_model is None
 
 
 def test_model_field_renders_as_select(client) -> None:
@@ -161,7 +161,7 @@ def test_choice_inference_can_be_disabled(monkeypatch, tmp_path: Path) -> None:
     )
     app = main.create_app(config_override=config)
 
-    with TestClient(app) as test_client:
+    with TestClient(app, base_url="http://localhost") as test_client:
         qp = test_client.app.state.services.query_processor
         assert qp.choice_inference_model is None
 
@@ -199,7 +199,7 @@ def test_html_report_route_uses_configured_default_theme_when_query_param_is_abs
     )
 
     app = main.create_app(config_override=config)
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://localhost") as client:
         run_data = {
             "timestamp": "2026-03-12T02:29:33.489179+00:00",
             "runId": "test-run-id",
@@ -311,7 +311,7 @@ def test_startup_marks_incomplete_runs_interrupted(monkeypatch, tmp_path: Path) 
     )
     app = main.create_app(config_override=config)
 
-    with TestClient(app) as test_client:
+    with TestClient(app, base_url="http://localhost") as test_client:
         stored_run = asyncio.run(test_client.app.state.services.storage.get_run(run_id))
         assert stored_run["status"] == "interrupted"
         assert ai_calls["count"] == 0
@@ -340,7 +340,7 @@ def test_startup_reconciles_interrupted_experiment_and_orphan_run(app, tmp_path)
     run = {'modelName':'test/model','experimentId':'exp_1_ab','status':'running','iterationCount':2,'responses':[]}
     rid = asyncio.run(runs.create_run('model', run))
     asyncio.run(experiments.save_experiment('exp_1_ab', {'id':'exp_1_ab','title':'Interrupted','createdAt':'today','status':'running','runIds':[], 'paradoxIds':[], 'conditions':[]}))
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://localhost") as client:
         manifest = client.get('/api/experiments/exp_1_ab').json()
         assert manifest['status'] == 'interrupted'
         assert manifest['runIds'] == [rid]

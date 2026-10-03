@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 from pathlib import Path
 
 import pytest
@@ -140,8 +141,17 @@ def test_experiment_runner_partial_and_error() -> None:
             return self.saved[run_id]
 
     class MockExperimentStorage:
+        def __init__(self):
+            self.saved = {}
         async def save_experiment(self, exp_id, data):
-            return None
+            self.saved[exp_id] = data
+        async def get_experiment(self, exp_id):
+            return self.saved[exp_id]
+        async def update_experiment(self, exp_id, mutate):
+            result = mutate(self.saved[exp_id])
+            if inspect.isawaitable(result):
+                await result
+            return self.saved[exp_id]
 
     q_proc = MockQueryProcessor()
     r_stor = MockRunStorage()
@@ -168,6 +178,7 @@ def test_experiment_runner_partial_and_error() -> None:
         "conditions": [{"modelName": "ok_model"}],
         "createdAt": "2023-01-01",
     }
+    asyncio.run(e_stor.save_experiment("exp_1", exp_data))
     result = asyncio.run(runner.execute_experiment("exp_1", exp_data, paradoxes))
     assert result.status == "completed"
     assert len(result.runIds) == 1
@@ -180,6 +191,7 @@ def test_experiment_runner_partial_and_error() -> None:
         "conditions": [{"modelName": "partial_model"}],
         "createdAt": "2023-01-01",
     }
+    asyncio.run(e_stor.save_experiment("exp_2", exp_data_partial))
     partial_result = asyncio.run(runner.execute_experiment("exp_2", exp_data_partial, paradoxes))
     assert partial_result.status == "partial"
 
@@ -191,6 +203,7 @@ def test_experiment_runner_partial_and_error() -> None:
         "conditions": [{"modelName": "fail_model"}],
         "createdAt": "2023-01-01",
     }
+    asyncio.run(e_stor.save_experiment("exp_3", exp_data_failed))
     failed_result = asyncio.run(runner.execute_experiment("exp_3", exp_data_failed, paradoxes))
     assert failed_result.status == "failed"
     assert "Model exploded" in failed_result.errors[0]

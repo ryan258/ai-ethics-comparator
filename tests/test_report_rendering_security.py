@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lib.reporting import ReportGenerator
+from presentation.reporting import ReportGenerator
 
 PAYLOAD = (
     '</p><img src="file:///etc/hosts">'
@@ -65,7 +65,7 @@ def _paradox() -> dict:
 def test_model_authored_markup_is_escaped_in_report_html(monkeypatch) -> None:
     captured: dict[str, str] = {}
 
-    from lib.executive_reporting import renderer as renderer_module
+    from presentation.executive_reporting import renderer as renderer_module
 
     original = renderer_module.ExecutiveBriefRenderer.render_html
 
@@ -88,9 +88,9 @@ def test_model_authored_markup_is_escaped_in_report_html(monkeypatch) -> None:
 
 
 def test_report_environments_enable_autoescape() -> None:
-    from lib.executive_reporting.engine import ExecutiveReportEngine
-    from lib.executive_reporting.plugins import StrategicAnalysisPlugin
-    from lib.executive_reporting.renderer import ExecutiveBriefRenderer
+    from presentation.executive_reporting.engine import ExecutiveReportEngine
+    from presentation.executive_reporting.plugins import StrategicAnalysisPlugin
+    from presentation.executive_reporting.renderer import ExecutiveBriefRenderer
 
     renderer = ExecutiveBriefRenderer(StrategicAnalysisPlugin(), templates_dir="templates")
     assert renderer.env is not None and renderer.env.autoescape is True

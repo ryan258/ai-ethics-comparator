@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from html import unescape
 
-from lib.executive_reporting import (
+from presentation.executive_reporting import (
     BriefFinding,
     BriefRecommendation,
     EvidenceMetric,
@@ -15,7 +15,7 @@ from lib.executive_reporting import (
     StrategicAnalysisPlugin,
     single_run_report_to_executive_brief,
 )
-from lib.reporting import ReportGenerator
+from presentation.reporting import ReportGenerator
 
 
 def _sample_brief() -> ExecutiveBrief:

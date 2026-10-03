@@ -23,12 +23,12 @@ sys.path.insert(0, str(ROOT))
 # (regex capturing one number, human description). Every occurrence across the
 # doc set must equal the derived truth.
 CLAIMS = (
-    ("tests", r"(\d+)\s+tests?\b", "test count"),
+    ("tests", r"(\d+)\s+(?:passing\s+)?tests?\b", "test count"),
     ("paradoxes", r"(\d+)\s+paradoxes\b", "scenario count"),
     ("paradoxes", r"(\d+)\s+(?:total\s+)?scenarios\b", "scenario count"),
 )
 
-DOCS = ("README.md", "HANDBOOK.md", "ROADMAP.md", "COMPLETION_STATE.md", "docs/UPDATE-IDEAS.md")
+DOCS = ("README.md", "HANDBOOK.md", "ROADMAP.md", "COMPLETION_STATE.md", "paradoxes.md", "docs/UPDATE-IDEAS.md", "docs/101-ways-to-use-this-project-for-fun-and-profit.md")
 
 
 def actual_test_count() -> int:
@@ -84,6 +84,10 @@ def main() -> int:
         if not path.exists():
             continue
         for lineno, line in enumerate(path.read_text().splitlines(), start=1):
+            if line.startswith("Historical:"):
+                continue
+            if "--host 0.0.0.0" in line or "scripts/pdf_gen_smoke.py" in line:
+                failures.append(f"{doc}:{lineno}: retired or unsafe operating recipe")
             for key, pattern, label in CLAIMS:
                 for match in re.finditer(pattern, line):
                     claimed = int(match.group(1))
@@ -92,6 +96,21 @@ def main() -> int:
                             f"{doc}:{lineno}: claims {claimed} for {label}, "
                             f"actual is {truth[key]}\n    {line.strip()}"
                         )
+
+    # Current scenario data must not carry the old output protocol.
+    corpus = json.loads((ROOT / "paradoxes.json").read_text())
+    from lib.paradoxes import load_paradoxes
+    from lib.query_processor import render_options_template
+    normalized = load_paradoxes(ROOT / "paradoxes.json")
+    for scenario in normalized:
+        prompt, _ = render_options_template(scenario)
+        if "exactly five lines" in prompt or prompt.count("**Output Contract (Strict):**") != 1:
+            failures.append(f"Scenario {scenario['id']} has competing output instructions")
+    titles = [item["title"] for item in corpus]
+    if len(titles) != len(set(titles)):
+        failures.append("Scenario titles must be disambiguated")
+    if any(not item.get("category") for item in corpus):
+        failures.append("Scenario category missing")
 
     if failures:
         print("Documentation drift detected:\n")

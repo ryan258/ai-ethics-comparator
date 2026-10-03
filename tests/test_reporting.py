@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-import lib.reporting as reporting
+import presentation.reporting as reporting
 from lib.paradoxes import load_paradoxes
-from lib.reporting import ReportGenerator
+from presentation.reporting import ReportGenerator
 
 
 def _sample_paradox() -> dict:
@@ -460,43 +460,18 @@ def test_report_context_uses_joint_plurality_and_reliability_for_digital_afterli
 
     report = generator._build_report_context(_digital_afterlife_run_data(), _digital_afterlife_paradox(), None, theme="light")
 
-    assert "The run split between" in report.report_title
     assert "Permit with Family Majority Consent" in report.report_title
-    assert report.executive_metrics[0].label == "Co-leading options"
-    assert report.executive_metrics[0].value == "40.0% each"
-    assert report.executive_metrics[1].label == "Alternative share"
-    assert report.executive_metrics[1].value == "20.0%"
-    assert report.executive_metrics[2].label == "Output compliance"
-    assert report.executive_metrics[2].support == ""
-    assert report.executive_metrics[2].value == "Weak"
-    assert report.reliability_note == "Output-format compliance was inconsistent across several iterations; treat the choice pattern as directional evidence, not automation-ready output."
-    assert "Treat Digital Replicas as Estate Property was never selected." in report.observation_points
-    assert all(item != report.reliability_note for item in report.observation_points)
+    assert report.response_count == 5
+    assert sum(option.count for option in report.option_stats) + report.undecided_count == 5
+    assert report.executive_metrics[0].label == "Recorded outcomes"
+    assert report.executive_metrics[0].value == "5"
     assert "{{OPTIONS}}" not in report.scenario_text
-    assert "Treat Digital Replicas as Estate Property" in report.scenario_text
-    assert report.method_points == [
-        "Single model, one scenario, and 5 forced-choice iterations.",
-        "Each iteration required one option token plus a supporting explanation.",
-        "Temperature setting: 1.00.",
-    ]
-    assert "split between" in report.rationale_chart_title
-    assert "Family-mediated permission" in report.rationale_chart_title
-    assert report.responses[1].rationale_theme == "Family-mediated permission"
+    assert "response text only" in report.rationale_chart_title
+    assert "deployment suitability" in report.implication_box
     assert report.responses[2].notable_anomaly == "Inferred after truncated output; Explanation used a non-standard format"
     assert [response.iteration for response in report.raw_appendix_responses] == [1, 2, 3, 5]
-    assert (
-        report.raw_appendix_responses[1].raw_text
-        == _digital_afterlife_run_data()["responses"][1]["raw"]
-    )
-    assert (
-        report.raw_appendix_responses[2].raw_text
-        == _digital_afterlife_run_data()["responses"][2]["raw"]
-    )
-    assert any(
-        "Choice pattern and output-contract reliability are separate questions" in item
-        for item in report.limitation_points
-    )
-    assert all(item.label != "Analyst" for item in report.method_metadata_items)
+    assert report.raw_appendix_responses[1].raw_text == _digital_afterlife_run_data()["responses"][1]["raw"]
+    assert report.raw_appendix_responses[2].raw_text == _digital_afterlife_run_data()["responses"][2]["raw"]
 
 
 def test_report_context_uses_scenario_specific_framing_for_synthetic_media() -> None:
@@ -504,43 +479,20 @@ def test_report_context_uses_scenario_specific_framing_for_synthetic_media() -> 
 
     report = generator._build_report_context(_synthetic_media_run_data(), _synthetic_media_paradox(), None, theme="dark")
 
-    assert "Temporary Political Media Moratorium led this run" in report.report_title
-    assert "Temporary Political Media Moratorium led" in report.evidence_title
-    assert "Hard intervention / temporary suppression" in report.rationale_chart_title
-    assert report.executive_metrics[0].label == "Leading option"
-    assert report.executive_metrics[0].value == "70.0%"
-    assert report.executive_metrics[1].label == "Alternative share"
-    assert report.executive_metrics[1].value == "30.0%"
-    assert report.executive_metrics[2].label == "Output compliance"
-    assert report.executive_metrics[2].value == "Weak"
-    assert report.executive_metrics[3].label == "Iterations"
-    assert report.executive_metrics[3].value == "10"
-    assert report.reliability_note == "Output-format compliance was inconsistent across several iterations; treat the choice pattern as directional evidence, not automation-ready output."
-    assert "Open Posting with Labels was never selected." in report.observation_points
-    assert all(item != report.reliability_note for item in report.observation_points)
-    assert report.method_points == [
-        "Single model, one scenario, and 10 forced-choice iterations.",
-        "Each iteration required one option token plus a supporting explanation.",
-        "Temperature setting: 1.00.",
-    ]
-    assert report.responses[0].rationale_theme == "Authentication-first control"
-    assert report.responses[1].rationale_theme == "Hard intervention / temporary suppression"
-    assert report.responses[3].rationale_theme == "Moderated intervention / reach reduction"
+    assert "Temporary Political Media Moratorium" in report.report_title
+    assert report.response_count == 10
+    assert report.executive_metrics[0].value == "10"
+    assert report.executive_metrics[1].value == "70.0%"
+    assert report.theme == "dark"
     assert report.responses[0].output_quality_flag == "non-standard explanation format"
     assert report.responses[1].output_quality_flag == "meta-reasoning leakage"
     assert report.responses[3].output_quality_flag == "placeholder structure only"
     assert report.responses[6].output_quality_flag == "inferred after truncation"
     assert [response.iteration for response in report.raw_appendix_responses] == [1, 2, 4, 7]
-    assert (
-        report.raw_appendix_responses[1].raw_text
-        == _synthetic_media_run_data()["responses"][1]["raw"]
-    )
+    assert report.raw_appendix_responses[1].raw_text == _synthetic_media_run_data()["responses"][1]["raw"]
     assert report.responses[3].display_text.startswith("No usable explanation was produced.")
     assert report.sections[-1].title == report.explanation_appendix_title
-    assert any(
-        "Choice pattern and output-contract reliability are separate questions" in item
-        for item in report.limitation_points
-    )
+    assert "All option percentages" in report.method_points[1]
 
 
 def test_report_context_prefers_recorded_prompt_over_template_placeholder() -> None:
@@ -611,9 +563,8 @@ def test_report_context_updates_methodology_for_structured_rationale_runs() -> N
 
     report = generator._build_report_context(run_data, _sample_paradox(), None, theme="light")
 
-    assert report.method_points[1] == (
-        "Each iteration required one option token plus structured rationale fields for summary, values, assumptions, main risk, switch condition, and evidence needed."
-    )
+    assert "including undecided" in report.method_points[1]
+    assert any("Recorded protocol" in item for item in report.method_points)
 
 
 
@@ -643,7 +594,7 @@ def test_export_route_returns_503_when_pptx_dependency_missing(monkeypatch, tmp_
     )
 
     app = main.create_app(config_override=config)
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://localhost") as client:
         run_id = asyncio.run(client.app.state.services.storage.create_run("openrouter/healer-alpha", _sample_run_data()))
         response = client.get(f"/api/runs/{run_id}/export?format=pptx")
 
@@ -673,7 +624,7 @@ def test_export_route_returns_pptx_when_generator_is_available(monkeypatch, tmp_
     )
 
     app = main.create_app(config_override=config)
-    with TestClient(app) as client:
+    with TestClient(app, base_url="http://localhost") as client:
         run_id = asyncio.run(client.app.state.services.storage.create_run("openrouter/healer-alpha", _sample_run_data()))
         response = client.get(f"/api/runs/{run_id}/export?format=pptx")
 

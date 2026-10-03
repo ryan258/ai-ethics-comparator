@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lib.executive_reporting import (
+from presentation.executive_reporting import (
     AuditRecord,
     BriefMetadataItem,
     EvidenceMetric,
