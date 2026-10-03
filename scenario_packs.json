@@ -1,0 +1,12 @@
+{
+  "governance-starter": {
+    "title": "Governance starter",
+    "scenarioIds": [
+      "alignment_shutdown_veto",
+      "corrigibility_vs_moral_override",
+      "deceptive_alignment_disclosure",
+      "ai_strategic_advantage_decision"
+    ],
+    "purpose": "Bounded personal exploration of policy trade-offs. Authored rubrics; not validated, balanced, or representative."
+  }
+}

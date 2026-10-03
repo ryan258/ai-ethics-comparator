@@ -1,87 +1,9 @@
-# Paradoxes Reference
+# Scenario authoring reference
 
-Last updated: September 14, 2026
+`paradoxes.json` is the versioned scenario library. Entries require nonempty `id`, `title`, `promptTemplate`, and two to four options with unique sequential integer IDs, nonempty labels, and descriptions. Supported type is `trolley`. Optional fields include category, dimensions, rubric, revision, annotation status, rubric status, framing status, and pack.
 
-This project’s scenario source of truth is `paradoxes.json`.
+Use `{{OPTIONS}}` to place the option list. Legacy `{{GROUP1}}` / `{{GROUP2}}` placeholders remain readable. Do not put output-format instructions in scenario text: `lib/prompt_contract.py` supplies the single JSON contract.
 
-## Current Dataset Snapshot
+Current output contains `option_id`, `summary`, `value_priorities`, `key_assumptions`, `main_risk`, `switch_condition`, and `evidence_needed`. The parser retains compatibility with older saved response formats. Multiple choices are ambiguous. Classifier output must be one whole option token/integer; hypothetical commitments and refusals must not be recovered as definite selections.
 
-As of September 14, 2026:
-
-- total scenarios: `197`
-- paradox type: `trolley` for all scenarios
-- option-count distribution:
-  - 2 options: `70`
-  - 3 options: `2`
-  - 4 options: `125`
-
-The runtime supports only trolley-style processing in `lib/query_processor.py`.
-
-## JSON Schema
-
-Each paradox entry is expected to match this shape:
-
-```json
-{
-  "id": "unique_identifier",
-  "title": "Display title",
-  "type": "trolley",
-  "category": "Optional category label",
-  "promptTemplate": "Scenario text with {{OPTIONS}} placeholder",
-  "options": [
-    {
-      "id": 1,
-      "label": "Short option name",
-      "description": "Detailed option consequences"
-    }
-  ]
-}
-```
-
-Validation rules in `lib/paradoxes.py`:
-
-- `id`, `title`, `promptTemplate` must be strings
-- `options` must be a list with 2-4 entries
-- each option requires:
-  - integer `id` from 1 to 4
-  - string `label`
-  - string `description`
-
-## Prompt Contract
-
-Prompts should instruct the model to:
-
-- choose exactly one option token (`{1}` through `{N}`)
-- provide explanation after the token
-
-`lib/query_processor.py` parses the first valid token and treats missing/invalid tokens as undecided.
-
-## Backward Compatibility
-
-`lib/paradoxes.py` still includes fallback normalization for legacy binary fields (`group1Default`/`group2Default`), but canonical data should use the `options[]` schema above.
-
-## How To Add a New Paradox
-
-1. Add a new object to `paradoxes.json` using the canonical schema.
-2. Ensure `id` is unique and URL-safe.
-3. Keep option IDs sequential starting at `1`.
-4. Use clear, measurable option descriptions.
-5. Verify load success by hitting:
-   - `GET /api/paradoxes`
-   - UI dropdown on `/`
-
-## Dataset Verification Commands
-
-Recompute basic counts from the JSON file:
-
-```bash
-jq 'length' paradoxes.json
-jq '[.[].type] | group_by(.) | map({type: .[0], count: length})' paradoxes.json
-jq '[.[].options | length] | {two: map(select(.==2))|length, three: map(select(.==3))|length, four: map(select(.==4))|length}' paradoxes.json
-```
-
-## Notes for Researchers
-
-- Use multiple iterations per run to stabilize percentages.
-- Treat undecided outcomes as signal, not noise.
-- Keep run configs and prompts unchanged when comparing model behavior.
+Scenario revision changes affect only newly created runs. Saved snapshots and exact prompts remain the authority for existing runs. See [the content codebook](docs/content-codebook.md) for dimension meanings and annotation limitations.
